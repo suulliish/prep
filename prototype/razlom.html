@@ -1,0 +1,600 @@
+<title>Разлом</title>
+<meta name="description" content="Прототип игрового мира: корабль, Кодер, дрон Бит, портал и бой с глитч-мобом">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik:wght@400;500;700&display=swap">
+<style>
+  /* Единый «ночной» мир игры — тема намеренно одна */
+  :root {
+    color-scheme: dark;
+    --void: #0b0f24;
+    --panel: #141a3a;
+    --panel-2: #1c2350;
+    --line: #2e3875;
+    --ink: #eef0ff;
+    --ink-dim: #a9b0e0;
+    --cyan: #3ff0ff;
+    --magenta: #ff4fb8;
+    --gold: #ffc94a;
+    --ok: #57e38b;
+    --px: "Press Start 2P", ui-monospace, monospace;
+    --txt: "Rubik", system-ui, sans-serif;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--void); color: var(--ink); font-family: var(--txt); overflow: hidden; }
+  #scene { position: fixed; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
+
+  .hud { position: fixed; left: 0; right: 0; top: 0; padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 0; display: flex; justify-content: space-between; gap: 12px; pointer-events: none; }
+  .card { background: color-mix(in srgb, var(--panel) 88%, transparent); border: 2px solid var(--line); border-radius: 6px; padding: 10px 12px; box-shadow: 0 4px 0 #070a1a; }
+  .hero-card { display: grid; gap: 8px; min-width: 0; width: min(260px, 48vw); }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .lvl { font-family: var(--px); font-size: 10px; color: var(--void); background: var(--cyan); padding: 5px 6px; border-radius: 3px; }
+  .name { font-weight: 700; font-size: 15px; }
+  .bar { height: 10px; background: #0a0d20; border: 2px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), #9bfcff); width: 60%; transition: width .5s; }
+  .bar.en > i { background: linear-gradient(90deg, var(--magenta), #ff9bd8); }
+  .bar.time > i { background: linear-gradient(90deg, #f7a83b, var(--gold)); }
+  .label { font-family: var(--px); font-size: 8px; color: var(--ink-dim); letter-spacing: .04em; }
+  .stats { display: grid; gap: 8px; width: min(220px, 44vw); }
+  .stat-top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+  .val { font-family: var(--px); font-size: 9px; font-variant-numeric: tabular-nums; }
+
+  .bottom { position: fixed; left: 0; right: 0; bottom: 0; padding: 0 16px calc(env(safe-area-inset-bottom, 0px) + 14px); display: grid; gap: 10px; justify-items: center; pointer-events: none; }
+  .bit { display: flex; gap: 10px; align-items: flex-start; max-width: 560px; width: 100%; }
+  .bit-face { flex: none; width: 38px; height: 38px; background: #cfd6ee; border: 2px solid #7d86b8; border-radius: 4px; display: grid; place-items: center; }
+  .bit-face span { width: 26px; height: 16px; background: #10143a; border-radius: 2px; display: flex; justify-content: space-around; align-items: center; }
+  .bit-face span::before, .bit-face span::after { content: ""; width: 5px; height: 7px; background: var(--cyan); }
+  .bubble { flex: 1; font-size: 15px; line-height: 1.45; }
+  .bubble b { color: var(--cyan); font-weight: 500; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; pointer-events: auto; }
+  button { font-family: var(--txt); font-weight: 700; font-size: 14px; color: var(--ink); background: var(--panel-2); border: 2px solid var(--line); border-bottom-width: 5px; border-radius: 6px; padding: 10px 14px; cursor: pointer; }
+  button:hover { border-color: var(--cyan); }
+  button:active { transform: translateY(2px); border-bottom-width: 3px; }
+  button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: #0f5a66; border-color: var(--cyan); }
+
+  /* Экран задачи — спокойный, без анимаций вокруг */
+  .quiz { position: fixed; inset: 0; display: grid; place-items: end center; padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 16px); background: linear-gradient(to top, rgba(6, 8, 22, .85), rgba(6, 8, 22, 0) 60%); z-index: 5; }
+  body.fighting .bottom { visibility: hidden; }
+  .quiz-card { width: min(460px, 100%); background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 18px; display: grid; gap: 14px; }
+  .quiz-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .mob-hp { display: flex; gap: 4px; }
+  .mob-hp i { width: 18px; height: 12px; background: var(--magenta); border-radius: 2px; }
+  .mob-hp i.off { background: #3a2140; }
+  .q { font-size: 20px; line-height: 1.4; font-weight: 500; }
+  .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); gap: 8px; }
+  .choices button { font-size: 17px; padding: 12px 6px; display: flex; gap: 6px; justify-content: center; align-items: baseline; }
+  .choices button small { font-family: var(--px); font-size: 8px; color: var(--ink-dim); }
+  .choices button.right { border-color: var(--ok); background: #134a2d; }
+  .choices button.wrong { border-color: var(--magenta); background: #4a1535; }
+  .feedback { font-size: 15px; line-height: 1.45; color: var(--ink-dim); min-height: 1.45em; }
+  .feedback.ok { color: var(--ok); }
+  .tag { font-family: var(--px); font-size: 8px; color: var(--ink-dim); }
+
+  .toast { position: fixed; left: 50%; top: 32%; transform: translate(-50%, -50%); font-family: var(--px); font-size: 14px; color: var(--gold); text-shadow: 0 3px 0 #3b2600; pointer-events: none; opacity: 0; transition: opacity .3s, top .9s; white-space: nowrap; }
+  .toast.show { opacity: 1; top: 26%; }
+  .hint { position: fixed; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); font-size: 12px; color: var(--ink-dim); pointer-events: none; }
+
+  @media (max-width: 560px) {
+    .hint { display: none; }
+    .bubble { font-size: 14px; }
+    .name { font-size: 13px; }
+  }
+</style>
+
+<canvas id="scene" aria-label="3D-сцена: летающий корабль, герой, дрон Бит и портал"></canvas>
+
+<div class="hud">
+  <div class="card hero-card">
+    <div class="row"><span class="lvl" id="lvl">LV 3</span><span class="name">Кодер</span></div>
+    <div class="label">ОПЫТ</div>
+    <div class="bar"><i id="xpbar"></i></div>
+  </div>
+  <div class="card stats">
+    <div class="stat-top"><span class="label">ЭНЕРГИЯ КОДА</span><span class="val" id="energyVal">7/10</span></div>
+    <div class="bar en"><i id="enbar" style="width:70%"></i></div>
+    <div class="stat-top"><span class="label">ИГРА СЕГОДНЯ</span><span class="val" id="timeVal">45/60</span></div>
+    <div class="bar time"><i id="timebar" style="width:75%"></i></div>
+  </div>
+</div>
+
+<div class="bottom">
+  <div class="card bit">
+    <div class="bit-face" aria-hidden="true"><span></span></div>
+    <div class="bubble" id="bubble">Бип! Я <b>Бит</b>. Глитч разбил миры на осколки. Наш корабль готов, но портал в Джунгли ещё не заряжен.</div>
+  </div>
+  <div class="actions">
+    <button id="btnFight" class="primary">Бой с глитч-мобом</button>
+    <button id="btnPortal">К порталу</button>
+    <button id="btnChest" disabled>Открыть сундук</button>
+  </div>
+</div>
+<div class="hint">Потяни, чтобы покрутить камеру</div>
+<div class="toast" id="toast"></div>
+
+<div class="quiz" id="quiz" hidden>
+  <div class="quiz-card" role="dialog" aria-labelledby="qText">
+    <div class="quiz-head">
+      <span class="tag" id="qNum">ЗАДАЧА 1/3</span>
+      <div class="mob-hp" id="mobHp" aria-label="Здоровье моба"><i></i><i></i><i></i></div>
+    </div>
+    <div class="q" id="qText"></div>
+    <div class="choices" id="choices"></div>
+    <div class="feedback" id="feedback" aria-live="polite"></div>
+    <button id="qNext" hidden>Дальше</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const canvas = document.getElementById('scene');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x151040);
+  scene.fog = new THREE.Fog(0x151040, 30, 85);
+
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
+
+  // Небо-градиент
+  {
+    const g = new THREE.SphereGeometry(120, 24, 16);
+    const m = new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, fog: false,
+      uniforms: {},
+      vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+      fragmentShader: `varying vec3 vP; void main(){ float h = normalize(vP).y;
+        vec3 top = vec3(.04,.05,.16), mid = vec3(.20,.10,.38), low = vec3(.55,.22,.45);
+        vec3 c = mix(mid, top, smoothstep(0.05, .7, h)); c = mix(low, c, smoothstep(-.35, .08, h));
+        gl_FragColor = vec4(c,1.); }`
+    });
+    scene.add(new THREE.Mesh(g, m));
+  }
+
+  // Звёзды
+  {
+    const n = 700, pos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const th = Math.random() * Math.PI * 2, ph = Math.random() * Math.PI * 0.55;
+      const r = 100;
+      pos[i*3] = r * Math.sin(ph) * Math.cos(th); pos[i*3+1] = r * Math.cos(ph) - 5; pos[i*3+2] = r * Math.sin(ph) * Math.sin(th);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xcfd8ff, size: 0.5, fog: false })));
+  }
+
+  scene.add(new THREE.HemisphereLight(0x9fb4ff, 0x3a1d3f, 0.75));
+  const sun = new THREE.DirectionalLight(0xffe2c4, 0.9);
+  sun.position.set(-12, 22, 10); sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, near: 1, far: 60 });
+  scene.add(sun);
+
+  const box = new THREE.BoxGeometry(1, 1, 1);
+  const matCache = {};
+  const mat = (c, e) => {
+    const k = c + '_' + (e || 0);
+    if (!matCache[k]) matCache[k] = new THREE.MeshLambertMaterial({ color: c, emissive: e || 0x000000 });
+    return matCache[k];
+  };
+  function block(parent, sx, sy, sz, x, y, z, color, emissive) {
+    const m = new THREE.Mesh(box, mat(color, emissive));
+    m.scale.set(sx, sy, sz); m.position.set(x, y, z);
+    m.castShadow = true; m.receiveShadow = true;
+    parent.add(m); return m;
+  }
+
+  // ---------- Корабль ----------
+  const ship = new THREE.Group(); scene.add(ship);
+  // Палуба из досок
+  for (let i = -6; i < 6; i++) block(ship, 1, 0.3, 6.4, i + 0.5, 0, 0, i % 2 ? 0xb07645 : 0xa56b3c);
+  // Борта
+  block(ship, 12.4, 0.8, 0.3, 0, 0.5, 3.35, 0x7c4a28); block(ship, 12.4, 0.8, 0.3, 0, 0.5, -3.35, 0x7c4a28);
+  block(ship, 0.3, 0.8, 7, -6.2, 0.5, 0, 0x7c4a28);
+  // Корпус ступенями вниз
+  [[11.6, 6.0, -0.6], [10.2, 5.0, -1.2], [8.2, 3.8, -1.8], [5.6, 2.4, -2.4]].forEach(([w, d, y], i) =>
+    block(ship, w, 0.6, d, -0.3 * i, y, 0, i % 2 ? 0x6b3f22 : 0x74462a));
+  // Нос
+  block(ship, 1.2, 0.9, 4.0, 6.4, -0.2, 0, 0x74462a); block(ship, 1.0, 0.7, 2.4, 7.3, -0.3, 0, 0x6b3f22);
+  block(ship, 0.8, 0.5, 1.0, 8.1, -0.25, 0, 0xffc94a, 0x553300);
+  // Мачта и парус
+  block(ship, 0.4, 5.5, 0.4, -1.5, 2.9, -2.2, 0x5a3519);
+  const sail = new THREE.Group(); sail.position.set(-1.5, 3.6, -2.0); ship.add(sail);
+  const sailCells = [];
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) {
+    const b = block(sail, 0.8, 0.8, 0.12, (c - 2) * 0.8, (r - 1.5) * 0.8, 0, (r + c) % 2 ? 0xf0e6d8 : 0xe2d3c0);
+    b.castShadow = false; sailCells.push({ b, c, r });
+  }
+  // Двигатели с пропеллерами
+  const props = [];
+  [-2.2, 2.2].forEach(z => {
+    block(ship, 1.4, 1.1, 1.1, -6.9, -0.3, z, 0x4a4f6e);
+    block(ship, 0.3, 0.7, 0.7, -7.7, -0.3, z, 0xff8a3d, 0xaa3a00);
+    const p = new THREE.Group(); p.position.set(-7.95, -0.3, z); ship.add(p);
+    block(p, 0.15, 2.2, 0.35, 0, 0, 0, 0xd0d5ea); block(p, 0.15, 0.35, 2.2, 0, 0, 0, 0xd0d5ea);
+    props.push(p);
+  });
+  // Воздушный шар из вокселей (InstancedMesh)
+  {
+    const pts = [], s = 0.5, rx = 5.4, ry = 1.9, rz = 2.2;
+    for (let i = -11; i <= 11; i++) for (let j = -4; j <= 4; j++) for (let l = -5; l <= 5; l++) {
+      const x = i * s, y = j * s, z = l * s;
+      const v = (x*x)/(rx*rx) + (y*y)/(ry*ry) + (z*z)/(rz*rz);
+      const vin = (x*x)/((rx-s)**2) + (y*y)/((ry-s)**2) + (z*z)/((rz-s)**2);
+      if (v <= 1 && vin > 1) pts.push([x, y, z]);
+    }
+    const im = new THREE.InstancedMesh(box, new THREE.MeshLambertMaterial({ color: 0xffffff }), pts.length);
+    const m4 = new THREE.Matrix4(), col = new THREE.Color();
+    pts.forEach(([x, y, z], i) => {
+      m4.makeScale(s, s, s).setPosition(x, y + 7.2, z); im.setMatrixAt(i, m4);
+      const stripe = Math.floor((x + rx) / 1.65) % 2;
+      col.set(stripe ? 0x4a5fd0 : 0x5ff4ff);
+      im.setColorAt(i, col);
+    });
+    im.castShadow = true; ship.add(im);
+    // тросы
+    [[-4, -1.8], [-4, 1.8], [3.5, -1.8], [3.5, 1.8]].forEach(([x, z]) => block(ship, 0.08, 4.8, 0.08, x, 2.8, z, 0x3a2a1d));
+  }
+
+  // ---------- Портал ----------
+  const portal = new THREE.Group(); portal.position.set(4.6, 0.15, 0); ship.add(portal);
+  for (let y = 0; y < 6; y++) { block(portal, 0.6, 0.6, 0.6, 0, 0.3 + y * 0.6, -1.5, 0x2a1b4d, 0x16082e); block(portal, 0.6, 0.6, 0.6, 0, 0.3 + y * 0.6, 1.5, 0x2a1b4d, 0x16082e); }
+  for (let z = -1.5; z <= 1.51; z += 0.6) block(portal, 0.6, 0.6, 0.6, 0, 3.9, z, 0x2a1b4d, 0x16082e);
+  const portalMat = new THREE.ShaderMaterial({
+    transparent: true, side: THREE.DoubleSide, depthWrite: false,
+    uniforms: { t: { value: 0 }, power: { value: 0.35 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+    fragmentShader: `uniform float t; uniform float power; varying vec2 vUv;
+      void main(){ vec2 p = vUv - .5; p.y *= 1.25; float r = length(p); float a = atan(p.y, p.x);
+        float sw = sin(a*3. + r*18. - t*3.) * .5 + .5;
+        vec3 c = mix(vec3(1.,.31,.72), vec3(.25,.94,1.), sw);
+        float core = smoothstep(.5, 0., r);
+        float scan = step(.5, fract(vUv.y*40. + t*2.)) * .08;
+        gl_FragColor = vec4(c + core*power*.8, (.35 + .6*power) * core + scan*power); }`
+  });
+  const portalPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 3.4), portalMat);
+  portalPlane.rotation.y = Math.PI / 2; portalPlane.position.set(0, 2.05, 0); portal.add(portalPlane);
+  const portalLight = new THREE.PointLight(0x7bf6ff, 0.8, 9); portalLight.position.set(-0.8, 2, 0); portal.add(portalLight);
+  // Частицы портала
+  const pCount = 160, pPos = new Float32Array(pCount * 3), pSeed = [];
+  for (let i = 0; i < pCount; i++) pSeed.push({ a: Math.random() * 6.28, r: 0.3 + Math.random() * 1.3, s: 0.5 + Math.random() });
+  const pGeo = new THREE.BufferGeometry(); pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+  const pMat = new THREE.PointsMaterial({ color: 0x9ffcff, size: 0.12, transparent: true, opacity: 0.8, depthWrite: false });
+  portal.add(new THREE.Points(pGeo, pMat));
+
+  // ---------- Сундук ----------
+  const chest = new THREE.Group(); chest.position.set(-4.2, 0.15, 1.8); ship.add(chest);
+  block(chest, 1.1, 0.7, 0.8, 0, 0.35, 0, 0x8a5a2b);
+  block(chest, 1.14, 0.1, 0.84, 0, 0.55, 0, 0xffc94a);
+  const lid = new THREE.Group(); lid.position.set(0, 0.7, -0.4); chest.add(lid);
+  block(lid, 1.1, 0.35, 0.8, 0, 0.17, 0.4, 0x9c6632);
+  block(lid, 0.2, 0.25, 0.1, 0, 0.05, 0.82, 0xffc94a, 0x553300);
+  chest.visible = false;
+
+  // ---------- Герой ----------
+  function makeHero() {
+    const g = new THREE.Group();
+    const skin = 0xf1c27d, shirt = 0x2fbfd0, pants = 0x2c3570, hair = 0x3b2415;
+    const body = block(g, 0.8, 0.9, 0.45, 0, 1.25, 0, shirt);
+    block(g, 0.82, 0.12, 0.47, 0, 0.86, 0, 0x1b1f3d); // ремень
+    const head = new THREE.Group(); head.position.set(0, 1.95, 0); g.add(head);
+    block(head, 0.75, 0.75, 0.75, 0, 0, 0, skin);
+    block(head, 0.8, 0.22, 0.8, 0, 0.32, 0, hair); block(head, 0.8, 0.45, 0.2, 0, 0.12, -0.32, hair);
+    block(head, 0.12, 0.12, 0.05, -0.17, 0.02, 0.38, 0x1a1a2e); block(head, 0.12, 0.12, 0.05, 0.17, 0.02, 0.38, 0x1a1a2e);
+    block(head, 0.7, 0.1, 0.05, 0, 0.2, 0.39, 0x3ff0ff, 0x0a6b77); // визор-очки
+    const limb = (x, y, w, h, c) => { const p = new THREE.Group(); p.position.set(x, y, 0); g.add(p); block(p, w, h, w, 0, -h / 2, 0, c); return p; };
+    const armL = limb(-0.55, 1.65, 0.28, 0.85, shirt), armR = limb(0.55, 1.65, 0.28, 0.85, shirt);
+    const legL = limb(-0.2, 0.82, 0.32, 0.82, pants), legR = limb(0.2, 0.82, 0.32, 0.82, pants);
+    // Меч-клавиша в правой руке
+    const sword = new THREE.Group(); sword.position.set(0, -0.8, 0.1); armR.add(sword);
+    block(sword, 0.1, 0.1, 0.4, 0, 0, 0.05, 0x5a3519);
+    block(sword, 0.12, 0.12, 1.1, 0, 0, 0.75, 0x9ffcff, 0x1f7f8a);
+    return { g, head, armL, armR, legL, legR, body };
+  }
+  const hero = makeHero(); hero.g.position.set(-2, 0.15, 0.6); hero.g.rotation.y = Math.PI / 2; ship.add(hero.g);
+
+  // ---------- Бит ----------
+  const bit = new THREE.Group(); scene.add(bit);
+  block(bit, 0.62, 0.55, 0.55, 0, 0, 0, 0xcfd6ee);
+  block(bit, 0.5, 0.36, 0.05, 0, 0, 0.28, 0x10143a);
+  const eyeL = block(bit, 0.08, 0.13, 0.03, -0.11, 0.01, 0.31, 0x3ff0ff, 0x3ff0ff);
+  const eyeR = block(bit, 0.08, 0.13, 0.03, 0.11, 0.01, 0.31, 0x3ff0ff, 0x3ff0ff);
+  block(bit, 0.05, 0.3, 0.05, 0, 0.42, 0, 0x7d86b8);
+  const bitProp = new THREE.Group(); bitProp.position.y = 0.58; bit.add(bitProp);
+  block(bitProp, 0.7, 0.03, 0.1, 0, 0, 0, 0xff4fb8); block(bitProp, 0.1, 0.03, 0.7, 0, 0, 0, 0xff4fb8);
+  bit.position.set(-2, 3, 1.6);
+
+  // ---------- Летающие острова ----------
+  const islands = [];
+  function makeIsland(cx, cy, cz, R, seed) {
+    const g = new THREE.Group(); g.position.set(cx, cy, cz); scene.add(g);
+    const cols = [];
+    for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) {
+      const d = Math.hypot(x, z); if (d > R + 0.3) continue;
+      const depth = Math.max(1, Math.round((R - d) * 1.4 + ((x * 7 + z * 13 + seed) % 3)));
+      cols.push([x, z, depth]);
+    }
+    const total = cols.reduce((s, c) => s + c[2], 0);
+    const im = new THREE.InstancedMesh(box, new THREE.MeshLambertMaterial({ color: 0xffffff }), total);
+    const m4 = new THREE.Matrix4(), col = new THREE.Color(); let i = 0;
+    cols.forEach(([x, z, dp]) => { for (let k = 0; k < dp; k++) {
+      m4.makeTranslation(x, -k, z); im.setMatrixAt(i, m4);
+      col.set(k === 0 ? 0x4fbf5a : k < 2 ? 0x8a5a36 : 0x6d6a80); if (k === 0 && (x + z + seed) % 3 === 0) col.set(0x45ad50);
+      im.setColorAt(i, col); i++; } });
+    g.add(im);
+    // дерево
+    if (R >= 3) {
+      block(g, 0.8, 2.4, 0.8, 0, 1.7, 0, 0x6b4428);
+      [[0, 3.4, 0, 2.6], [0, 4.4, 0, 1.6]].forEach(([x, y, z, s]) => block(g, s, 1.1, s, x, y, z, 0x2f9e57));
+    }
+    islands.push({ g, y: cy, ph: seed });
+    return g;
+  }
+  makeIsland(-16, -3, -14, 4, 1); makeIsland(18, -6, -10, 3, 2); makeIsland(-20, 2, 12, 3, 3);
+  makeIsland(12, 4, 18, 2, 4); makeIsland(28, -1, 6, 4, 5); makeIsland(-6, -10, 22, 3, 6);
+
+  // Облака
+  const clouds = [];
+  for (let i = 0; i < 9; i++) {
+    const c = new THREE.Group(); const n = 3 + (i % 3);
+    for (let k = 0; k < n; k++) block(c, 2 + (k % 2), 1, 1.6 + (k % 3) * 0.4, k * 1.3, (k % 2) * 0.4, (k % 3) * 0.5, 0xe8e6ff).castShadow = false;
+    c.position.set(-40 + i * 10, -8 + (i % 4) * 5, -25 + (i * 17) % 50);
+    scene.add(c); clouds.push(c);
+  }
+
+  // ---------- Глитч-моб ----------
+  const mob = new THREE.Group(); mob.visible = false; ship.add(mob);
+  const mobParts = [
+    block(mob, 1.1, 1.1, 1.1, 0, 0.75, 0, 0xff4fb8, 0x4a0a30),
+    block(mob, 0.6, 0.6, 0.6, 0.45, 1.5, 0.3, 0x8a3cff, 0x220a4a),
+    block(mob, 0.5, 0.5, 0.5, -0.4, 1.45, -0.35, 0x3ff0ff, 0x0a3a44),
+  ];
+  const mobEyes = [block(mob, 0.18, 0.18, 0.05, -0.55, 0.85, -0.22, 0xffffff, 0xffffff), block(mob, 0.18, 0.18, 0.05, -0.55, 0.85, 0.22, 0xffffff, 0xffffff)];
+  mobEyes.forEach(e => e.scale.set(0.05, 0.18, 0.18));
+
+  // ---------- Взрывы из пикселей ----------
+  const bursts = [];
+  function burst(pos, color, n = 40, speed = 4) {
+    const g = new THREE.Group(); g.position.copy(pos); scene.add(g);
+    const parts = [];
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(box, mat(color, color)); const s = 0.1 + Math.random() * 0.15; m.scale.set(s, s, s); g.add(m);
+      parts.push({ m, v: new THREE.Vector3((Math.random() - .5) * speed, Math.random() * speed, (Math.random() - .5) * speed) });
+    }
+    bursts.push({ g, parts, life: 1.2 });
+  }
+
+  // ---------- Камера: орбита пальцем/мышью ----------
+  const target = new THREE.Vector3(0, 2.2, 0);
+  let theta = 0.9, phi = 1.08, radius = 25, dragging = false, lastX = 0, lastY = 0, idle = 0;
+  canvas.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointermove', e => { if (!dragging) return; theta -= (e.clientX - lastX) * 0.006; phi = Math.min(1.45, Math.max(0.5, phi - (e.clientY - lastY) * 0.005)); lastX = e.clientX; lastY = e.clientY; idle = 0; });
+  canvas.addEventListener('pointerup', () => { dragging = false; });
+  canvas.addEventListener('wheel', e => { radius = Math.min(32, Math.max(11, radius + e.deltaY * 0.01)); }, { passive: true });
+
+  function resize() {
+    const w = innerWidth, h = innerHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h;
+    radius = w < 600 ? 34 : 25;
+    camera.updateProjectionMatrix();
+  }
+  addEventListener('resize', resize); resize();
+
+  // ---------- Состояние и UI ----------
+  const S = { xp: 60, lvl: 3, energy: 7, time: 45, mode: 'idle', walkTo: null, attackT: 0, mobHp: 3, chestReady: false, chestOpen: false, portalOpen: false, flash: 0 };
+  const $ = id => document.getElementById(id);
+  const bubble = $('bubble');
+  const say = html => { bubble.innerHTML = html; };
+  function toast(t) { const el = $('toast'); el.textContent = t; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 1600); }
+  function hud() {
+    $('xpbar').style.width = S.xp + '%'; $('lvl').textContent = 'LV ' + S.lvl;
+    $('energyVal').textContent = S.energy + '/10'; $('enbar').style.width = S.energy * 10 + '%';
+    $('timeVal').textContent = S.time + '/60'; $('timebar').style.width = (S.time / 60 * 100) + '%';
+  }
+  function addXp(n) { S.xp += n; if (S.xp >= 100) { S.xp -= 100; S.lvl++; toast('НОВЫЙ УРОВЕНЬ!'); } hud(); }
+
+  const walk = (x, z, then) => { S.walkTo = { x, z, then }; };
+
+  // Бой: учебные задачи как удары
+  const questions = [
+    { q: 'Сколько будет 3/4 + 1/8?', c: ['4/12', '7/8', '4/8', '1', '3/8'], a: 1, why: 'Приведи к знаменателю 8: 3/4 = 6/8, и 6/8 + 1/8 = 7/8. Знаменатели не складывают.' },
+    { q: 'Найди 20% от 150.', c: ['20', '15', '30', '75', '130'], a: 2, why: '20% — это одна пятая. 150 : 5 = 30.' },
+    { q: 'Какое число следующее: 2, 6, 18, 54, …?', c: ['108', '72', '162', '58', '216'], a: 2, why: 'Каждое число в 3 раза больше предыдущего: 54 × 3 = 162.' },
+  ];
+  let qi = 0;
+  function showQ() {
+    const Q = questions[qi];
+    $('qNum').textContent = 'ЗАДАЧА ' + (qi + 1) + '/' + questions.length;
+    $('qText').textContent = Q.q;
+    $('feedback').textContent = ''; $('feedback').className = 'feedback';
+    $('qNext').hidden = true;
+    [...$('mobHp').children].forEach((i, k) => i.classList.toggle('off', k >= S.mobHp));
+    const box = $('choices'); box.innerHTML = '';
+    Q.c.forEach((t, k) => {
+      const b = document.createElement('button'); b.id = 'ch' + k;
+      b.innerHTML = '<small>' + 'ABCDE'[k] + '</small>' + t;
+      b.onclick = () => answer(k, b);
+      box.appendChild(b);
+    });
+    $('quiz').hidden = false; document.body.classList.add('fighting');
+    $('ch0').focus();
+  }
+  function answer(k, btn) {
+    const Q = questions[qi];
+    [...$('choices').children].forEach(b => b.disabled = true);
+    const fb = $('feedback');
+    if (k === Q.a) {
+      btn.classList.add('right'); fb.textContent = 'Верно! Удар!'; fb.className = 'feedback ok';
+      S.mobHp--; addXp(15);
+      setTimeout(() => { $('quiz').hidden = true; S.attackT = 1; }, 550);
+    } else {
+      btn.classList.add('wrong'); $('ch' + Q.a).classList.add('right');
+      fb.textContent = 'Моб не получил урон, но ты ничего не потерял. ' + Q.why;
+      $('qNext').hidden = false; $('qNext').focus();
+    }
+  }
+  $('qNext').onclick = () => { qi = (qi + 1) % questions.length; showQ(); };
+
+  function afterHit() {
+    burst(mob.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1, 0)), 0xff4fb8, 18, 3);
+    if (S.mobHp <= 0) {
+      setTimeout(() => {
+        burst(mob.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1, 0)), 0xff4fb8, 70, 6);
+        burst(mob.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1, 0)), 0x3ff0ff, 40, 5);
+        mob.visible = false; S.mode = 'idle'; document.body.classList.remove('fighting');
+        chest.visible = true; S.chestReady = true; $('btnChest').disabled = false;
+        S.energy = Math.min(10, S.energy + 1); hud(); toast('+1 ЭНЕРГИЯ КОДА');
+        say('Бип-бип! Глитч-моб рассыпался на пиксели! Он выронил <b>сундук</b>. А задачи зарядили портал: энергия ' + S.energy + ' из 10.');
+        $('btnFight').disabled = false; $('btnPortal').disabled = false;
+      }, 450);
+    } else {
+      qi = (qi + 1) % questions.length;
+      setTimeout(showQ, 700);
+    }
+  }
+
+  $('btnFight').onclick = () => {
+    if (S.mode === 'fight') return;
+    S.mode = 'fight'; S.mobHp = 3; qi = 0;
+    $('btnFight').disabled = true; $('btnPortal').disabled = true;
+    say('Осторожно, <b>глитч-моб</b>! Каждая решённая задача — удар по нему. Ошибёшься — не страшно, урона не будет.');
+    mob.position.set(2.2, 0.15, 0.6); mob.scale.set(0.01, 0.01, 0.01); mob.visible = true;
+    burst(new THREE.Vector3(2.2, 1.2, 0.6), 0x8a3cff, 30, 3);
+    walk(0.2, 0.6, () => setTimeout(showQ, 400));
+  };
+
+  $('btnPortal').onclick = () => {
+    walk(3.2, 0, () => {
+      if (S.portalOpen) { say('Портал открыт! В следующей версии здесь будет переход в <b>Джунгли</b>.'); return; }
+      if (S.energy < 10) {
+        say('Не хватает энергии Кода: <b>' + S.energy + ' из 10</b>. Энергию дают освоенные навыки. Для демо можешь победить мобов, каждый даёт +1.');
+      } else openPortal();
+    });
+  };
+  function openPortal() {
+    S.portalOpen = true; S.flash = 1;
+    burst(portal.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2, 0)), 0x3ff0ff, 90, 7);
+    toast('ПОРТАЛ ОТКРЫТ!');
+    say('Энергии хватило! <b>Портал в Джунгли</b> открыт. Туда полетим в следующей версии.');
+  }
+
+  $('btnChest').onclick = () => {
+    if (!S.chestReady || S.chestOpen) return;
+    walk(-3.0, 1.8, () => {
+      S.chestOpen = true; $('btnChest').disabled = true;
+      setTimeout(() => {
+        burst(chest.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1, 0)), 0xffc94a, 60, 5);
+        toast('+10 МИН ИГРЫ');
+        S.time = Math.min(60, S.time + 10); hud();
+        say('В сундуке <b>+10 минут игры</b> и карточка силы «Дроби». Такие сюрпризы будут выпадать не всегда.');
+        if (S.energy >= 10) setTimeout(() => say('Энергия Кода 10 из 10! Жми <b>«К порталу»</b>.'), 2600);
+      }, 500);
+    });
+  };
+
+  // ---------- Анимация ----------
+  const clock = new THREE.Clock();
+  const tmp = new THREE.Vector3();
+  function frame() {
+    const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+    const k = reduce ? 0.3 : 1;
+
+    // корабль покачивается
+    ship.position.y = Math.sin(t * 0.8) * 0.25 * k;
+    ship.rotation.z = Math.sin(t * 0.6) * 0.02 * k;
+    ship.rotation.x = Math.sin(t * 0.5) * 0.015 * k;
+    props.forEach(p => p.rotation.x += dt * 14 * k);
+    sailCells.forEach(({ b, c, r }) => { b.position.z = Math.sin(t * 2 + c * 0.7 + r * 0.3) * 0.12 * (c / 4) * k + (c / 4) * 0.25; });
+
+    islands.forEach(o => { o.g.position.y = o.y + Math.sin(t * 0.5 + o.ph) * 0.6 * k; });
+    clouds.forEach(c => { c.position.x += dt * 0.6 * k; if (c.position.x > 50) c.position.x = -50; });
+
+    // портал
+    portalMat.uniforms.t.value = t;
+    const targetPower = S.portalOpen ? 1 : 0.2 + S.energy * 0.05;
+    portalMat.uniforms.power.value += (targetPower - portalMat.uniforms.power.value) * 0.05;
+    portalLight.intensity = 0.6 + portalMat.uniforms.power.value * 1.6 + Math.sin(t * 7) * 0.1 + S.flash * 4;
+    S.flash = Math.max(0, S.flash - dt * 1.5);
+    const pw = portalMat.uniforms.power.value;
+    for (let i = 0; i < pCount; i++) {
+      const s = pSeed[i]; s.a += dt * s.s * (1 + pw * 2); s.r -= dt * 0.25 * s.s; if (s.r < 0.1) s.r = 1.4;
+      pPos[i*3] = -0.1 - (1.4 - s.r) * 0.5; pPos[i*3+1] = 2.05 + Math.sin(s.a) * s.r * 1.2; pPos[i*3+2] = Math.cos(s.a) * s.r;
+    }
+    pGeo.attributes.position.needsUpdate = true;
+    pMat.opacity = 0.4 + pw * 0.5;
+
+    // герой: ходьба / стойка / удар
+    let walking = false;
+    if (S.walkTo) {
+      const d = new THREE.Vector2(S.walkTo.x - hero.g.position.x, S.walkTo.z - hero.g.position.z);
+      const L = d.length();
+      if (L < 0.05) { const cb = S.walkTo.then; S.walkTo = null; hero.g.rotation.y = Math.PI / 2; cb && cb(); }
+      else {
+        walking = true; const step = Math.min(L, dt * 3.2);
+        hero.g.position.x += d.x / L * step; hero.g.position.z += d.y / L * step;
+        hero.g.rotation.y = Math.atan2(d.x, d.y);
+      }
+    }
+    const sw = walking ? Math.sin(t * 10) * 0.7 : 0;
+    hero.legL.rotation.x = sw; hero.legR.rotation.x = -sw;
+    hero.armL.rotation.x = -sw * 0.8;
+    if (S.attackT > 0) {
+      const a = S.attackT; S.attackT = Math.max(0, S.attackT - dt * 2.4);
+      hero.armR.rotation.x = -Math.sin((1 - a) * Math.PI) * 2.4;
+      if (a > 0.5 && S.attackT <= 0.5) afterHit();
+    } else hero.armR.rotation.x = walking ? sw * 0.8 : Math.sin(t * 2) * 0.05;
+    hero.body.position.y = 1.25 + (walking ? Math.abs(Math.sin(t * 10)) * 0.06 : Math.sin(t * 2) * 0.03);
+    hero.head.position.y = hero.body.position.y + 0.7;
+    hero.head.rotation.y = walking ? 0 : Math.sin(t * 0.7) * 0.25 * k;
+
+    // Бит летает рядом с героем
+    hero.g.getWorldPosition(tmp);
+    tmp.add(new THREE.Vector3(-0.6, 2.9 + Math.sin(t * 2.2) * 0.2, 1.3));
+    bit.position.lerp(tmp, 0.05);
+    bit.lookAt(camera.position.x, bit.position.y, camera.position.z);
+    bitProp.rotation.y += dt * 20;
+    const blink = (t % 3.2) < 0.12 ? 0.15 : 1;
+    eyeL.scale.y = eyeR.scale.y = 0.13 * blink;
+
+    // моб: появление и глитч-дрожь
+    if (mob.visible) {
+      const s = Math.min(1, mob.scale.x + dt * 2); mob.scale.set(s, s, s);
+      mob.rotation.y = Math.sin(t * 3) * 0.2;
+      mobParts.forEach((p, i) => { p.position.x += (Math.random() < 0.08 ? (Math.random() - .5) * 0.25 : 0); p.position.x += ((i === 0 ? 0 : i === 1 ? 0.45 : -0.4) - p.position.x) * 0.2; });
+      mob.position.y = 0.15 + Math.abs(Math.sin(t * 4)) * 0.15;
+    }
+
+    // сундук
+    if (chest.visible) {
+      chest.scale.setScalar(Math.min(1, chest.scale.x + dt * 2));
+      const want = S.chestOpen ? -1.9 : 0; lid.rotation.x += (want - lid.rotation.x) * 0.12;
+    }
+
+    // взрывы
+    for (let i = bursts.length - 1; i >= 0; i--) {
+      const b = bursts[i]; b.life -= dt;
+      b.parts.forEach(p => { p.v.y -= dt * 6; p.m.position.addScaledVector(p.v, dt); p.m.rotation.x += dt * 5; });
+      b.g.children.forEach(m => m.scale.multiplyScalar(0.985));
+      if (b.life <= 0) { scene.remove(b.g); bursts.splice(i, 1); }
+    }
+
+    // камера
+    idle += dt; if (!dragging && idle > 2 && !reduce) theta += dt * 0.05;
+    camera.position.set(target.x + radius * Math.sin(phi) * Math.cos(theta), target.y + radius * Math.cos(phi), target.z + radius * Math.sin(phi) * Math.sin(theta));
+    camera.lookAt(target);
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  chest.scale.setScalar(0.01);
+  hud();
+  requestAnimationFrame(frame);
+})();
+</script>
