@@ -11,7 +11,7 @@
     "check:templates": "node scripts/check-templates.mjs 2000",
     "samples": "node scripts/sample-templates.mjs 3",
     "bank": "node scripts/bank/build-bank.mjs",
-    "check:skills": "node scripts/check-skills.mjs"
+    "check:all": "npm test && npm run check:templates"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
