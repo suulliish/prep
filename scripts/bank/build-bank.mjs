@@ -157,7 +157,7 @@ for (const S of SOURCES) {
     if (answer < 0) st.noAnswer++;
     if (ver === 'disputed' || ver === 'unreadable') st.disputed++;
     if (fig) st.figure++;
-    const usable = okChoices && answer >= 0 && ['code', 'manual', 'key'].includes(ver);
+    const usable = !!okChoices && answer >= 0 && ['code', 'manual', 'key'].includes(ver);
     if (usable) st.usable++;
     items.push({
       id: `${S.source}-${String(b.n).padStart(2, '0')}`,
