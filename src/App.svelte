@@ -22,6 +22,8 @@
     protectStorage();
     W.world = createWorld(canvas, { reduceMotion: matchMedia('(prefers-reduced-motion: reduce)').matches });
     applyLook();
+    // облачная синхронизация — отдельным куском, чтобы не тормозить первую загрузку
+    import('./lib/cloud.svelte').then(m => m.startCloud()).catch(() => {});
     return () => W.world?.dispose();
   });
 </script>

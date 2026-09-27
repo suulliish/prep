@@ -17,6 +17,11 @@
   let confirmReset = $state(false);
   let importMsg = $state('');
   const hasPin = !!game.save.settings.pin;
+  // облако грузится лениво (Firebase — отдельный кусок сайта)
+  let C = $state<typeof import('../lib/cloud.svelte') | null>(null);
+  onMount(() => { import('../lib/cloud.svelte').then(m => (C = m)).catch(() => {}); });
+  const cloudOk = $derived(!!C?.cloud.user && C.cloud.status !== 'error');
+  const fmtTime = (t: number) => (t ? new Date(t).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
 
   onMount(() => { W.dim = true; audio.setMood('focus'); });
 
@@ -75,9 +80,9 @@
 
     {#if tab === 'today'}
       {@const since = daysSinceBackup()}
-      {#if since === null || since >= 7}
+      {#if !cloudOk && (since === null || since >= 7)}
         <section class="panel card warn">
-          <p>⚠ Прогресс хранится только в этом браузере. {since === null ? 'Копии в файл ещё не было.' : `Последняя копия — ${since} дн. назад.`}</p>
+          <p>⚠ Прогресс хранится только в этом браузере. {since === null ? 'Копии в файл ещё не было.' : `Последняя копия — ${since} дн. назад.`} Лучше включить облако (вкладка «Данные»).</p>
           <button class="btn primary" onclick={downloadSave}>Скачать копию сейчас</button>
         </section>
       {/if}
@@ -146,6 +151,18 @@
       </section>
     {:else}
       <section class="panel card">
+        <div class="cloud">
+          <b>Облако (Firebase)</b>
+          {#if !C}<p class="note">Загрузка…</p>
+          {:else if !C.cloud.user}
+            <p class="note">Войдите своим Google-аккаунтом один раз на этом устройстве — прогресс будет сам сохраняться в облако и подтянется на другом устройстве после входа.</p>
+            <button class="btn primary" onclick={() => C!.signIn()}>Войти через Google</button>
+          {:else}
+            <p class="note">Вход: <b>{C.cloud.user.email}</b>. Статус: {C.cloud.status === 'ok' ? '✓ синхронизировано' : C.cloud.status === 'syncing' ? 'синхронизация…' : C.cloud.status === 'error' ? 'ошибка' : '—'} · последняя: {fmtTime(C.cloud.lastSync)}</p>
+            <div class="row"><button class="btn" onclick={() => C!.syncNow()}>Синхронизировать сейчас</button><button class="btn ghost" onclick={() => C!.signOutCloud()}>Выйти</button></div>
+          {/if}
+          {#if C?.cloud.error}<p class="err">Ошибка: {C.cloud.error}{C.cloud.error.includes('unauthorized-domain') ? ' — добавьте адрес сайта в Firebase → Authentication → Settings → Authorized domains.' : C.cloud.error.includes('permission-denied') ? ' — проверьте правила Firestore (docs/CLOUD.md).' : ''}</p>{/if}
+        </div>
         <p class="note">Прогресс хранится в этом браузере. Раз в неделю скачивайте копию — её можно загрузить на другом устройстве. Последняя копия: {game.save.lastBackup ?? 'не было'}.</p>
         <button class="btn primary" onclick={downloadSave}>Скачать копию прогресса</button>
         <label class="btn" for="imp">Загрузить копию<input id="imp" type="file" accept="application/json" hidden onchange={onImport} /></label>
@@ -195,4 +212,5 @@
   .bonus { color: var(--gold); }
   .warn { border-color: var(--gold); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .warn p { flex: 1; min-width: 200px; font-weight: 700; }
+  .cloud { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line-hi); border-radius: 8px; background: var(--deep); }
 </style>

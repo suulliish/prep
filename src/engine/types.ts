@@ -57,6 +57,7 @@ export interface Save {
   settings: Settings;
   diagnosticDone: boolean;
   lastBackup?: string; // дата последней копии в файл
+  updatedAt?: number;  // время последнего изменения (для облачной синхронизации)
   world?: string;          // текущий мир (content/worlds.mjs)
   worldsCleared?: string[]; // миры, где побеждён босс
   outfit?: string;         // костюм героя (путь наград)

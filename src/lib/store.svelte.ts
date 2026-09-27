@@ -54,8 +54,24 @@ export const game = $state({
 
 refreshAvailability(game.save, skillDefs);
 
+/** Подписчики на сохранение (облачная синхронизация, src/lib/cloud.svelte.ts). */
+export const afterPersist: (() => void)[] = [];
+
 export function persist() {
+  game.save.updatedAt = Date.now();
   try { localStorage.setItem(KEY, JSON.stringify(game.save)); } catch { /* нет места/доступа */ }
+  afterPersist.forEach(f => f());
+}
+
+/** Заменить сохранение целиком (импорт файла или загрузка из облака). Прежнее кладётся в резервную копию. */
+export function replaceSave(data: Save, keepTime = false) {
+  try { localStorage.setItem(KEY + '.before-replace', JSON.stringify(game.save)); } catch { /* */ }
+  const t = data.updatedAt;
+  game.save = { ...fresh(), ...data };
+  if (game.save.heroName === 'Кодер') game.save.heroName = 'Муртаза';
+  refreshAvailability(game.save, skillDefs);
+  try { localStorage.setItem(KEY, JSON.stringify(game.save)); } catch { /* */ }
+  if (keepTime) game.save.updatedAt = t; else persist();
 }
 
 export function go(screen: Screen) { game.screen = screen; }
@@ -64,9 +80,7 @@ export function exportSave(): string { return JSON.stringify(game.save, null, 1)
 export function importSave(json: string) {
   const data = JSON.parse(json);
   if (data?.version !== 1) throw new Error('Бұл файл сақталған прогресс емес');
-  game.save = { ...fresh(), ...data };
-  refreshAvailability(game.save, skillDefs);
-  persist();
+  replaceSave(data);
 }
 
 // Уровень героя из XP: каждый следующий уровень чуть дороже
