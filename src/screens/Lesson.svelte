@@ -115,9 +115,9 @@
     go({ name: 'session', block: 'new' });
   }
   const bitLine = $derived.by(() => {
-    if (step.type === 'predict') return pick === null ? 'Алдымен болжап көр — қателесуден қорықпа!' : (pick === step.answer ? 'Дәл таптың! ' : 'Қызық болжам! ') + step.reveal;
+    if (step.type === 'predict') return pick === null ? `${game.save.heroName}, алдымен болжап көр — қателесуден қорықпа!` : (pick === step.answer ? 'Дәл таптың! ' : 'Қызық болжам! ') + step.reveal;
     if (step.type === 'why' || step.type === 'quiz') return pick === null ? 'Қалай ойлайсың?' : pick === step.answer ? 'Дұрыс! ' + step.why : 'Жақын, бірақ: ' + step.why;
-    if (step.type === 'final') return !won ? (pick === null ? 'Вирус әлсіреді! Соңғы соққы — дұрыс жауап.' : 'Вирус қарсыласып жатыр! Сабақта не үйрендік? Тағы тексер.') : 'Жеңіс! ' + step.why;
+    if (step.type === 'final') return !won ? (pick === null ? 'Вирус әлсіреді! Соңғы соққы — дұрыс жауап.' : 'Вирус қарсыласып жатыр! Сабақта не үйрендік? Тағы тексер.') : `Жеңіс, ${game.save.heroName}! ` + step.why;
     return '';
   });
 </script>
@@ -174,7 +174,7 @@
         <BugHunt lines={step.lines} bad={step.bad} follows={step.follows} fix={step.fix} ondone={clean => { bugFound = true; W.world?.heroAttack(clean); reward(clean ? 8 : 3); }} />
       {:else if step.type === 'blitz'}
         <Bit text={step.kz} mood="wow" compact />
-        <Blitz title={step.title} seconds={step.seconds} count={step.count} make={step.make} onhit={crit => W.world?.heroAttack(crit)} ondone={stars => reward(stars * 5, stars === 3)} />
+        <Blitz title={step.title} count={step.count} make={step.make} onhit={crit => W.world?.heroAttack(crit)} ondone={stars => reward(stars * 5, stars === 3)} />
       {:else if step.type === 'rule'}
         <div class="rule">
           <b>★ {step.kz}</b>

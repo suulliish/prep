@@ -19,3 +19,21 @@ describe('шаблоны задач', () => {
     });
   }
 });
+
+import { HINT_KEYS } from '../content/hint_keys.mjs';
+import { derivedHints } from '../src/engine/items';
+describe('подсказки без утечки ответа', () => {
+  it('у каждого шаблона без hints есть вопрос и ключевая идея', () => {
+    const r = rng(9);
+    const missing = (templates as any[]).filter(t => !t.gen(r).hints && !(HINT_KEYS as any)[t.id]).map(t => t.id);
+    expect(missing).toEqual([]);
+  });
+  it('ступень 3 (первый шаг из разбора) не содержит верного ответа', () => {
+    const r = rng(21), n = (x: string) => x.replace(/\s+/g, '').toLowerCase();
+    for (const t of templates as any[]) for (let k = 0; k < 20; k++) {
+      const it = t.gen(r); if (it.hints) continue;
+      const ans = it.choices[it.answer].text;
+      const h = derivedHints(it.sol, t.id, ans)[2]; expect(n(h.kz).includes(n(ans)) && n(ans).length > 1, `${t.id}: ${h.kz} / ${ans}`).toBe(false);
+    }
+  });
+});

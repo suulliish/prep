@@ -6,7 +6,7 @@
   import { ensurePlan, completeBlock, dayRec } from '../lib/session.svelte';
   import { makeItem, mistakeText, skillTitle, type Item } from '../engine/items';
   import { recordAttempt, isDone } from '../engine/progress';
-  import { isHonest } from '../engine/planner';
+  import { isHonest, addMasteryBonus, settleDay } from '../engine/planner';
   import { audio } from '../lib/audio';
   import { sparksAt, floatText, centerOf, flash, sceneCenter } from '../ui/fx.svelte';
 
@@ -119,6 +119,14 @@
     for (const ev of events) {
       if (ev === 'learned') { audio.play('levelup'); floatText('ҮЙРЕНДІ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#3ff0ff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#3ff0ff', '#b58cff'], 70, 10); W.world?.celebrate(); bitText = `«${skillTitle(item.skill).kz}» — үйрендің! Ертең тексереміз: өтсең, кристалға айналады.`; bitMood = 'wow'; }
       if (ev === 'crystal') { audio.play('crystal'); floatText('КРИСТАЛЛ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#b58cff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#b58cff', '#ffffff', '#3ff0ff'], 90, 11); bitText = `«${skillTitle(item.skill).kz}» кристалға айналды — енді бұл тақырып сенікі!`; bitMood = 'wow'; }
+      if (ev === 'learned' || ev === 'crystal') {
+        const rec = dayRec(), add = addMasteryBonus(rec, `${ev === 'crystal' ? 'Проверка через день пройдена' : 'Тема освоена'}: ${skillTitle(item.skill).ru}`);
+        if (add) {
+          settleDay(rec, plan, game.save.settings.extraTo);
+          setTimeout(() => { audio.play('chest'); floatText(`СЫЙЛЫҚ +${add} мин`, sceneCenter(0.42).x, sceneCenter(0.42).y, '#ffc94a', true); }, 1200);
+          bitText += ` Сыйлық: +${add} минут ойын!`;
+        }
+      }
       if (ev === 'review_failed') { bitText = 'Бұл тақырып сәл ұмытылған екен — қайта жаттығамыз, қорқынышты емес.'; bitMood = 'think'; }
     }
     twin = hintLevel >= 4;

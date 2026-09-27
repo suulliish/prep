@@ -93,3 +93,14 @@ describe('серия дней', () => {
     expect(r.days).toBe(6); expect(r.freezesLeft).toBe(1); // 14-е пропущено → заморозка
   });
 });
+
+import { addMasteryBonus, MASTERY_BONUS_DAY_CAP } from '../src/engine/planner';
+describe('бонус за освоение', () => {
+  it('+10 за событие, не больше лимита в день, подарок командира не считается', () => {
+    const rec = { date: '2026-10-20', blocksDone: {}, planShare: 0, minutesToday: 0, minutesWeekend: 0, extraMissions: 0, bonuses: [{ reason: 'Подарок командира', minutes: 15 }] } as any;
+    expect(addMasteryBonus(rec, 'a')).toBe(10);
+    expect(addMasteryBonus(rec, 'b')).toBe(10);
+    expect(addMasteryBonus(rec, 'c')).toBe(0);
+    expect(rec.bonuses.filter((b: any) => b.mastery).reduce((s: number, b: any) => s + b.minutes, 0)).toBe(MASTERY_BONUS_DAY_CAP);
+  });
+});

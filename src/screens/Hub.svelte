@@ -28,11 +28,12 @@
   const done = $derived(planComplete(rec, plan));
   const extraOk = $derived(canStartExtra(rec, plan, game.save.settings.extraMissionCap));
 
+  const name = $derived(game.save.heroName);
   const greeting = $derived(
-    !game.save.diagnosticDone ? 'Сәлем, Кодер! Мен — Бит. Алдымен сенің Код-күшіңді сканерлейік: бірнеше есеп, қателесуден қорықпа — бұл тек карта ашу үшін.'
-    : !weekday ? 'Бүгін демалыс! Жинаған уақытыңды ойнап алуға болады. Дүйсенбіде жалғастырамыз.'
-    : done ? `Керемет! Бүгінгі жоспар орындалды: +${rec.minutesToday} мин. Қосымша тапсырма алсаң, тағы +15 мин.`
-    : `Бүгін ${plan.blocks.length} тапсырма. Бастайық па?`
+    !game.save.diagnosticDone ? `Сәлем, ${name}! Мен — Бит. Алдымен сенің Код-күшіңді сканерлейік: бірнеше есеп, қателесуден қорықпа — бұл тек карта ашу үшін.`
+    : !weekday ? `Бүгін демалыс, ${name}! Жинаған уақытыңды ойнап алуға болады. Дүйсенбіде жалғастырамыз.`
+    : done ? `Керемет, ${name}! Бүгінгі жоспар орындалды: +${rec.minutesToday} мин. Қосымша тапсырма алсаң, тағы +15 мин.`
+    : `${name}, бүгін ${plan.blocks.length} тапсырма. Бастайық па?`
   );
 
   onMount(() => {

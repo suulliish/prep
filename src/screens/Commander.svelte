@@ -1,7 +1,7 @@
 <script lang="ts">
   // Экран брата («Командир корабля»), на русском, под PIN.
   import { onMount } from 'svelte';
-  import { game, go, persist, skillDefs, hashPin, downloadSave, importSave } from '../lib/store.svelte';
+  import { game, go, persist, skillDefs, hashPin, downloadSave, importSave, daysSinceBackup } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { ensurePlan, dayRec, replan } from '../lib/session.svelte';
   import { settleDay } from '../engine/planner';
@@ -74,6 +74,13 @@
     </nav>
 
     {#if tab === 'today'}
+      {@const since = daysSinceBackup()}
+      {#if since === null || since >= 7}
+        <section class="panel card warn">
+          <p>⚠ Прогресс хранится только в этом браузере. {since === null ? 'Копии в файл ещё не было.' : `Последняя копия — ${since} дн. назад.`}</p>
+          <button class="btn primary" onclick={downloadSave}>Скачать копию сейчас</button>
+        </section>
+      {/if}
       <section class="panel card">
         <div class="grid3">
           <div class="kpi"><span class="label">Игра сегодня</span><b>{rec.minutesToday} мин</b><small>потрачено {rec.spent ?? 0}</small></div>
@@ -83,6 +90,7 @@
         <ul class="blocks">
           {#each plan.blocks as b}<li class:done={rec.blocksDone[b.id]}>{rec.blocksDone[b.id] ? '✓' : '○'} {BLOCK[b.id]}</li>{/each}
           <li>Доп. миссий: {rec.extraMissions} из {game.save.settings.extraMissionCap}</li>
+          {#each rec.bonuses as b}<li class="bonus">★ +{b.minutes} мин — {b.reason}</li>{/each}
         </ul>
         <p class="note">Задач сегодня: {todays.length}, верно: {todays.filter(a => a.correct).length}. Угадываний (быстрее 5 сек): <b class:warn={guesses > 2}>{guesses}</b>. «Был уверен, но ошибся»: <b>{sureWrong}</b> — это лучшие темы для разговора.</p>
         <div class="card-sub">
@@ -104,6 +112,9 @@
       </section>
     {:else if tab === 'settings'}
       <section class="panel card">
+        <label for="hero">Имя героя (Бит обращается по нему)
+          <input id="hero" type="text" maxlength="20" bind:value={game.save.heroName} onchange={persist} />
+        </label>
         <label for="cap">Доп. миссий в день (по +15 мин)
           <input id="cap" type="number" min="0" max="8" bind:value={game.save.settings.extraMissionCap} onchange={persist} />
         </label>
@@ -134,7 +145,7 @@
       </section>
     {:else}
       <section class="panel card">
-        <p class="note">Прогресс хранится в этом браузере. Раз в неделю скачивайте копию — её можно загрузить на другом устройстве.</p>
+        <p class="note">Прогресс хранится в этом браузере. Раз в неделю скачивайте копию — её можно загрузить на другом устройстве. Последняя копия: {game.save.lastBackup ?? 'не было'}.</p>
         <button class="btn primary" onclick={downloadSave}>Скачать копию прогресса</button>
         <label class="btn" for="imp">Загрузить копию<input id="imp" type="file" accept="application/json" hidden onchange={onImport} /></label>
         {#if importMsg}<p class="note">{importMsg}</p>{/if}
@@ -180,4 +191,7 @@
   .list em.learning { color: var(--gold); } .list em.learned { color: var(--code); } .list em.mastered, .list em.automatic { color: var(--crystal); }
   details summary { cursor: pointer; font-weight: 800; padding: 6px 0; }
   .rv { display: flex; gap: 6px; }
+  .bonus { color: var(--gold); }
+  .warn { border-color: var(--gold); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .warn p { flex: 1; min-width: 200px; font-weight: 700; }
 </style>

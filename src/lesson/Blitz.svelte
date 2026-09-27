@@ -1,13 +1,14 @@
 <script lang="ts">
-  // Мини-ойын: раунд на время. Комбо, звёзды, можно переиграть ради лучшего результата.
-  // Быстрое вспоминание (retrieval) в игровой обёртке; ошибка стоит только комбо.
+  // Мини-ойын: серия вопросов, комбо, звёзды, можно переиграть. Быстрое вспоминание (retrieval) в игровой обёртке.
+  // seconds = 0 — без таймера: пока тема изучается, меряем точность, а не скорость (ARCHITECTURE 7: таймер
+  // только по освоенным темам). Ошибка стоит только комбо.
   import { onDestroy } from 'svelte';
   import { audio } from '../lib/audio';
   import { sparksAt, floatText, centerOf } from '../ui/fx.svelte';
   // @ts-ignore
   import { rng } from '../../content/templates/lib.mjs';
   type Item = { q: string; choices: string[]; answer: number };
-  let { title, seconds, count, make, ondone, onhit }: { title: string; seconds: number; count: number; make: (r: any) => Item; ondone: (stars: number) => void; onhit?: (crit: boolean) => void } = $props();
+  let { title, seconds = 0, count, make, ondone, onhit }: { title: string; seconds?: number; count: number; make: (r: any) => Item; ondone: (stars: number) => void; onhit?: (crit: boolean) => void } = $props();
   let phase = $state<'ready' | 'play' | 'over'>('ready');
   let items: Item[] = [];
   let idx = $state(0), right = $state(0), combo = $state(0), best = $state(0);
@@ -23,7 +24,7 @@
     for (let t = 0; items.length < count && t < count * 20; t++) { const it = make(r); if (!seen.has(it.q)) { seen.add(it.q); items.push(it); } }
     idx = 0; right = 0; combo = 0; left = seconds; phase = 'play'; audio.play('mission');
     clearInterval(timer);
-    timer = window.setInterval(() => { left = Math.max(0, left - 0.1); if (left <= 0) finish(); }, 100);
+    if (seconds) timer = window.setInterval(() => { left = Math.max(0, left - 0.1); if (left <= 0) finish(); }, 100);
   }
   function answer(k: number) {
     if (!item || flashK !== null) return;
@@ -49,11 +50,11 @@
   {#if phase === 'ready'}
     <div class="intro">
       <b class="px">{title}</b>
-      <p>{count} сұрақ · {seconds} секунд · ★ әр дұрыс серия үшін</p>
+      <p>{count} сұрақ · {seconds ? `${seconds} секунд · ` : 'асықпа, дәлдік маңызды · '}қатарынан дұрыс — комбо ★</p>
       <button class="btn gold big" onclick={start}>Бастау!</button>
     </div>
   {:else if phase === 'play' && item}
-    <div class="hud"><span class="num">{idx + 1}/{items.length}</span><div class="bar"><i style="width:{(left / seconds) * 100}%" class:low={left < 10}></i></div><span class="num combo" class:on={combo >= 2}>×{combo}</span></div>
+    <div class="hud"><span class="num">{idx + 1}/{items.length}</span><div class="bar">{#if seconds}<i style="width:{(left / seconds) * 100}%" class:low={left < 10}></i>{:else}<i class="prog" style="width:{(idx / items.length) * 100}%"></i>{/if}</div><span class="num combo" class:on={combo >= 2}>×{combo}</span></div>
     {#key idx}
       <p class="q appear" bind:this={qBox}>{item.q}</p>
       <div class="ch" class:two={item.choices.length === 2}>
@@ -79,6 +80,7 @@
   .bar { flex: 1; height: 12px; background: #070a1a; border: 1px solid var(--line-hi); }
   .bar i { display: block; height: 100%; background: var(--code); transition: width .1s linear; }
   .bar i.low { background: var(--miss); }
+  .bar i.prog { background: var(--ok); transition: width .3s var(--ease-out); }
   .combo { color: var(--dim); } .combo.on { color: var(--code); text-shadow: 0 0 10px #3ff0ff; }
   .q { font-size: 26px; font-weight: 800; text-align: center; }
   .ch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

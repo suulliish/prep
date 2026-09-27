@@ -50,6 +50,18 @@ export function settleDay(rec: DayRecord, plan: Plan, extraTo: 'today' | 'weeken
   rec.minutesWeekend = Math.round(WEEKEND_PER_DAY * rec.planShare) + (extraTo === 'weekend' ? extra : 0);
 }
 
+/** Бонус за освоение, а не за «позанимался» (ARCHITECTURE 9): тема освоена или отложенная проверка пройдена.
+ *  Заранее не объявляется — неожиданная награда не подрывает интерес к самой учёбе (Deci, Koestner & Ryan 1999).
+ *  Лимит в день, чтобы игра не вытесняла учёбу. Возвращает начисленные минуты. */
+export const MASTERY_BONUS = 10, MASTERY_BONUS_DAY_CAP = 20;
+export function addMasteryBonus(rec: DayRecord, reason: string): number {
+  const got = rec.bonuses.filter(b => b.mastery).reduce((s, b) => s + b.minutes, 0);
+  const add = Math.min(MASTERY_BONUS, MASTERY_BONUS_DAY_CAP - got);
+  if (add <= 0) return 0;
+  rec.bonuses.push({ reason, minutes: add, mastery: true });
+  return add;
+}
+
 export const planComplete = (rec: DayRecord, plan: Plan) => plan.blocks.every(b => rec.blocksDone[b.id]);
 export const canStartExtra = (rec: DayRecord, plan: Plan, cap: number) => planComplete(rec, plan) && rec.extraMissions < cap;
 

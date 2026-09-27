@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { createWorld } from './three/world';
   import { W } from './lib/world.svelte';
-  import { game } from './lib/store.svelte';
+  import { game, protectStorage } from './lib/store.svelte';
   import FxLayer from './ui/FxLayer.svelte';
   import Hub from './screens/Hub.svelte';
   import Session from './screens/Session.svelte';
@@ -16,6 +16,7 @@
 
   let canvas: HTMLCanvasElement;
   onMount(() => {
+    protectStorage();
     W.world = createWorld(canvas, { reduceMotion: matchMedia('(prefers-reduced-motion: reduce)').matches });
     return () => W.world?.dispose();
   });

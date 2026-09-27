@@ -6,6 +6,8 @@ import { rng } from '../../content/templates/lib.mjs';
 // @ts-ignore
 import { MISCONCEPTIONS, GENERIC } from '../../content/misconceptions.mjs';
 // @ts-ignore
+import { HINT_KEYS } from '../../content/hint_keys.mjs';
+// @ts-ignore
 import { skillById } from '../../content/skills.mjs';
 
 export interface Text { kz: string; ru: string }
@@ -19,13 +21,18 @@ export interface Item {
 const byId: Record<string, any> = Object.fromEntries((templates as any[]).map(t => [t.id, t]));
 const R = rng((Date.now() ^ 0x5bd1e995) >>> 0);
 
-function derivedHints(sol: Text): Text[] {
-  const split = (s: string) => s.split(/(?<=[.!?])\s+/).filter(Boolean);
-  const k = split(sol.kz), r = split(sol.ru);
+// Лестница подсказок для шаблонов без собственных hints: вопрос → ключевая идея → первый шаг (content/hint_keys.mjs).
+// Первый шаг берётся из разбора, только если в нём нет готового ответа.
+const norm = (x: string) => x.replace(/\s+/g, '').toLowerCase();
+export function derivedHints(sol: Text, templateId: string, answer: string): Text[] {
+  const key = (HINT_KEYS as Record<string, { q: Text; idea: Text }>)[templateId];
+  const first = (t: string) => t.split(/(?<=[.!?])\s+/).filter(Boolean)[0] ?? '';
+  const step = { kz: first(sol.kz), ru: first(sol.ru) };
+  const leaks = !step.kz || norm(step.kz).includes(norm(answer)) || norm(step.ru).includes(norm(answer));
   return [
-    { kz: 'Сұрақты қайта оқы: не белгілі, не табу керек?', ru: 'Перечитай: что дано и что найти?' },
-    { kz: k[0] ?? sol.kz, ru: r[0] ?? sol.ru },
-    { kz: k.slice(0, 2).join(' '), ru: r.slice(0, 2).join(' ') },
+    key?.q ?? { kz: 'Сұрақты қайта оқы: не берілген, не табу керек?', ru: 'Перечитай: что дано и что найти?' },
+    key?.idea ?? { kz: 'Осы тақырыптың ережесін еске түсір: сабақтағы «Есте сақта» карточкасы.', ru: 'Вспомни правило темы: карточка «Есте сақта» из урока.' },
+    leaks ? { kz: 'Кеңесті қолданып, бірінші қадамды өзің жазып көр — сосын тексер.', ru: 'Используя подсказку, запиши первый шаг сам и проверь.' } : step,
   ];
 }
 
@@ -37,7 +44,7 @@ export function makeItem(skillId: string): Item | null {
   const it = t.gen(R);
   return {
     source: t.id, skill: skillId, kz: it.kz, ru: it.ru, choices: it.choices, answer: it.answer,
-    sol: it.sol, hints: it.hints ?? derivedHints(it.sol), figure: it.figure,
+    sol: it.sol, hints: it.hints ?? derivedHints(it.sol, t.id, it.choices[it.answer].text), figure: it.figure,
   };
 }
 

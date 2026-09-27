@@ -35,7 +35,7 @@ export interface DayRecord {
   minutesToday: number;
   minutesWeekend: number;
   extraMissions: number;
-  bonuses: { reason: string; minutes: number }[];
+  bonuses: { reason: string; minutes: number; mastery?: boolean }[];
   exception?: 'sick' | 'holiday' | 'vacation';
   spent?: number;            // сколько минут игры уже потрачено сегодня (таймер)
 }
@@ -56,6 +56,7 @@ export interface Save {
   days: Record<string, DayRecord>;
   settings: Settings;
   diagnosticDone: boolean;
+  lastBackup?: string; // дата последней копии в файл
   repairShop: { source: string; skill: string; tag?: string; addedDay: string; fixed?: boolean }[];
   kzReview?: Record<string, 'ok' | 'fix'>;   // проверка казахских текстов носителем
   weekendSpent?: Record<string, number>;      // потрачено из копилки выходных (ключ — понедельник недели)

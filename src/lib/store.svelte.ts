@@ -11,7 +11,7 @@ const KEY = 'razlom.save.v1';
 
 function fresh(): Save {
   return {
-    version: 1, heroName: 'Кодер', xp: 0, skills: {}, attempts: [], days: {},
+    version: 1, heroName: 'Муртаза', xp: 0, skills: {}, attempts: [], days: {},
     settings: { extraMissionCap: 4, extraTo: 'today', planMinutes: 40 },
     diagnosticDone: false, repairShop: [],
   };
@@ -20,7 +20,11 @@ function fresh(): Save {
 function load(): Save {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...fresh(), ...JSON.parse(raw) };
+    if (raw) {
+      const s = { ...fresh(), ...JSON.parse(raw) };
+      if (s.heroName === 'Кодер') s.heroName = 'Муртаза'; // старое имя-заглушка
+      return s;
+    }
   } catch { /* приватный режим или испорченные данные */ }
   return fresh();
 }
@@ -78,4 +82,15 @@ export function downloadSave() {
   a.href = URL.createObjectURL(blob); a.download = `razlom-progress-${game.day}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  game.save.lastBackup = game.day; persist();
+}
+
+/** Просим браузер не удалять данные сайта при нехватке места (без облака это главная защита). */
+export async function protectStorage(): Promise<boolean> {
+  try { return (await navigator.storage?.persisted?.()) || !!(await navigator.storage?.persist?.()); } catch { return false; }
+}
+/** Сколько дней без копии в файл (null — копии не было). */
+export function daysSinceBackup(): number | null {
+  if (!game.save.lastBackup) return null;
+  return Math.round((Date.parse(game.day) - Date.parse(game.save.lastBackup)) / 864e5);
 }
