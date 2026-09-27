@@ -18,6 +18,7 @@
   let importMsg = $state('');
   const hasPin = !!game.save.settings.pin;
   // облако грузится лениво (Firebase — отдельный кусок сайта)
+  let email = $state('');
   let C = $state<typeof import('../lib/cloud.svelte') | null>(null);
   onMount(() => { import('../lib/cloud.svelte').then(m => (C = m)).catch(() => {}); });
   const cloudOk = $derived(!!C?.cloud.user && C.cloud.status !== 'error');
@@ -155,8 +156,15 @@
           <b>Облако (Firebase)</b>
           {#if !C}<p class="note">Загрузка…</p>
           {:else if !C.cloud.user}
-            <p class="note">Войдите своим Google-аккаунтом один раз на этом устройстве — прогресс будет сам сохраняться в облако и подтянется на другом устройстве после входа.</p>
-            <button class="btn primary" onclick={() => C!.signIn()}>Войти через Google</button>
+            <p class="note">Войдите один раз на этом устройстве — прогресс будет сам сохраняться в облако и подтянется на другом устройстве после входа.</p>
+            {#if C.cloud.linkSent}
+              <p class="note">✉ Ссылка отправлена на <b>{C.cloud.linkSent}</b>. Откройте письмо <b>на этом устройстве</b> и нажмите ссылку — лучше скопировать её в этот же браузер (если почта откроет её во встроенном браузере, вход останется там). Письма нет — проверьте «Спам».</p>
+            {/if}
+            <form class="row" onsubmit={e => { e.preventDefault(); if (email.includes('@')) C!.sendLink(email.trim()); }}>
+              <input type="email" placeholder="почта (можно iCloud)" bind:value={email} autocomplete="email" required />
+              <button class="btn primary" type="submit">Прислать ссылку для входа</button>
+            </form>
+            <button class="btn ghost" onclick={() => C!.signIn()}>или войти через Google</button>
           {:else}
             <p class="note">Вход: <b>{C.cloud.user.email}</b>. Статус: {C.cloud.status === 'ok' ? '✓ синхронизировано' : C.cloud.status === 'syncing' ? 'синхронизация…' : C.cloud.status === 'error' ? 'ошибка' : '—'} · последняя: {fmtTime(C.cloud.lastSync)}</p>
             <div class="row"><button class="btn" onclick={() => C!.syncNow()}>Синхронизировать сейчас</button><button class="btn ghost" onclick={() => C!.signOutCloud()}>Выйти</button></div>

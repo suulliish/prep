@@ -3,7 +3,7 @@
 // (у документа Firestore предел 1 МБ, а ответов за полтора года больше). Конфликт двух устройств решается
 // по времени последнего изменения (updatedAt); проигравшая копия остаётся в localStorage (…before-replace).
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, type User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, type User } from 'firebase/auth';
 import { getFirestore, doc, getDoc, getDocs, setDoc, collection, writeBatch } from 'firebase/firestore';
 import { game, afterPersist, replaceSave } from './store.svelte';
 import type { Attempt, Save } from '../engine/types';
@@ -23,7 +23,9 @@ export const cloud = $state({
   status: 'off' as 'off' | 'syncing' | 'ok' | 'error',
   lastSync: 0,
   error: '',
+  linkSent: '' as string, // почта, куда ушла ссылка для входа
 });
+const EMAIL_KEY = 'razlom.emailForSignIn';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -80,6 +82,7 @@ async function pull() {
 
 /** Запуск: следим за входом; каждое сохранение уходит в облако с задержкой 4 с (чтобы не писать на каждый клик). */
 export function startCloud() {
+  finishEmailLink();
   onAuthStateChanged(auth, (u: User | null) => {
     uid = u?.uid ?? null;
     cloud.user = u ? { email: u.email, name: u.displayName } : null;
@@ -98,5 +101,29 @@ export async function signIn() {
     else { cloud.status = 'error'; cloud.error = e?.code ?? String(e); }
   }
 }
+/** Вход по ссылке на почту (любая почта, в т. ч. iCloud; без пароля). */
+export async function sendLink(email: string) {
+  cloud.error = '';
+  try {
+    await sendSignInLinkToEmail(auth, email, { url: location.origin + location.pathname, handleCodeInApp: true });
+    try { localStorage.setItem(EMAIL_KEY, email); } catch { /* */ }
+    cloud.linkSent = email;
+  } catch (e: any) { cloud.status = 'error'; cloud.error = e?.code ?? String(e); }
+}
+/** Открыли ссылку из письма: завершаем вход и убираем параметры из адреса. */
+async function finishEmailLink() {
+  if (!isSignInWithEmailLink(auth, location.href)) return;
+  let email: string | null = null;
+  try { email = localStorage.getItem(EMAIL_KEY); } catch { /* */ }
+  email ??= prompt('На какую почту пришла ссылка для входа?');
+  if (!email) return;
+  try {
+    await signInWithEmailLink(auth, email, location.href);
+    try { localStorage.removeItem(EMAIL_KEY); } catch { /* */ }
+    cloud.linkSent = '';
+  } catch (e: any) { cloud.status = 'error'; cloud.error = e?.code ?? String(e); }
+  history.replaceState(null, '', location.pathname);
+}
+
 export async function signOutCloud() { await push(); await signOut(auth); }
 export const syncNow = () => pull();
