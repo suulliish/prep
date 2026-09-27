@@ -41,5 +41,5 @@ export function makeItem(skillId: string): Item | null {
   };
 }
 
-export function mistakeText(tag: string): Text { return MISCONCEPTIONS[tag] ?? GENERIC; }
+export function mistakeText(tag: string): Text { return (MISCONCEPTIONS as Record<string, Text>)[tag] ?? GENERIC; }
 export const skillTitle = (id: string): Text => skillById[id]?.title ?? { kz: id, ru: id };

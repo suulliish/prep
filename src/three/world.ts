@@ -5,6 +5,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { makeHero, makeBit, makeMob as buildMob, addShipDetails, waveFlag } from './characters';
 
 export type CamMode = 'hub' | 'battle' | 'portal';
 export type BitMood = 'idle' | 'happy' | 'wow' | 'think' | 'sad';
@@ -180,27 +181,9 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   let chestOpen = false;
 
   // ---------- Герой ----------
-  const hero = (() => {
-    const g = new THREE.Group();
-    const skin = 0xf1c27d, shirt = 0x2fbfd0, pants = 0x2c3570, hair = 0x3b2415;
-    const body = block(g, 0.8, 0.9, 0.45, 0, 1.25, 0, shirt);
-    block(g, 0.82, 0.12, 0.47, 0, 0.86, 0, 0x1b1f3d);
-    const pack = block(g, 0.55, 0.6, 0.25, 0, 1.3, -0.33, 0x39407a);
-    block(g, 0.2, 0.3, 0.05, 0, 1.3, -0.47, 0x3ff0ff, 0x3ff0ff, 2); // энергоячейка на рюкзаке
-    const head = new THREE.Group(); head.position.set(0, 1.95, 0); g.add(head);
-    block(head, 0.75, 0.75, 0.75, 0, 0, 0, skin);
-    block(head, 0.8, 0.22, 0.8, 0, 0.32, 0, hair); block(head, 0.8, 0.45, 0.2, 0, 0.12, -0.32, hair);
-    block(head, 0.12, 0.12, 0.05, -0.17, 0.02, 0.38, 0x1a1a2e); block(head, 0.12, 0.12, 0.05, 0.17, 0.02, 0.38, 0x1a1a2e);
-    block(head, 0.72, 0.1, 0.05, 0, 0.2, 0.39, 0x3ff0ff, 0x3ff0ff, 1.8);
-    const limb = (x: number, y: number, w: number, h: number, c: number) => { const p = new THREE.Group(); p.position.set(x, y, 0); g.add(p); block(p, w, h, w, 0, -h / 2, 0, c); return p; };
-    const armL = limb(-0.55, 1.65, 0.28, 0.85, shirt), armR = limb(0.55, 1.65, 0.28, 0.85, shirt);
-    const legL = limb(-0.2, 0.82, 0.32, 0.82, pants), legR = limb(0.2, 0.82, 0.32, 0.82, pants);
-    const sword = new THREE.Group(); sword.position.set(0, -0.8, 0.1); armR.add(sword);
-    block(sword, 0.1, 0.1, 0.4, 0, 0, 0.05, 0x5a3519);
-    const blade = block(sword, 0.12, 0.12, 1.1, 0, 0, 0.75, 0x9ffcff, 0x3ff0ff, 1.6);
-    return { g, head, armL, armR, legL, legR, body, pack, blade };
-  })();
+  const hero = makeHero();
   hero.g.position.set(-2, 0.15, 0.6); hero.g.rotation.y = Math.PI / 2; ship.add(hero.g);
+  const shipAnim = addShipDetails(ship, quality);
 
   // ---------- Бит: экран-лицо на канвасе ----------
   const faceCanvas = document.createElement('canvas'); faceCanvas.width = 64; faceCanvas.height = 48;
@@ -223,14 +206,9 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     faceTex.needsUpdate = true;
   }
   drawFace();
-  const bit = new THREE.Group(); scene.add(bit);
-  block(bit, 0.66, 0.58, 0.58, 0, 0, 0, 0xcfd6ee);
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.39), new THREE.MeshBasicMaterial({ map: faceTex }));
-  screen.position.set(0, 0, 0.3); bit.add(screen);
-  block(bit, 0.05, 0.3, 0.05, 0, 0.44, 0, 0x7d86b8);
-  const antenna = block(bit, 0.12, 0.12, 0.12, 0, 0.62, 0, 0xff4fb8, 0xff4fb8, 2.5);
-  const bitProp = new THREE.Group(); bitProp.position.y = 0.72; bit.add(bitProp);
-  block(bitProp, 0.75, 0.03, 0.1, 0, 0, 0, 0xff4fb8); block(bitProp, 0.1, 0.03, 0.75, 0, 0, 0, 0xff4fb8);
+  const B = makeBit(faceTex);
+  const bit = B.g; scene.add(bit);
+  const antenna = B.antenna, bitProp = B.prop;
   bit.position.set(-2, 3, 1.6);
 
   // ---------- Острова и облака ----------
@@ -253,18 +231,11 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   for (let i = 0; i < 10; i++) { const c = new THREE.Group(); for (let k = 0; k < 3 + (i % 3); k++) { const b = block(c, 2 + (k % 2), 1, 1.6 + (k % 3) * 0.4, k * 1.3, (k % 2) * 0.4, (k % 3) * 0.5, 0xe8e6ff); b.castShadow = false; } c.position.set(-45 + i * 10, -9 + (i % 4) * 5, -28 + (i * 17) % 56); scene.add(c); clouds.push(c); }
 
   // ---------- Моб ----------
-  let mob: { g: THREE.Group; parts: THREE.Mesh[]; hp: number; max: number; hitT: number; dying: number } | null = null;
+  let mob: { g: THREE.Group; parts: THREE.Mesh[]; pupil: THREE.Mesh; shards: THREE.Group; hp: number; max: number; hitT: number; dying: number } | null = null;
   function makeMob(kind: number) {
-    const g = new THREE.Group(); g.position.set(2.3, 0.15, 0.6);
-    const palette = [[0xff4fb8, 0x8a3cff, 0x3ff0ff], [0x8a3cff, 0xff4fb8, 0xffc94a], [0xff6a3d, 0xff4fb8, 0x8a3cff]][kind % 3];
-    const parts = [
-      block(g, 1.1, 1.1, 1.1, 0, 0.75, 0, palette[0], palette[0], 0.35),
-      block(g, 0.6, 0.6, 0.6, 0.45, 1.5, 0.3, palette[1], palette[1], 0.4),
-      block(g, 0.5, 0.5, 0.5, -0.4, 1.45, -0.35, palette[2], palette[2], 0.5),
-    ];
-    block(g, 0.18, 0.18, 0.05, -0.56, 0.85, -0.22, 0xffffff, 0xffffff, 2); block(g, 0.18, 0.18, 0.05, -0.56, 0.85, 0.22, 0xffffff, 0xffffff, 2);
-    g.scale.setScalar(0.01); ship.add(g);
-    return { g, parts };
+    const m = buildMob(kind);
+    m.g.position.set(2.3, 0.15, 0.6); m.g.scale.setScalar(0.01); ship.add(m.g);
+    return m;
   }
 
   // ---------- Частицы ----------
@@ -286,8 +257,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   // ---------- Камера ----------
   const CAM: Record<CamMode, { target: THREE.Vector3; radius: number; phi: number; theta: number }> = {
-    hub: { target: new THREE.Vector3(0, 2.4, 0), radius: 25, phi: 1.08, theta: 0.9 },
-    battle: { target: new THREE.Vector3(0.8, 1.2, 0.6), radius: 11, phi: 1.12, theta: 1.62 },
+    hub: { target: new THREE.Vector3(0, 2.0, 0), radius: 25, phi: 1.02, theta: 0.9 },
+    battle: { target: new THREE.Vector3(0.2, 1.2, 0.6), radius: 11, phi: 1.12, theta: 1.62 },
     portal: { target: new THREE.Vector3(4.6, 2.2, 0), radius: 9, phi: 1.25, theta: 0.15 },
   };
   let mode: CamMode = 'hub';
@@ -308,11 +279,11 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     renderer.setSize(w, h, false); composer?.setSize(w, h);
     camera.aspect = w / h; camera.updateProjectionMatrix();
     const narrow = w / h < 0.8;
-    CAM.hub.radius = narrow ? 36 : 25; CAM.battle.radius = narrow ? 14.5 : 11;
+    CAM.hub.radius = narrow ? 30 : 25; CAM.battle.radius = narrow ? 16.5 : 11.5;
     applyOffset();
   }
   // В бою и у портала сцена поднимается вверх: нижнюю часть экрана занимает панель задачи
-  let viewShift = 0;
+  let viewShift = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8 ? 0.2 : 0.08;
   function applyOffset() {
     const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
     if (viewShift) camera.setViewOffset(w, h, 0, h * viewShift, w, h); else camera.clearViewOffset();
@@ -363,15 +334,21 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       if (a >= 1) { const r = attack.res; attack = null; r(); }
     } else hero.armR.rotation.x = walking ? sw * 0.8 : Math.sin(t * 2) * 0.05;
     const jump = celebrateT > 0 ? Math.abs(Math.sin(celebrateT * 9)) * 0.6 : 0; celebrateT = Math.max(0, celebrateT - dt);
-    hero.body.position.y = 1.25 + jump + (walking ? Math.abs(Math.sin(t * 11)) * 0.06 : Math.sin(t * 2) * 0.03);
-    hero.head.position.y = hero.body.position.y + 0.7; hero.pack.position.y = hero.body.position.y + 0.05;
+    hero.hips.position.y = 0.95 + jump + (walking ? Math.abs(Math.sin(t * 11)) * 0.06 : 0);
+    hero.body.scale.y = 1 + (walking ? 0 : Math.sin(t * 2.2) * 0.015);           // «дыхание»
     hero.head.rotation.y = walking ? 0 : Math.sin(t * 0.7) * 0.25 * km;
-    (hero.blade.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.4 + Math.sin(t * 6) * 0.3;
+    hero.head.rotation.x = walking ? 0.05 : Math.sin(t * 0.9) * 0.04;
+    const heroBlink = (t % 4.1) < 0.12 ? 0.1 : 1; hero.eyes.forEach(e => (e.scale.y = heroBlink));
+    (hero.blade.material as THREE.MeshToonMaterial).emissiveIntensity = 1.5 + Math.sin(t * 6) * 0.4;
+    (hero.cell.material as THREE.MeshToonMaterial).emissiveIntensity = 1.8 + Math.sin(t * 3) * 0.6;
+    shipAnim.flags.forEach(f => waveFlag(f, t)); shipAnim.wheel.rotation.x = Math.sin(t * 0.4) * 0.6;
+    B.thrusters.forEach((th, i) => th.scale.setScalar(0.9 + Math.sin(t * 18 + i) * 0.15));
+    B.flame.scale.set(1, 0.8 + Math.sin(t * 25) * 0.2, 1);
 
     // Бит
     hero.g.getWorldPosition(tmp); tmp.add(new THREE.Vector3(-0.7, 3 + Math.sin(t * 2.2) * 0.22, 1.3));
     bit.position.lerp(tmp, 0.05); bit.lookAt(camera.position.x, bit.position.y, camera.position.z);
-    bitProp.rotation.y += dt * 22; (antenna.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.5 + Math.sin(t * 5) * 1;
+    bitProp.rotation.y += dt * 22; (antenna.material as THREE.MeshToonMaterial).emissiveIntensity = 1.5 + Math.sin(t * 5) * 1;
     blinkT += dt; if (blinkT > 3.2) { drawFace(true); if (blinkT > 3.35) { blinkT = 0; drawFace(); } }
 
     // моб
@@ -381,8 +358,11 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       else {
         const s = Math.min(1, g.scale.x + dt * 2.2); g.scale.setScalar(s);
         g.position.y = 0.15 + Math.abs(Math.sin(t * 4)) * 0.15; g.rotation.y = Math.sin(t * 3) * 0.2;
-        mob.parts.forEach((p, i) => { if (Math.random() < 0.06) p.position.x += (Math.random() - 0.5) * 0.25; p.position.x += ([0, 0.45, -0.4][i] - p.position.x) * 0.2; });
-        if (mob.hitT > 0) { mob.hitT -= dt; g.position.x = 2.3 + Math.sin(mob.hitT * 60) * 0.12 + mob.hitT * 1.2; mob.parts.forEach(p => ((p.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.35 + mob!.hitT * 6)); }
+        mob.shards.rotation.y += dt * 1.6; mob.shards.rotation.x = Math.sin(t) * 0.3;
+        if (Math.random() < 0.05) mob.parts[0].position.x = (Math.random() - 0.5) * 0.18; else mob.parts[0].position.x *= 0.8;
+        mob.pupil.position.z = Math.sin(t * 1.3) * 0.08; mob.pupil.position.y = Math.cos(t * 0.9) * 0.05;
+        if (mob.hitT > 0) { mob.hitT -= dt; g.position.x = 2.3 + Math.sin(mob.hitT * 60) * 0.12 + mob.hitT * 1.2; (mob.parts[0].material as THREE.MeshToonMaterial).emissiveIntensity = 0.35 + mob.hitT * 6; }
+        else (mob.parts[0].material as THREE.MeshToonMaterial).emissiveIntensity = 0.35;
       }
     }
 
@@ -414,7 +394,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   return {
     setEnergy(v, max) { energy = Math.max(0, Math.min(1, v / max)); },
-    setMode(m) { mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? 0 : narrow ? 0.24 : 0.12; applyOffset(); },
+    setMode(m) { mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? (narrow ? 0.2 : 0.08) : narrow ? 0.24 : 0.12; applyOffset(); },
     heroWalk(x, z) { return new Promise(res => (walk = { x, z, res })); },
     heroAttack(crit = false) {
       return new Promise(res => {
@@ -424,7 +404,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     },
     spawnMob(hp, kind = 0) {
       if (mob) ship.remove(mob.g);
-      const m = makeMob(kind); mob = { ...m, hp, max: hp, hitT: 0, dying: 0 };
+      const m = makeMob(kind); mob = { g: m.g, parts: m.parts, pupil: m.pupil, shards: m.shards, hp, max: hp, hitT: 0, dying: 0 };
       burst(new THREE.Vector3(2.3, 1.3, 0.6).applyMatrix4(ship.matrixWorld), 0x8a3cff, 30, 3);
     },
     hitMob(crit = false) { if (mob) { mob.hp--; mob.hitT = 0.35; shakeT = crit ? 0.5 : 0.2; } },
