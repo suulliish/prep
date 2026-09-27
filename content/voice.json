@@ -1,0 +1,9 @@
+{
+  "engine": "piper",
+  "model": "kk_KZ-issai-high",
+  "modelUrl": "https://huggingface.co/rhasspy/piper-voices/resolve/main/kk/kk_KZ/issai/high/kk_KZ-issai-high.onnx",
+  "speaker": 0,
+  "robotRate": 24000,
+  "bitrateKbps": 64,
+  "chosen": "2026-09-27: диктор 0, «роботный» вариант (чуть выше и быстрее)"
+}
