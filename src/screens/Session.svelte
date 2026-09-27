@@ -8,14 +8,14 @@
   import { recordAttempt, isDone } from '../engine/progress';
   import { isHonest } from '../engine/planner';
   import { audio } from '../lib/audio';
-  import { sparksAt, floatText, centerOf, flash } from '../ui/fx.svelte';
+  import { sparksAt, floatText, centerOf, flash, sceneCenter } from '../ui/fx.svelte';
 
   type Block = 'warmup' | 'new' | 'mixed' | 'extra' | 'boss' | 'repair';
   let { block }: { block: Block } = $props();
 
   const plan = ensurePlan();
   const pb = plan.blocks.find(b => b.id === block);
-  const battle = block !== 'new';
+  const battle = true; // каждая практика — бой; у новой темы музыка «фокус»
 
   function extraSkills(): string[] {
     const st = game.save.skills;
@@ -57,9 +57,9 @@
 
   onMount(() => {
     if (!skills.length) { go({ name: 'hub' }); return; }
-    W.dim = !battle;
-    if (battle) { W.world?.setMode('battle'); W.world?.spawnMob(total, idx % 3); audio.setMood('battle'); }
-    else audio.setMood('focus');
+    W.dim = false;
+    W.world?.setMode('battle'); W.world?.spawnMob(total, block === 'new' ? 1 : idx % 3);
+    audio.setMood(block === 'new' ? 'focus' : 'battle');
     nextItem();
     const onKey = (e: KeyboardEvent) => {
       if (phase === 'answer' && /^[1-5]$/.test(e.key)) pick(+e.key - 1);
@@ -100,7 +100,7 @@
       audio.play(combo >= 3 ? 'crit' : 'correct'); if (combo > 1) audio.play('combo', { combo });
       sparksAt(at.x, at.y, ['#5ce39c', '#3ff0ff', '#ffc94a'], combo >= 3 ? 50 : 26);
       if (xp) floatText(`+${xp} XP`, at.x, at.y - 20, '#ffc94a', combo >= 3);
-      if (combo >= 3) floatText(`КОМБО ×${combo}`, innerWidth / 2, innerHeight * 0.25, '#3ff0ff', true);
+      if (combo >= 3) floatText(`КОМБО ×${combo}`, sceneCenter(0.25).x, sceneCenter(0.25).y, '#3ff0ff', true);
       bitText = hintLevel ? 'Дұрыс! Кеңеспен болса да — жақсы.' : combo >= 3 ? 'Керемет серия!' : 'Дұрыс!';
       bitMood = combo >= 3 ? 'wow' : 'happy';
       if (battle) { mobHp--; W.world?.heroAttack(combo >= 3); }
@@ -117,8 +117,8 @@
       if (block !== 'repair') game.save.repairShop.push({ source: item.source, skill: item.skill, tag: item.choices[picked].tag, addedDay: game.day });
     }
     for (const ev of events) {
-      if (ev === 'learned') { audio.play('levelup'); floatText('ҮЙРЕНДІ!', innerWidth / 2, innerHeight * 0.3, '#3ff0ff', true); sparksAt(innerWidth / 2, innerHeight * 0.3, ['#3ff0ff', '#b58cff'], 70, 10); W.world?.celebrate(); bitText = `«${skillTitle(item.skill).kz}» — үйрендің! Ертең тексереміз: өтсең, кристалға айналады.`; bitMood = 'wow'; }
-      if (ev === 'crystal') { audio.play('crystal'); floatText('КРИСТАЛЛ!', innerWidth / 2, innerHeight * 0.3, '#b58cff', true); sparksAt(innerWidth / 2, innerHeight * 0.3, ['#b58cff', '#ffffff', '#3ff0ff'], 90, 11); bitText = `«${skillTitle(item.skill).kz}» кристалға айналды — енді бұл тақырып сенікі!`; bitMood = 'wow'; }
+      if (ev === 'learned') { audio.play('levelup'); floatText('ҮЙРЕНДІ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#3ff0ff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#3ff0ff', '#b58cff'], 70, 10); W.world?.celebrate(); bitText = `«${skillTitle(item.skill).kz}» — үйрендің! Ертең тексереміз: өтсең, кристалға айналады.`; bitMood = 'wow'; }
+      if (ev === 'crystal') { audio.play('crystal'); floatText('КРИСТАЛЛ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#b58cff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#b58cff', '#ffffff', '#3ff0ff'], 90, 11); bitText = `«${skillTitle(item.skill).kz}» кристалға айналды — енді бұл тақырып сенікі!`; bitMood = 'wow'; }
       if (ev === 'review_failed') { bitText = 'Бұл тақырып сәл ұмытылған екен — қайта жаттығамыз, қорқынышты емес.'; bitMood = 'think'; }
     }
     twin = hintLevel >= 4;
@@ -145,14 +145,14 @@
     }
     const rec = dayRec();
     audio.play(block === 'extra' ? 'energy' : 'mission');
-    if (block !== 'repair') floatText(block === 'extra' ? '+15 мин' : `${rec.minutesToday} мин`, innerWidth / 2, innerHeight * 0.4, '#ffc94a', true);
+    if (block !== 'repair') floatText(block === 'extra' ? '+15 мин' : `${rec.minutesToday} мин`, sceneCenter(0.4).x, sceneCenter(0.4).y, '#ffc94a', true);
     go({ name: 'hub' });
   }
 
   const letters = 'ABCDE';
 </script>
 
-<div class="wrap" class:battle>
+<div class="stage">
   <div class="top panel pe">
     <button class="btn ghost small" onclick={() => go({ name: 'hub' })} aria-label="Артқа">←</button>
     <div class="title">
@@ -172,14 +172,14 @@
     </div>
   {/if}
 
-  <div class="spacer passthrough"></div>
+  <div class="stage-gap grow passthrough"></div>
 
   {#if item}
     <section class="card panel" bind:this={cardEl}>
       <p class="q">{#each item.kz.split('\n') as line, i}{#if i}<br />{/if}<span class:formula={i > 0}>{line}</span>{/each}</p>
       {#if item.figure?.svg}<div class="fig">{@html item.figure.svg}</div>{/if}
 
-      <div class="choices">
+      <div class="choices" class:long={item.choices.some(c => c.text.length > 7)}>
         {#each item.choices as c, i}
           <button bind:this={choiceEls[i]} class="choice"
             class:picked={picked === i}
@@ -225,9 +225,6 @@
 </div>
 
 <style>
-  .wrap { min-height: 100dvh; display: flex; flex-direction: column; gap: 10px; padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px); width: min(760px, 100%); margin: 0 auto; }
-  .wrap:not(.battle) .spacer { flex: 0 0 8px; }
-  .spacer { flex: 1; min-height: 12vh; }
   .top { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
   .btn.small { min-height: 40px; padding: 6px 12px; }
   .title { flex: 1; display: grid; min-width: 0; }
@@ -237,7 +234,7 @@
   .segs i { width: 10px; height: 14px; background: #070a1a; border: 1px solid var(--line); }
   .segs i.on { background: var(--code); border-color: var(--code); }
   .segs i.cur { border-color: var(--gold); }
-  .mobhp { display: flex; align-items: center; gap: 10px; align-self: center; width: min(420px, 100%); }
+  .mobhp { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #140a1dcc; border: 1px solid #5c1d45; border-radius: 8px; }
   .hpbar { flex: 1; height: 14px; background: #1b0b1f; border: 2px solid #5c1d45; }
   .hpbar i { display: block; height: 100%; background: linear-gradient(90deg, var(--glitch), #ff9ad6); transition: width .4s var(--ease-out); }
   .combo { font-family: var(--px); font-weight: 400; font-size: 20px; color: var(--gold); text-shadow: 0 0 10px #ffc94a88; }
@@ -245,7 +242,10 @@
   .q { font-size: 20px; line-height: 1.5; font-weight: 700; }
   .formula { display: inline-block; margin-top: 6px; font-size: 22px; letter-spacing: .02em; color: #e6f7ff; }
   .fig { color: var(--ink); display: grid; place-items: center; }
-  .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: 8px; }
+  .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr)); gap: 8px; }
+  .choices.long { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
+  .choices.long .choice { font-size: 17px; }
+  @media (min-width: 1000px) and (min-aspect-ratio: 23/20) { .choices.long { grid-template-columns: 1fr 1fr; } }
   .choice { display: flex; align-items: center; gap: 10px; text-align: left; font: 800 18px/1.25 var(--txt); color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-bottom-width: 5px; border-radius: var(--r); padding: 12px; cursor: pointer; min-height: 56px; transition: transform .08s, border-color .15s, background .2s; }
   .choice:hover:not(:disabled) { border-color: var(--line-hi); }
   .choice:active:not(:disabled) { transform: translateY(2px); }
@@ -255,7 +255,7 @@
   .choice.wrong { border-color: var(--miss); background: var(--miss-deep); }
   .choice:disabled { cursor: default; }
   .lt { flex: none; width: 26px; height: 26px; display: grid; place-items: center; font-size: 14px; background: var(--panel-hi); border: 1px solid var(--line-hi); color: var(--dim); }
-  .ct { overflow-wrap: anywhere; }
+  .ct { overflow-wrap: break-word; hyphens: manual; }
   .conf { display: grid; gap: 8px; }
   .cbtns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .cbtns .btn { padding: 10px 8px; font-size: var(--fs-s); }

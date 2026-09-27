@@ -34,7 +34,7 @@
   }
 </script>
 
-<div class="wrap">
+<div class="wrap side-dock">
   <div class="spacer passthrough"></div>
   <section class="card panel glow appear">
     <h1>Бортжурнал</h1>
@@ -65,7 +65,7 @@
   .chip.on { border-color: var(--code); background: #0f3a4a; }
   .rewards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .rw { display: grid; gap: 4px; background: var(--deep); border: 1px solid var(--line); padding: 12px; }
-  .big { font-family: var(--px); font-weight: 400; font-size: 40px; }
+  .num.big { font-family: var(--px); font-weight: 400; font-size: 40px; }
   .big small { font-size: 16px; color: var(--dim); margin-left: 4px; }
   .gold { color: var(--gold); text-shadow: 0 0 18px #ffc94a66; }
 </style>

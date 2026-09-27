@@ -123,4 +123,10 @@
   .info { color: var(--dim); font-size: var(--fs-s); text-align: center; }
   .cap { font-weight: 700; opacity: .8; }
   .pulse { animation: pulse-glow 2s infinite; }
+  /* широкий экран: корабль слева, панель квестов справа (как в app.css .stage) */
+  @media (min-width: 1000px) and (min-aspect-ratio: 23/20) {
+    .spacer { display: none; }
+    .dock { width: calc(var(--side-w) + 24px); margin: auto 0 auto auto; padding: 0 24px 24px 0; }
+  }
+  @media (min-width: 700px) and (max-aspect-ratio: 23/20) { .dock { width: min(620px, 100%); } }
 </style>

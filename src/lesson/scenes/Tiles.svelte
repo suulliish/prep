@@ -1,0 +1,43 @@
+<script lang="ts">
+  // Выражение из плиток: числа — голубые блоки, знаки — золотые шестерёнки, [..] — «процессор» (выполняется сейчас).
+  let { math, broken = false }: { math: string; broken?: boolean } = $props();
+  type Tok = { t: string; kind: 'num' | 'op' | 'par' | 'sup' | 'txt'; hl: boolean };
+  const toks = $derived.by(() => {
+    const out: Tok[] = []; let hl = false;
+    for (const m of math.matchAll(/\[|\]|\d[\d ]*\d|\d|[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]+|[+−·:=≠<>]|[()]|✔|[^\s\[\]\d+−·:=()⁰-⁹ⁿ✔]+/g)) {
+      const t = m[0];
+      if (t === '[') { hl = true; continue; } if (t === ']') { hl = false; continue; }
+      const kind = /^\d/.test(t) ? 'num' : /^[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]/.test(t) ? 'sup' : /^[+−·:=≠<>]$/.test(t) ? 'op' : /^[()]$/.test(t) ? 'par' : 'txt';
+      out.push({ t, kind, hl });
+    }
+    // группируем подряд идущие подсвеченные токены
+    const groups: { hl: boolean; items: Tok[] }[] = [];
+    for (const tk of out) { const last = groups.at(-1); if (last && last.hl === tk.hl && tk.hl) last.items.push(tk); else groups.push({ hl: tk.hl, items: [tk] }); }
+    return groups;
+  });
+</script>
+
+<div class="tiles" class:broken>
+  {#each toks as g, gi}
+    {#if g.hl}
+      <span class="proc" style="animation-delay:{gi * 40}ms"><small>⚙ ОРЫНДАЛАДЫ</small>{#each g.items as tk}<span class="tk {tk.kind}">{tk.t}</span>{/each}</span>
+    {:else}
+      {#each g.items as tk}<span class="tk {tk.kind}" style="animation-delay:{gi * 40}ms">{broken && tk.kind === 'num' ? '▒' : tk.t}</span>{/each}
+    {/if}
+  {/each}
+</div>
+
+<style>
+  .tiles { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; padding: 14px 4px; min-height: 90px; }
+  .tk { display: inline-grid; place-items: center; font: 800 clamp(20px, 5.4vw, 30px) var(--txt); animation: pop-in .35s var(--ease-out) both; }
+  .tk.num { min-width: 44px; height: 50px; padding: 0 10px; background: linear-gradient(#1d6d82, #0d3f4d); border: 2px solid var(--code); border-bottom-width: 5px; border-radius: 8px; color: #e9feff; box-shadow: 0 0 12px #3ff0ff33; }
+  .tk.op { width: 38px; height: 38px; border-radius: 50%; background: radial-gradient(circle, #3a2a07 45%, var(--gold-deep)); border: 2px dashed var(--gold); color: var(--gold); }
+  .tk.par { color: var(--crystal); font-size: clamp(28px, 7vw, 40px); }
+  .tk.sup { align-self: flex-start; font-size: 22px; color: var(--gold); margin-left: -4px; }
+  .tk.txt { font-size: clamp(15px, 4vw, 19px); color: var(--dim); padding: 0 2px; }
+  .proc { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 16px 10px 8px; border: 2px solid var(--gold); border-radius: 10px; background: #ffc94a14; box-shadow: 0 0 20px #ffc94a44; animation: pop-in .4s var(--ease-out) both, pulse-glow 1.6s infinite; }
+  .proc small { position: absolute; top: -9px; left: 8px; white-space: nowrap; font: 800 10px var(--txt); letter-spacing: .08em; color: var(--void); background: var(--gold); padding: 1px 6px; border-radius: 3px; }
+  .proc .tk.num { border-color: var(--gold); background: linear-gradient(#6b4a0a, #3a2a07); }
+  .broken .tk.num { border-color: var(--glitch); color: var(--glitch); background: #3a0f2c; animation: pop-in .35s both, jit .5s steps(2) infinite; }
+  @keyframes jit { 50% { transform: translate(2px, -1px); } }
+</style>

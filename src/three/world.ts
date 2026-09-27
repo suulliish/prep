@@ -280,14 +280,18 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     renderer.setSize(w, h, false); composer?.setSize(w, h);
     camera.aspect = w / h; camera.updateProjectionMatrix();
     const narrow = w / h < 0.8;
-    CAM.hub.radius = narrow ? 30 : 25; CAM.battle.radius = narrow ? 16.5 : 11.5;
+    const side = isSide(w, h);
+    CAM.hub.radius = narrow ? 30 : side ? 23 : 25; CAM.battle.radius = narrow ? 16.5 : side ? 14 : 11.5;
     applyOffset();
   }
-  // В бою и у портала сцена поднимается вверх: нижнюю часть экрана занимает панель задачи
+  // Раскладка экрана (та же, что в app.css): на широком экране панель справа — сцена сдвигается влево;
+  // на узком панель снизу — сцена поднимается вверх.
+  const isSide = (w: number, h: number) => w >= 1000 && w / h >= 1.15;
   let viewShift = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8 ? 0.2 : 0.08;
   function applyOffset() {
     const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
-    if (viewShift) camera.setViewOffset(w, h, 0, h * viewShift, w, h); else camera.clearViewOffset();
+    if (isSide(w, h)) camera.setViewOffset(w, h, (Math.min(540, w * 0.42) + 24) / 2, h * (mode === 'hub' ? 0.02 : 0.04), w, h);
+    else if (viewShift) camera.setViewOffset(w, h, 0, h * viewShift, w, h); else camera.clearViewOffset();
     camera.updateProjectionMatrix();
   }
   resize();

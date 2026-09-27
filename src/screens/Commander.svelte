@@ -153,7 +153,8 @@
   .card { display: grid; gap: 12px; }
   .pin { font: 800 28px var(--txt); letter-spacing: .5em; text-align: center; width: 180px; padding: 10px; background: var(--deep); color: var(--ink); border: 2px solid var(--line-hi); border-radius: 8px; }
   .err { color: var(--miss); font-weight: 700; }
-  .tabs { display: flex; gap: 4px; padding: 6px; overflow-x: auto; }
+  .tabs { display: flex; gap: 4px; padding: 6px; overflow-x: auto; scrollbar-width: none; }
+  @media (max-width: 600px) { .tabs { mask-image: linear-gradient(90deg, #000 85%, transparent); } }
   .tab { font: 800 var(--fs-s) var(--txt); color: var(--dim); background: none; border: 0; padding: 8px 12px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
   .tab.on { color: var(--ink); background: var(--panel-hi); }
   .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }

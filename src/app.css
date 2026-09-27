@@ -104,3 +104,24 @@ p { margin: 0; line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ---------- Раскладка «сцена + панель» (урок, бой, хаб) ----------
+   Телефон/планшет: 3D-сцена сверху, панель снизу. Широкий экран: панель справа, сцена слева.
+   Порог совпадает с isSide() в src/three/world.ts. */
+:root { --side-w: min(540px, 42vw); }
+.stage { min-height: 100dvh; width: min(720px, 100%); margin: 0 auto; display: flex; flex-direction: column; gap: 10px;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px); }
+.stage-gap { flex: 0 0 clamp(120px, 24vh, 260px); }
+.stage-gap.grow { flex: 1 0 clamp(120px, 24vh, 260px); }
+.side-only { display: none !important; }
+@media (min-width: 1000px) and (min-aspect-ratio: 23/20) {
+  .stage { width: calc(var(--side-w) + 24px); margin: 0 0 0 auto; padding-left: 0; padding-right: 24px; justify-content: center; }
+  .stage-gap, .stage-gap.grow { display: none; }
+  .side-only { display: revert !important; }
+  .stage-left { position: fixed; left: 0; right: calc(var(--side-w) + 24px); pointer-events: none; }
+}
+/* экраны с одной панелью (итог, игровое время, сканер): на широком экране — справа от корабля */
+@media (min-width: 1000px) and (min-aspect-ratio: 23/20) {
+  .side-dock { width: calc(var(--side-w) + 24px) !important; margin: 0 0 0 auto !important; padding-left: 0 !important; padding-right: 24px !important; justify-content: center; }
+  .side-dock > .spacer { display: none; }
+}

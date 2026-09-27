@@ -63,7 +63,7 @@
   }
 </script>
 
-<div class="wrap">
+<div class="wrap side-dock">
   <div class="top panel"><b class="t">Код-сканер</b><span class="num prog">{scanned} тақырып</span></div>
   <div class="spacer passthrough"></div>
   <section class="card panel glow" bind:this={el}>

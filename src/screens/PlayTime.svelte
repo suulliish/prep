@@ -38,7 +38,7 @@
   const mm = $derived(String(Math.floor(left / 60)).padStart(2, '0')), ss = $derived(String(left % 60).padStart(2, '0'));
 </script>
 
-<div class="wrap">
+<div class="wrap side-dock">
   <div class="top panel"><button class="btn ghost small" onclick={() => go({ name: 'hub' })}>←</button><b>Ойын уақыты</b></div>
   <div class="spacer passthrough"></div>
   <section class="panel card glow">

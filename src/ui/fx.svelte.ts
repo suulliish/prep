@@ -47,3 +47,10 @@ export function centerOf(el: Element | null) {
 }
 
 export function flash(color: string) { fx.flash = color; setTimeout(() => (fx.flash = ''), 250); }
+
+/** Центр 3D-сцены: на широком экране панель справа (см. .stage в app.css), иначе — верхняя часть экрана. */
+export function sceneCenter(yFrac = 0.3) {
+  const side = innerWidth >= 1000 && innerWidth / innerHeight >= 1.15;
+  const panel = side ? Math.min(540, innerWidth * 0.42) + 24 : 0;
+  return { x: (innerWidth - panel) / 2, y: innerHeight * yFrac };
+}
