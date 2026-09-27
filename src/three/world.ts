@@ -23,6 +23,10 @@ export interface World {
   bitMood(m: BitMood): void;
   celebrate(color?: number): void;
   openPortal(): void;
+  /** Мир: цвета неба [верх, середина, низ, сияние] (RGB 0..1) и тумана — плавный переход. */
+  setTheme(sky: number[][], fog: number): void;
+  /** Костюм героя (путь наград). */
+  setOutfit(jacket: number, dark: number, visor: number): void;
   resize(): void;
   dispose(): void;
 }
@@ -49,13 +53,13 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   // ---------- Небо, звёзды, разломы ----------
   const skyMat = new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false, fog: false, uniforms: { t: { value: 0 } },
+    side: THREE.BackSide, depthWrite: false, fog: false, uniforms: { t: { value: 0 }, cTop: { value: new THREE.Vector3(.03, .04, .13) }, cMid: { value: new THREE.Vector3(.17, .08, .36) }, cLow: { value: new THREE.Vector3(.62, .22, .47) }, cAur: { value: new THREE.Vector3(.05, .35, .4) } },
     vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
-    fragmentShader: `uniform float t; varying vec3 vP; void main(){ vec3 n = normalize(vP); float h = n.y;
-      vec3 top = vec3(.03,.04,.13), mid = vec3(.17,.08,.36), low = vec3(.62,.22,.47);
+    fragmentShader: `uniform float t; uniform vec3 cTop, cMid, cLow, cAur; varying vec3 vP; void main(){ vec3 n = normalize(vP); float h = n.y;
+      vec3 top = cTop, mid = cMid, low = cLow;
       vec3 c = mix(mid, top, smoothstep(.02,.75,h)); c = mix(low, c, smoothstep(-.35,.06,h));
       float aur = smoothstep(.2,.9, sin(n.x*6. + t*.15) * .5 + .5) * smoothstep(.15,.55,h) * (1.-smoothstep(.55,.9,h));
-      c += vec3(.05,.35,.4) * aur * .35; gl_FragColor = vec4(c,1.); }`,
+      c += cAur * aur * .35; gl_FragColor = vec4(c,1.); }`,
   });
   scene.add(new THREE.Mesh(new THREE.SphereGeometry(150, 32, 16), skyMat));
 
@@ -183,6 +187,16 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   // ---------- Герой ----------
   const hero = makeHero();
+  // материалы костюма: по исходным цветам куртки и визора
+  const outfitMats = { jacket: [] as THREE.MeshToonMaterial[], dark: [] as THREE.MeshToonMaterial[], visor: [] as THREE.MeshToonMaterial[] };
+  // материалы из общего кэша — клонируем, чтобы не перекрасить заодно корабль
+  const own = new Map<THREE.Material, THREE.MeshToonMaterial>();
+  hero.g.traverse(o => { const mesh = o as THREE.Mesh, m = mesh.material as THREE.MeshToonMaterial | undefined; if (!m?.color || Array.isArray(m)) return;
+    const hx = m.color.getHex(), slot = hx === 0x22b8cc ? 'jacket' : hx === 0x137e8f ? 'dark' : hx === 0x3ff0ff && m.emissive?.getHex() === 0x3ff0ff ? 'visor' : null;
+    if (!slot) return;
+    if (!own.has(m)) { const c = m.clone(); own.set(m, c); outfitMats[slot].push(c); }
+    mesh.material = own.get(m)!; });
+  let themeTo: THREE.Vector3[] | null = null; const fogTo = new THREE.Color(0x17104a);
   hero.g.position.set(-2, 0.15, 0.6); hero.g.rotation.y = Math.PI / 2; ship.add(hero.g);
   const shipAnim = addShipDetails(ship, quality);
 
@@ -301,6 +315,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   function frame() {
     const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
     skyMat.uniforms.t.value = t;
+    if (themeTo) { const u = skyMat.uniforms, k = Math.min(1, dt * 1.5); (['cTop', 'cMid', 'cLow', 'cAur'] as const).forEach((n, i) => u[n].value.lerp(themeTo![i], k)); (scene.fog as THREE.Fog).color.lerp(fogTo, k); }
     starMat.opacity = 0.75 + Math.sin(t * 1.3) * 0.15;
     rifts.forEach((r, i) => { (r.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.abs(Math.sin(t * (2 + i) + i)) * 0.5 * (Math.random() > 0.97 ? 0.2 : 1); r.position.x += Math.random() > 0.98 ? (Math.random() - 0.5) * 0.6 : 0; });
 
@@ -431,6 +446,11 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     bitMood(m) { mood = m; drawFace(); },
     celebrate(color = 0x3ff0ff) { celebrateT = 1.2; burst(worldPos(hero.g, 2.5), color, 50, 5); },
     openPortal() { portalOpen = true; flash = 1; burst(worldPos(portal, 2), 0x3ff0ff, 90, 7); },
+    setTheme(sky, fog) { themeTo = sky.map(c => new THREE.Vector3(c[0], c[1], c[2])); fogTo.setHex(fog); },
+    setOutfit(jacket, dark, visor) {
+      outfitMats.jacket.forEach(m => m.color.setHex(jacket)); outfitMats.dark.forEach(m => m.color.setHex(dark));
+      outfitMats.visor.forEach(m => { m.color.setHex(visor); m.emissive?.setHex(visor); });
+    },
     resize,
     dispose() {
       cancelAnimationFrame(raf); removeEventListener('resize', resize);

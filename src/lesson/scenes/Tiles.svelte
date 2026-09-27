@@ -1,12 +1,13 @@
 <script lang="ts">
   // Выражение из плиток: числа — голубые блоки, знаки — золотые шестерёнки, [..] — «процессор» (выполняется сейчас).
   let { math, broken = false }: { math: string; broken?: boolean } = $props();
-  type Tok = { t: string; kind: 'num' | 'op' | 'par' | 'sup' | 'txt'; hl: boolean };
+  type Tok = { t: string; kind: 'num' | 'op' | 'par' | 'sup' | 'txt' | 'sep'; hl: boolean };
   const toks = $derived.by(() => {
     const out: Tok[] = []; let hl = false;
-    for (const m of math.matchAll(/\[|\]|\d[\d ]*\d|\d|[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]+|[+−·:=≠<>]|[()]|✔|[^\s\[\]\d+−·:=()⁰-⁹ⁿ✔]+/g)) {
+    for (const m of math.matchAll(/ {2,}|\[|\]|\d{1,3}(?: \d{3})+(?!\d)|\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]+|[+−·:=≠<>]|[()]|✔|[^\s\[\]\d+−·:=()⁰-⁹ⁿ✔]+/g)) {
       const t = m[0];
       if (t === '[') { hl = true; continue; } if (t === ']') { hl = false; continue; }
+      if (/^ {2,}$/.test(t)) { out.push({ t: '', kind: 'sep', hl: false }); continue; } // две формулы — две строки
       const kind = /^\d/.test(t) ? 'num' : /^[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]/.test(t) ? 'sup' : /^[+−·:=≠<>]$/.test(t) ? 'op' : /^[()]$/.test(t) ? 'par' : 'txt';
       out.push({ t, kind, hl });
     }
@@ -34,6 +35,7 @@
   .tk.op { width: 38px; height: 38px; border-radius: 50%; background: radial-gradient(circle, #3a2a07 45%, var(--gold-deep)); border: 2px dashed var(--gold); color: var(--gold); }
   .tk.par { color: var(--crystal); font-size: clamp(28px, 7vw, 40px); }
   .tk.sup { align-self: flex-start; font-size: 22px; color: var(--gold); margin-left: -4px; }
+  .tk.sep { flex-basis: 100%; height: 0; }
   .tk.txt { font-size: clamp(15px, 4vw, 19px); color: var(--dim); padding: 0 2px; }
   .proc { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 16px 10px 8px; border: 2px solid var(--gold); border-radius: 10px; background: #ffc94a14; box-shadow: 0 0 20px #ffc94a44; animation: pop-in .4s var(--ease-out) both, pulse-glow 1.6s infinite; }
   .proc small { position: absolute; top: -9px; left: 8px; white-space: nowrap; font: 800 10px var(--txt); letter-spacing: .08em; color: var(--void); background: var(--gold); padding: 1px 6px; border-radius: 3px; }

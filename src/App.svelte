@@ -3,6 +3,9 @@
   import { createWorld } from './three/world';
   import { W } from './lib/world.svelte';
   import { game, protectStorage } from './lib/store.svelte';
+  import { applyLook } from './lib/look';
+  import MapScreen from './screens/Map.svelte';
+  import Hero from './screens/Hero.svelte';
   import FxLayer from './ui/FxLayer.svelte';
   import Hub from './screens/Hub.svelte';
   import Session from './screens/Session.svelte';
@@ -18,6 +21,7 @@
   onMount(() => {
     protectStorage();
     W.world = createWorld(canvas, { reduceMotion: matchMedia('(prefers-reduced-motion: reduce)').matches });
+    applyLook();
     return () => W.world?.dispose();
   });
 </script>
@@ -31,10 +35,12 @@
       {:else if game.screen.name === 'lesson'}<Lesson skill={game.screen.skill} />
       {:else if game.screen.name === 'summary'}<Summary />
       {:else if game.screen.name === 'diagnostic'}<Diagnostic />
-      {:else if game.screen.name === 'sound'}<SoundLab back={() => (game.screen = { name: 'hub' })} />
+      {:else if game.screen.name === 'sound'}<SoundLab back={() => (game.screen = { name: 'commander' })} />
       {:else if game.screen.name === 'commander'}<Commander />
       {:else if game.screen.name === 'playtime'}<PlayTime />
       {:else if game.screen.name === 'album'}<Album />
+      {:else if game.screen.name === 'map'}<MapScreen />
+      {:else if game.screen.name === 'hero'}<Hero />
       {/if}
     </div>
   {/key}

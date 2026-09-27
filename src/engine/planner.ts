@@ -8,11 +8,13 @@ export interface Plan { day: string; blocks: Block[] }
 
 const CAT_ORDER = 'CDABFGEIHJK';
 
-/** Следующий навык для изучения: сначала начатый, иначе доступный с наибольшим весом и меньшим классом. */
+/** Следующий навык для изучения: сначала начатый, иначе доступный с наибольшим весом и меньшим классом.
+ *  Новая тема — только с готовым полным уроком (lesson !== false): без объяснения новичку не «доходит»
+ *  (Kirschner, Sweller & Clark 2006). Нет урока — день идёт на повторение и смешанный бой. */
 export function nextSkill(save: Save, defs: SkillDef[]): string | null {
   const learning = defs.find(d => save.skills[d.id]?.status === 'learning');
   if (learning) return learning.id;
-  const avail = defs.filter(d => save.skills[d.id]?.status === 'available' && d.templates.length);
+  const avail = defs.filter(d => save.skills[d.id]?.status === 'available' && d.templates.length && d.lesson !== false);
   const g = (x: number | string) => (typeof x === 'number' ? x : 7);
   avail.sort((a, b) => g(a.grade) - g(b.grade) || b.weight - a.weight || CAT_ORDER.indexOf(a.cat) - CAT_ORDER.indexOf(b.cat));
   return avail[0]?.id ?? null;

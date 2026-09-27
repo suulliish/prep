@@ -57,6 +57,9 @@ export interface Save {
   settings: Settings;
   diagnosticDone: boolean;
   lastBackup?: string; // дата последней копии в файл
+  world?: string;          // текущий мир (content/worlds.mjs)
+  worldsCleared?: string[]; // миры, где побеждён босс
+  outfit?: string;         // костюм героя (путь наград)
   repairShop: { source: string; skill: string; tag?: string; addedDay: string; fixed?: boolean }[];
   kzReview?: Record<string, 'ok' | 'fix'>;   // проверка казахских текстов носителем
   weekendSpent?: Record<string, number>;      // потрачено из копилки выходных (ключ — понедельник недели)

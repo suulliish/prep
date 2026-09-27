@@ -10,7 +10,7 @@
 </script>
 
 <div class="cm" class:broken>
-  {#each [[a, pair.fa, pair.ca], [b, pair.fb, pair.cb]] as [n, f, c], r}
+  {#each [{ n: a, f: pair.fa, c: pair.ca }, { n: b, f: pair.fb, c: pair.cb }] as { n, f, c }, r}
     <div class="row" style="animation-delay:{r * 120}ms">
       <b class="num lbl">{broken ? '??' : n} =</b>
       {#each f as p, i}<span class="t num" class:on={stage >= 1 && c[i]}>{broken ? '?' : p}</span>{#if i < f.length - 1}<i>·</i>{/if}{/each}

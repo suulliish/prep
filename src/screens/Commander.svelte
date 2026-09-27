@@ -124,6 +124,7 @@
           <label><input type="radio" name="to" value="weekend" bind:group={game.save.settings.extraTo} onchange={persist} /> в копилку выходных</label>
         </fieldset>
         <p class="note">Правило: в будни за план — до 60 мин сегодня и до 48 мин в копилку выходных (4 часа за неделю), пропорционально выполненному. Засчитываются только честные задачи.</p>
+        <button class="btn ghost" onclick={() => go({ name: 'sound' })}>Звук и музыка: громкость, режим фокуса…</button>
         <button class="btn ghost" onclick={() => { game.save.settings.pin = undefined; persist(); unlocked = false; }}>Сменить PIN</button>
       </section>
     {:else if tab === 'skills'}

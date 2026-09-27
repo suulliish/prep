@@ -8,6 +8,7 @@
   import { recordAttempt, isDone } from '../engine/progress';
   import { isHonest, addMasteryBonus, settleDay } from '../engine/planner';
   import { audio } from '../lib/audio';
+  import { currentWorld } from '../lib/look';
   import { sparksAt, floatText, centerOf, flash, sceneCenter } from '../ui/fx.svelte';
 
   type Block = 'warmup' | 'new' | 'mixed' | 'extra' | 'boss' | 'repair';
@@ -26,9 +27,12 @@
     return [...new Set([...learning, ...weak])].slice(0, 5);
   }
   const broken = game.save.repairShop.filter(r => !r.fixed);
-  const skills = block === 'extra' ? extraSkills() : block === 'repair' ? [...new Set(broken.map(r => r.skill))].slice(0, 5) : pb?.skills ?? [];
-  const total = block === 'extra' ? 8 : block === 'repair' ? Math.min(8, broken.length + 1) : pb?.items ?? 8;
-  const TITLE: Record<Block, string> = { warmup: 'Глитч-мобтар шабуылы', new: 'Жаңа миссия', mixed: 'Аралас шайқас', extra: 'Қосымша тапсырма', boss: 'Босс', repair: 'Шеберхана: жөндеу' };
+  // Босс мира: вперемешку по всему пройденному (чередование), нужно 7 верных из 10
+  const bossSkills = () => [...skillDefs.filter(d => isDone(game.save.skills[d.id]) && d.templates.length).map(d => d.id)].sort(() => Math.random() - 0.5).slice(0, 8);
+  const BOSS_HP = 7;
+  const skills = block === 'boss' ? bossSkills() : block === 'extra' ? extraSkills() : block === 'repair' ? [...new Set(broken.map(r => r.skill))].slice(0, 5) : pb?.skills ?? [];
+  const total = block === 'boss' ? 10 : block === 'extra' ? 8 : block === 'repair' ? Math.min(8, broken.length + 1) : pb?.items ?? 8;
+  const TITLE: Record<Block, string> = { warmup: 'Глитч-мобтар шабуылы', new: 'Жаңа миссия', mixed: 'Аралас шайқас', extra: 'Қосымша тапсырма', boss: `Босс: ${currentWorld().kz}`, repair: 'Шеберхана: жөндеу' };
 
   let idx = $state(0);
   let item = $state<Item | null>(null);
@@ -42,7 +46,8 @@
   let showSol = $state(false);
   let bitText = $state('');
   let bitMood = $state<'idle' | 'happy' | 'wow' | 'think' | 'sad'>('idle');
-  let mobHp = $state(total);
+  let mobHp = $state(block === 'boss' ? BOSS_HP : total);
+  const hpMax = block === 'boss' ? BOSS_HP : total;
   let startAt = 0;
   let cardEl: HTMLElement;
   let choiceEls: HTMLElement[] = $state([]);
@@ -58,7 +63,7 @@
   onMount(() => {
     if (!skills.length) { go({ name: 'hub' }); return; }
     W.dim = false;
-    W.world?.setMode('battle'); W.world?.spawnMob(total, block === 'new' ? 1 : idx % 3);
+    W.world?.setMode('battle'); W.world?.spawnMob(mobHp, currentWorld().mob);
     audio.setMood(block === 'new' ? 'focus' : 'battle');
     nextItem();
     const onKey = (e: KeyboardEvent) => {
@@ -140,8 +145,26 @@
     nextItem();
   }
 
+  // Босс не даёт минут (они — за план), зато открывает путь в следующий мир
+  async function finishBoss() {
+    const won = mobHp <= 0, w = currentWorld();
+    if (won && W.world) {
+      await W.world.killMob(); audio.play('chest'); await W.world.openChest(); W.world.celebrate(0xffc94a); audio.play('levelup');
+      if (!game.save.worldsCleared?.includes(w.id)) (game.save.worldsCleared ??= []).push(w.id);
+      game.save.xp += 50; persist();
+      floatText('БОСС ЖЕҢІЛДІ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#ffc94a', true);
+      bitText = `«${w.kz}» босы жеңілді! +50 XP. Келесі әлемге портал ашылуға дайын — картаны қара.`; bitMood = 'wow';
+    } else {
+      await W.world?.killMob();
+      bitText = 'Босс шегінді, бірақ жеңілген жоқ. Қателерді шеберханада жөнде де, ертең қайта кел!'; bitMood = 'think';
+    }
+    phase = 'feedback'; item = null; persist();
+    setTimeout(() => go({ name: 'map' }), 3200);
+  }
+
   async function finish() {
-    const b = block === 'boss' ? 'mixed' : block;
+    if (block === 'boss') return finishBoss();
+    const b = block;
     if (block === 'extra' && !honestAll) {
       bitText = 'Кейбір жауаптар тым жылдам (кездейсоқ) болды — бұл тапсырма есептелмеді. Келесіде асықпа!'; bitMood = 'sad';
       phase = 'feedback'; item = null; setTimeout(() => go({ name: 'hub' }), 3500); return;
@@ -175,7 +198,7 @@
   {#if battle}
     <div class="mobhp pe" aria-label="Мобтың күші">
       <span class="label">ГЛИТЧ</span>
-      <div class="hpbar"><i style="width:{Math.max(0, mobHp / total) * 100}%"></i></div>
+      <div class="hpbar"><i style="width:{Math.max(0, mobHp / hpMax) * 100}%"></i></div>
       {#if combo >= 2}<span class="combo num">×{combo}</span>{/if}
     </div>
   {/if}

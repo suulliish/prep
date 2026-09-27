@@ -29,10 +29,12 @@
   const extraOk = $derived(canStartExtra(rec, plan, game.save.settings.extraMissionCap));
 
   const name = $derived(game.save.heroName);
+  const bossReady = $derived(weekday && done && !game.save.worldsCleared?.includes(game.save.world ?? 'village') && Object.values(game.save.skills).filter(x => ['learned', 'mastered', 'automatic'].includes(x.status)).length >= 3);
   const greeting = $derived(
     !game.save.diagnosticDone ? `Сәлем, ${name}! Мен — Бит. Алдымен сенің Код-күшіңді сканерлейік: бірнеше есеп, қателесуден қорықпа — бұл тек карта ашу үшін.`
     : !weekday ? `Бүгін демалыс, ${name}! Жинаған уақытыңды ойнап алуға болады. Дүйсенбіде жалғастырамыз.`
-    : done ? `Керемет, ${name}! Бүгінгі жоспар орындалды: +${rec.minutesToday} мин. Қосымша тапсырма алсаң, тағы +15 мин.`
+    : done ? `Керемет, ${name}! Бүгінгі жоспар орындалды: +${rec.minutesToday} мин. Қосымша тапсырма — тағы +15 мин.${bossReady ? ' Картада босс күтіп тұр!' : ''}`
+    : !plan.blocks.some(b => b.id === 'new') ? `${name}, жаңа тақырыптың сабағы әлі дайындалуда. Бүгін — қайталау мен шайқас күні: бұл да білімді бекітеді!`
     : `${name}, бүгін ${plan.blocks.length} тапсырма. Бастайық па?`
   );
 
@@ -83,10 +85,10 @@
       {/if}
     {/if}
     <nav class="menu">
-      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'playtime' }); }}><i class="ic clock"></i><span>Ойын</span></button>
+      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'map' }); }}><i class="ic map"></i><span>Карта</span>{#if bossReady}<b class="badge gold">!</b>{/if}</button>
+      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'hero' }); }}><i class="ic hero"></i><span>Кейіпкер</span></button>
       <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'album' }); }}><i class="ic cards"></i><span>Альбом</span>{#if broken}<b class="badge">{broken}</b>{/if}</button>
-      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'sound' }); }}><i class="ic sound"></i><span>Дыбыс</span></button>
-      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'commander' }); }}><i class="ic lock"></i><span>Командир</span></button>
+      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'playtime' }); }}><i class="ic clock"></i><span>Ойын</span></button>
     </nav>
     <p class="info">Тақырыптар: {learnedTotal} / {skillDefs.length} · Кристалдар: {crystals}</p>
   </section>
@@ -118,8 +120,10 @@
   .ic { width: 22px; height: 22px; display: block; }
   .ic.clock { border: 4px solid var(--gold); border-radius: 50%; }
   .ic.cards { background: var(--crystal); clip-path: polygon(50% 0, 100% 40%, 50% 100%, 0 40%); }
-  .ic.sound { background: var(--code); clip-path: polygon(0 35%, 35% 35%, 70% 0, 70% 100%, 35% 65%, 0 65%); }
+  .ic.map { background: linear-gradient(90deg, var(--ok) 0 33%, var(--code) 33% 66%, var(--gold) 66%); clip-path: polygon(0 10%, 33% 0, 66% 10%, 100% 0, 100% 90%, 66% 100%, 33% 90%, 0 100%); }
+  .ic.hero { background: var(--code); clip-path: polygon(30% 0, 70% 0, 70% 40%, 100% 45%, 100% 70%, 70% 65%, 70% 100%, 30% 100%, 30% 65%, 0 70%, 0 45%, 30% 40%); }
   .ic.lock { background: var(--dim); clip-path: polygon(20% 45%, 20% 25%, 35% 8%, 65% 8%, 80% 25%, 80% 45%, 100% 45%, 100% 100%, 0 100%, 0 45%, 30% 45%, 30% 28%, 40% 18%, 60% 18%, 70% 28%, 70% 45%); }
+  .badge.gold { background: var(--gold); }
   .badge { position: absolute; top: 4px; right: 8px; min-width: 18px; height: 18px; padding: 0 4px; display: grid; place-items: center; font-size: 11px; color: var(--void); background: var(--glitch); border-radius: 9px; }
   .info { color: var(--dim); font-size: var(--fs-s); text-align: center; }
   .cap { font-weight: 700; opacity: .8; }

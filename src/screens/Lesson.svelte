@@ -9,6 +9,7 @@
   import { skillTitle } from '../engine/items';
   import { blankSkill } from '../engine/progress';
   import { audio } from '../lib/audio';
+  import { currentWorld } from '../lib/look';
   import { sparksAt, centerOf, floatText, flash, sceneCenter } from '../ui/fx.svelte';
   // @ts-ignore
   import { LESSONS } from '../../content/lessons.mjs';
@@ -38,6 +39,7 @@
     bug: 'Глитчтің қатесі', blitz: 'Мини-ойын', rule: 'Есте сақта', final: 'Соңғы соққы', quiz: 'Қалай ойлайсың?', say: 'Бит',
   };
   // Шаги-«удары»: всё, где ребёнок что-то делает сам
+  const EXPLAIN = ['widget', 'example', 'faded', 'why', 'bug', 'predict', 'rule'];
   const HIT = (t: string) => !['goal', 'rule', 'say'].includes(t);
   const maxHp = Math.max(1, steps.filter(s => HIT(s.type)).length);
   const voiced = new Set<string>(VOICED as string[]);
@@ -68,7 +70,7 @@
     requestAnimationFrame(() => { if (i > 0 && cardEl && cardEl.getBoundingClientRect().top > innerHeight * 0.6) cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   }
   onMount(() => {
-    W.dim = false; W.world?.setMode('battle'); W.world?.spawnMob(maxHp, skill.length % 3); W.world?.bitMood('idle');
+    W.dim = false; W.world?.setMode('battle'); W.world?.spawnMob(maxHp, currentWorld().mob); W.world?.bitMood('idle');
     audio.setMood('focus'); enter();
     return () => { clearTimeout(skipTimer); W.world?.clearMob(); };
   });
@@ -124,12 +126,15 @@
 
 <div class="stage lesson">
   <div class="top panel">
-    <button class="btn ghost small" onclick={() => go({ name: 'hub' })} aria-label="Артқа">←</button>
-    <div class="title"><b>{target}</b><small>{skillTitle(skill).kz}</small></div>
-    {#if earned}<span class="xp num">+{earned} XP</span>{/if}
+    <div class="row1">
+      <button class="btn ghost small" onclick={() => go({ name: 'hub' })} aria-label="Артқа">←</button>
+      <div class="title"><b>{target}</b><small>{skillTitle(skill).kz}</small></div>
+      {#if earned}<span class="xp num">+{earned} XP</span>{/if}
+    </div>
+    <MissionBar types={steps.map(s => s.type)} at={i} {hp} max={maxHp} {target} />
   </div>
-  <div class="panel mission"><MissionBar types={steps.map(s => s.type)} at={i} {hp} max={maxHp} {target} /></div>
-  <div class="stage-gap grow passthrough"></div>
+  <!-- на шагах-объяснениях сцена боя — узкая полоска: больше места под тему -->
+  <div class="stage-gap passthrough" class:slim={EXPLAIN.includes(step.type)}></div>
 
   {#key i}
     <section class="card panel glitch-in" class:final={step.type === 'final'} class:bugcard={step.type === 'bug'} bind:this={cardEl}>
@@ -205,13 +210,14 @@
 </div>
 
 <style>
-  .top { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
+  .top { display: grid; gap: 8px; padding: 8px 12px 10px; }
+  .row1 { display: flex; align-items: center; gap: 12px; }
+  .stage-gap.slim { flex-basis: clamp(40px, 7vh, 80px); }
   .btn.small { min-height: 40px; padding: 6px 12px; font-size: var(--fs-s); }
   .title { flex: 1; display: grid; min-width: 0; }
   .title b { font-size: 18px; font-weight: 800; }
   .title small { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .xp { color: var(--gold); font-size: 16px; }
-  .mission { padding: 10px 12px; }
   .card { display: grid; gap: 14px; padding: 16px; scroll-margin-top: 12px; }
   .card.final { border-color: var(--gold); box-shadow: 0 0 30px #ffc94a33, var(--shadow); }
   .card.bugcard { border-color: #7a2a63; background: linear-gradient(#1f0f2e, #141b3f); }

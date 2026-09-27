@@ -5,7 +5,7 @@ import type { Attempt, Save, SkillState, Status } from './types';
 
 export const INTERVALS = [1, 3, 7, 16, 35]; // учебных дней
 
-export interface SkillDef { id: string; prereqs: string[]; weight: number; cat: string; grade: number | string; templates: string[] }
+export interface SkillDef { id: string; prereqs: string[]; weight: number; cat: string; grade: number | string; templates: string[]; lesson?: boolean }
 
 export function blankSkill(): SkillState {
   return { p: 0.1, status: 'locked', lessonDone: false, stage: 0, attempts: 0, correct: 0, misconceptions: {} };

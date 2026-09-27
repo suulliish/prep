@@ -104,3 +104,17 @@ describe('бонус за освоение', () => {
     expect(rec.bonuses.filter((b: any) => b.mastery).reduce((s: number, b: any) => s + b.minutes, 0)).toBe(MASTERY_BONUS_DAY_CAP);
   });
 });
+
+import { nextSkill } from '../src/engine/planner';
+describe('новая тема только с уроком', () => {
+  it('тему без полного урока не даёт как новую', () => {
+    const defs: any[] = [
+      { id: 'a', prereqs: [], weight: 3, cat: 'C', grade: 5, templates: ['t'], lesson: false },
+      { id: 'b', prereqs: [], weight: 2, cat: 'D', grade: 5, templates: ['t'], lesson: true },
+    ];
+    const save: any = { skills: {} }; refreshAvailability(save, defs);
+    expect(nextSkill(save, defs)).toBe('b');
+    save.skills.b.status = 'learned';
+    expect(nextSkill(save, defs)).toBe(null);
+  });
+});

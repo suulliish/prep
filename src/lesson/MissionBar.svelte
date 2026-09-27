@@ -27,6 +27,7 @@
   .hp b { position: absolute; top: 0; bottom: 0; width: 2px; background: #1b0b1f; }
   .pct { font-size: 14px; color: var(--glitch); min-width: 38px; text-align: right; }
   .tgt { color: var(--dim); font-weight: 700; font-size: 12px; }
+  @media (max-width: 600px) { .tgt { display: none; } }
   .path { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 0; }
   .n { flex: 1; display: flex; align-items: center; min-width: 0; }
   .n::before { content: ''; flex: 1; height: 2px; background: var(--line); }

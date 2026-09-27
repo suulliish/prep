@@ -5,8 +5,12 @@ import { refreshAvailability, type SkillDef } from '../engine/progress';
 import { today } from '../engine/dates';
 // @ts-ignore — граф навыков на JS
 import { skills as SKILLS } from '../../content/skills.mjs';
+// @ts-ignore
+import { LESSONS } from '../../content/lessons.mjs';
 
-export const skillDefs = SKILLS as (SkillDef & { title: { kz: string; ru: string }; figure: boolean })[];
+// lesson — есть полный урок-миссия (с целью); только такие темы планировщик даёт как новые
+export const skillDefs = (SKILLS as (SkillDef & { title: { kz: string; ru: string }; figure: boolean })[])
+  .map(d => ({ ...d, lesson: !!(LESSONS as Record<string, any[]>)[d.id]?.some(s => s.type === 'goal') }));
 const KEY = 'razlom.save.v1';
 
 function fresh(): Save {
@@ -38,7 +42,9 @@ export type Screen =
   | { name: 'album' }
   | { name: 'sound' }
   | { name: 'commander' }
-  | { name: 'playtime' };
+  | { name: 'playtime' }
+  | { name: 'map' }
+  | { name: 'hero' };
 
 export const game = $state({
   save: load(),
