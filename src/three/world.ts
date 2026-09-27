@@ -287,7 +287,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   // ---------- Камера ----------
   const CAM: Record<CamMode, { target: THREE.Vector3; radius: number; phi: number; theta: number }> = {
     hub: { target: new THREE.Vector3(0, 2.4, 0), radius: 25, phi: 1.08, theta: 0.9 },
-    battle: { target: new THREE.Vector3(1, 1.6, 0.6), radius: 11.5, phi: 1.2, theta: 1.35 },
+    battle: { target: new THREE.Vector3(0.8, 1.2, 0.6), radius: 11, phi: 1.12, theta: 1.62 },
     portal: { target: new THREE.Vector3(4.6, 2.2, 0), radius: 9, phi: 1.25, theta: 0.15 },
   };
   let mode: CamMode = 'hub';
@@ -308,7 +308,15 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     renderer.setSize(w, h, false); composer?.setSize(w, h);
     camera.aspect = w / h; camera.updateProjectionMatrix();
     const narrow = w / h < 0.8;
-    CAM.hub.radius = narrow ? 36 : 25; CAM.battle.radius = narrow ? 16 : 11.5;
+    CAM.hub.radius = narrow ? 36 : 25; CAM.battle.radius = narrow ? 14.5 : 11;
+    applyOffset();
+  }
+  // В бою и у портала сцена поднимается вверх: нижнюю часть экрана занимает панель задачи
+  let viewShift = 0;
+  function applyOffset() {
+    const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
+    if (viewShift) camera.setViewOffset(w, h, 0, h * viewShift, w, h); else camera.clearViewOffset();
+    camera.updateProjectionMatrix();
   }
   resize();
 
@@ -406,7 +414,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   return {
     setEnergy(v, max) { energy = Math.max(0, Math.min(1, v / max)); },
-    setMode(m) { mode = m; userTheta = 0; userPhi = 0; },
+    setMode(m) { mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? 0 : narrow ? 0.24 : 0.12; applyOffset(); },
     heroWalk(x, z) { return new Promise(res => (walk = { x, z, res })); },
     heroAttack(crit = false) {
       return new Promise(res => {
