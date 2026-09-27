@@ -4,7 +4,10 @@ import { LESSONS as LS } from '../content/lessons.mjs';
 const LESSONS = LS as Record<string, any[]>;
 // @ts-ignore
 import { WEEK1 as W1 } from '../content/lessons_week1.mjs';
-const WEEK1 = W1 as Record<string, any[]>;
+// @ts-ignore
+import { WEEK2 as W2 } from '../content/lessons_week2.mjs';
+const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>;
+const FULL = { ...WEEK1, ...WEEK2 };
 // @ts-ignore
 import { skillById } from '../content/skills.mjs';
 // @ts-ignore
@@ -38,8 +41,8 @@ describe('уроки', () => {
   }
 });
 
-describe('неделя 1 — полный сценарий', () => {
-  for (const [id, steps] of Object.entries(WEEK1) as [string, any[]][]) {
+describe('недели 1–2 — полный сценарий', () => {
+  for (const [id, steps] of Object.entries(FULL) as [string, any[]][]) {
     it(`${id}: цель → … → возврат к цели`, () => {
       const t = steps.map(s => s.type);
       expect(t[0]).toBe('goal'); expect(t.at(-1)).toBe('final');
@@ -58,6 +61,20 @@ describe('неделя 1 — полный сценарий', () => {
       }
     });
   }
+  it('мини-игры недели 2 считают правильно', () => {
+    const r = rng(5), g = (a: number, b: number): number => (b ? g(b, a % b) : a);
+    const pr = (n: number) => { for (let d = 2; d * d <= n; d++) if (n % d === 0) return false; return n > 1; };
+    const bl = (id: string) => WEEK2[id].find((s: any) => s.type === 'blitz')!;
+    for (let k = 0; k < 300; k++) {
+      let it = bl('div.primes').make(r); expect(it.answer).toBe(pr(+it.q) ? 0 : 1);
+      it = bl('div.gcd').make(r); let [a, b] = it.q.match(/\d+/g)!.map(Number); expect(it.choices[it.answer]).toBe(String(g(a, b)));
+      it = bl('div.lcm').make(r); [a, b] = it.q.match(/\d+/g)!.map(Number); expect(it.choices[it.answer]).toBe(String(a * b / g(a, b)));
+      it = bl('div.factorization').make(r); const n = +it.q.match(/\d+/)![0];
+      const val = it.choices[it.answer].split(' · ').reduce((s: number, t: string) => { const m = t.match(/^(\d+)(.*)$/)!; const e = m[2] ? +[...m[2]].map(c => '⁰¹²³⁴⁵⁶⁷⁸⁹'.indexOf(c)).join('') : 1; return s * (+m[1]) ** e; }, 1);
+      expect(val).toBe(n);
+      it.choices[it.answer].split(' · ').forEach((t: string) => expect(pr(+t.match(/^\d+/)![0])).toBe(true));
+    }
+  });
   it('мини-игры считают правильно', () => {
     const r = rng(3), ev = (q: string) => Function(`return ${q.replace(/·/g, '*').replace(/ : /g, '/').replace(/−/g, '-')}`)();
     const b = WEEK1['nat.order_ops'].find((s: any) => s.type === 'blitz')!;

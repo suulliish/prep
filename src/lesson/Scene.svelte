@@ -5,7 +5,11 @@
   import Tiles from './scenes/Tiles.svelte';
   import Cubes from './scenes/Cubes.svelte';
   import Scanner from './scenes/Scanner.svelte';
-  const MAP: Record<string, any> = { Train, Crystals, Tiles, Cubes, Scanner };
+  import Sieve from './scenes/Sieve.svelte';
+  import Tree from './scenes/Tree.svelte';
+  import Common from './scenes/Common.svelte';
+  import Multiples from './scenes/Multiples.svelte';
+  const MAP: Record<string, any> = { Train, Crystals, Tiles, Cubes, Scanner, Sieve, Tree, Common, Multiples };
   let { name, s = {} }: { name: string; s?: Record<string, any> } = $props();
   const Comp = $derived(MAP[name]);
 </script>
