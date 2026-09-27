@@ -1,0 +1,17 @@
+:root {
+  color-scheme: dark;
+  --void: #0b0f24; --panel: #141a3a; --panel-2: #1c2350; --line: #2e3875;
+  --ink: #eef0ff; --ink-dim: #a9b0e0; --cyan: #3ff0ff; --magenta: #ff4fb8; --gold: #ffc94a; --ok: #57e38b;
+  --px: "Press Start 2P", ui-monospace, monospace;
+  --txt: "Rubik", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink); font-family: var(--txt); }
+button { font: inherit; font-weight: 700; color: var(--ink); background: var(--panel-2); border: 2px solid var(--line);
+  border-bottom-width: 5px; border-radius: 6px; padding: 10px 14px; cursor: pointer; }
+button:hover { border-color: var(--cyan); }
+button:active { transform: translateY(2px); border-bottom-width: 3px; }
+button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.card { background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 14px; }
+.label { font-family: var(--px); font-size: 9px; color: var(--ink-dim); letter-spacing: .04em; }
