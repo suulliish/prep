@@ -9,7 +9,12 @@
   import Tree from './scenes/Tree.svelte';
   import Common from './scenes/Common.svelte';
   import Multiples from './scenes/Multiples.svelte';
-  const MAP: Record<string, any> = { Train, Crystals, Tiles, Cubes, Scanner, Sieve, Tree, Common, Multiples };
+  import Strike from './scenes/Strike.svelte';
+  import StarDigit from './scenes/StarDigit.svelte';
+  import Ladder from './scenes/Ladder.svelte';
+  import Venn2 from './scenes/Venn2.svelte';
+  import Venn3 from './scenes/Venn3.svelte';
+  const MAP: Record<string, any> = { Train, Crystals, Tiles, Cubes, Scanner, Sieve, Tree, Common, Multiples, Strike, StarDigit, Ladder, Venn2, Venn3 };
   let { name, s = {} }: { name: string; s?: Record<string, any> } = $props();
   const Comp = $derived(MAP[name]);
 </script>

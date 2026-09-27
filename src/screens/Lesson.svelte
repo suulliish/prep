@@ -29,9 +29,12 @@
   import PowerBlocks from '../widgets/PowerBlocks.svelte';
   import CommonFactors from '../widgets/CommonFactors.svelte';
   import BusTimeline from '../widgets/BusTimeline.svelte';
+  import MultipleHunt from '../widgets/MultipleHunt.svelte';
+  import StarPicker from '../widgets/StarPicker.svelte';
+  import SetSort from '../widgets/SetSort.svelte';
 
   let { skill }: { skill: string } = $props();
-  const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline };
+  const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline, MultipleHunt, StarPicker, SetSort };
   const steps: any[] = (LESSONS as Record<string, any[]>)[skill] ?? [{ type: 'say', kz: 'Бұл тақырыптың сабағы әзірленуде. Бірден жаттығуға көшейік!' }];
   const goal = steps.find(s => s.type === 'goal');
   const target = goal?.title ?? skillTitle(skill).kz;

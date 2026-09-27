@@ -6,8 +6,10 @@ const LESSONS = LS as Record<string, any[]>;
 import { WEEK1 as W1 } from '../content/lessons_week1.mjs';
 // @ts-ignore
 import { WEEK2 as W2 } from '../content/lessons_week2.mjs';
-const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>;
-const FULL = { ...WEEK1, ...WEEK2 };
+// @ts-ignore
+import { WEEK3 as W3 } from '../content/lessons_week3.mjs';
+const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>, WEEK3 = W3 as Record<string, any[]>;
+const FULL = { ...WEEK1, ...WEEK2, ...WEEK3 };
 // @ts-ignore
 import { skillById } from '../content/skills.mjs';
 // @ts-ignore
@@ -41,7 +43,7 @@ describe('уроки', () => {
   }
 });
 
-describe('недели 1–2 — полный сценарий', () => {
+describe('недели 1–3 — полный сценарий', () => {
   for (const [id, steps] of Object.entries(FULL) as [string, any[]][]) {
     it(`${id}: цель → … → возврат к цели`, () => {
       const t = steps.map(s => s.type);
@@ -61,6 +63,22 @@ describe('недели 1–2 — полный сценарий', () => {
       }
     });
   }
+  it('мини-игры недели 3 считают правильно', () => {
+    const r = rng(8), bl = (id: string) => WEEK3[id].find((s: any) => s.type === 'blitz')!;
+    const nums = (q: string) => q.match(/\d+/g)!.map(Number);
+    const parse = (t: string) => (t === '∅' ? [] : t.slice(1, -1).split(', ').map(Number));
+    for (let k = 0; k < 300; k++) {
+      let it = bl('div.count_multiples').make(r); let [, n, d] = nums(it.q); expect(it.choices[it.answer]).toBe(String(Math.floor(n / d)));
+      it = bl('div.star_digit').make(r); const [a, b, dv] = nums(it.q);
+      it.choices.forEach((c: string, i: number) => expect((a + b + +c) % dv === 0).toBe(i === it.answer));
+      it = bl('div.powers_count').make(r); [, n] = nums(it.q); const p = it.q.includes('квадрат') ? 2 : 3;
+      const kk = +it.choices[it.answer]; expect(kk ** p <= n && (kk + 1) ** p > n).toBe(true);
+      it = bl('sets.basics').make(r); const [As, Bs] = it.q.match(/\{[^}]*\}/g)!.map(parse);
+      const want = it.q.includes('∩') ? As.filter((x: number) => Bs.includes(x)) : [...new Set([...As, ...Bs])];
+      expect(parse(it.choices[it.answer]).sort((x: number, y: number) => x - y)).toEqual(want.sort((x: number, y: number) => x - y));
+      it = bl('sets.venn').make(r); const [fa, fb, fc] = nums(it.q); expect(it.choices[it.answer]).toBe(String(fa + fb - fc));
+    }
+  });
   it('мини-игры недели 2 считают правильно', () => {
     const r = rng(5), g = (a: number, b: number): number => (b ? g(b, a % b) : a);
     const pr = (n: number) => { for (let d = 2; d * d <= n; d++) if (n % d === 0) return false; return n > 1; };
