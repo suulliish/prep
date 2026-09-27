@@ -1,0 +1,83 @@
+<script lang="ts">
+  // Альбом карточек тем по категориям + мастерская ремонта ошибок.
+  import { onMount } from 'svelte';
+  import { game, go, skillDefs } from '../lib/store.svelte';
+  import { W } from '../lib/world.svelte';
+  import { audio } from '../lib/audio';
+
+  const CAT: Record<string, string> = { A: 'Теңдеулер', B: 'Мәтінді есептер', C: 'Есептеу', D: 'Бөлінгіштік', E: 'Геометрия', F: 'Пропорция', G: 'Пайыз', H: 'Заңдылық', I: 'Логика', J: 'Көрнекі логика', K: 'Координаталар' };
+  let tab = $state<'cards' | 'repair'>('cards');
+  const broken = $derived(game.save.repairShop.filter(r => !r.fixed));
+  const fixed = $derived(game.save.repairShop.filter(r => r.fixed).length);
+  onMount(() => { W.dim = true; audio.setMood('hub'); });
+  const W8: Record<string, number> = { automatic: 4, mastered: 3, learned: 2, learning: 1 };
+  const cats = Object.keys(CAT).sort((a, b) => score(b) - score(a));
+  function score(c: string) { return skillDefs.filter(d => d.cat === c).reduce((s, d) => s + (W8[game.save.skills[d.id]?.status] ?? 0) * 10 + (d.templates.length ? 1 : 0), 0); }
+  const tier = (st?: string) => st === 'automatic' ? 'gold' : st === 'mastered' ? 'crystal' : st === 'learned' ? 'charged' : st === 'learning' ? 'charging' : st === 'available' ? 'empty' : 'locked';
+</script>
+
+<div class="wrap">
+  <div class="top panel">
+    <button class="btn ghost small" onclick={() => go({ name: 'hub' })}>←</button>
+    <button class="tab" class:on={tab === 'cards'} onclick={() => (tab = 'cards')}>Карточкалар</button>
+    <button class="tab" class:on={tab === 'repair'} onclick={() => (tab = 'repair')}>Шеберхана {broken.length ? `(${broken.length})` : ''}</button>
+  </div>
+
+  {#if tab === 'cards'}
+    {#each cats as c}
+      {@const all = skillDefs.filter(d => d.cat === c)}
+      {@const open = all.filter(d => (game.save.skills[d.id]?.status ?? 'locked') !== 'locked')}
+      {@const list = open.length ? open : all.slice(0, 2)}
+      {@const hidden = all.length - list.length}
+      <section class="panel cat">
+        <h2>{CAT[c]} <small>{all.filter(d => ['mastered', 'automatic'].includes(game.save.skills[d.id]?.status)).length}/{all.length}</small></h2>
+        <div class="cards">
+          {#each list as d}
+            {@const s = game.save.skills[d.id]}
+            <div class="card {tier(s?.status)}" title={d.title.ru}>
+              <i class="gem"></i>
+              <span>{s?.status === 'locked' || !s ? '???' : d.title.kz}</span>
+              {#if s && s.status !== 'locked' && !d.templates.length}<small class="soon">жақында</small>{/if}
+              {#if s?.status === 'learning'}<b class="bar"><i style="width:{Math.round((s.p ?? 0) * 100)}%"></i></b>{/if}
+            </div>
+          {/each}
+          {#if hidden}<div class="card more"><span>+{hidden} жабық</span></div>{/if}
+        </div>
+      </section>
+    {/each}
+  {:else}
+    <section class="panel repair">
+      <p>Әр қателік — глитч-бөлшек. Оны жөндеу үшін дәл сондай есепті өзің шығар. Жөнделгені: <b>{fixed}</b>.</p>
+      {#if broken.length}
+        <ul>{#each broken.slice(-12) as r}<li><i class="bolt"></i>{skillDefs.find(d => d.id === r.skill)?.title.kz}</li>{/each}</ul>
+        <button class="btn gold big block" onclick={() => { audio.unlock(); audio.play('mission'); go({ name: 'session', block: 'repair' }); }}>Жөндеуді бастау</button>
+      {:else}<p class="ok">Шеберхана бос — сынған бөлшек жоқ!</p>{/if}
+    </section>
+  {/if}
+</div>
+
+<style>
+  .wrap { min-height: 100dvh; width: min(760px, 100%); margin: 0 auto; display: grid; align-content: start; gap: 10px; padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 24px; }
+  .top { display: flex; gap: 8px; align-items: center; padding: 8px 12px; }
+  .btn.small { min-height: 40px; padding: 6px 12px; }
+  .tab { font: 800 var(--fs-m) var(--txt); color: var(--dim); background: none; border: 0; padding: 8px 12px; border-radius: 6px; cursor: pointer; }
+  .tab.on { color: var(--ink); background: var(--panel-hi); }
+  .cat h2 { font-size: 18px; margin-bottom: 10px; } .cat h2 small { color: var(--dim); font-weight: 700; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .card { position: relative; display: grid; gap: 6px; align-content: start; min-height: 86px; padding: 10px; font-weight: 800; font-size: var(--fs-s); line-height: 1.3; background: var(--deep); border: 2px solid var(--line); border-radius: 8px; }
+  .gem { width: 18px; height: 18px; clip-path: polygon(50% 0, 100% 40%, 50% 100%, 0 40%); background: #2a3160; }
+  .locked { opacity: .45; } .locked span { color: var(--faint); }
+  .charging .gem { background: var(--gold); } .charging { border-color: var(--gold-deep); }
+  .charged .gem { background: var(--code); box-shadow: 0 0 10px var(--code); } .charged { border-color: var(--code-deep); }
+  .crystal { border-color: var(--crystal); background: linear-gradient(160deg, #2b1f55, var(--deep)); box-shadow: inset 0 0 18px #b58cff33; }
+  .crystal .gem { background: var(--crystal); box-shadow: 0 0 12px var(--crystal); animation: pulse-glow 2.4s infinite; }
+  .gold { border-color: var(--gold); } .gold .gem { background: var(--gold); box-shadow: 0 0 12px var(--gold); }
+  .soon { color: var(--faint); font-weight: 700; }
+  .more { place-content: center; color: var(--faint); border-style: dashed; }
+  .bar { display: block; height: 6px; background: #070a1a; } .bar i { display: block; height: 100%; background: var(--gold); }
+  .repair { display: grid; gap: 12px; }
+  .repair ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+  .repair li { display: flex; gap: 10px; align-items: center; background: var(--deep); padding: 8px 10px; font-weight: 700; }
+  .bolt { width: 14px; height: 14px; background: var(--glitch); clip-path: polygon(40% 0, 100% 0, 60% 45%, 90% 45%, 20% 100%, 40% 55%, 10% 55%); }
+  .ok { color: var(--ok); font-weight: 800; }
+</style>

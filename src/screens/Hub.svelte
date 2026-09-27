@@ -14,6 +14,7 @@
   const rec = $derived(dayRec());
   const weekday = isWeekday(game.day);
   const crystals = Object.values(game.save.skills).filter(s => s.status === 'mastered' || s.status === 'automatic').length;
+  const broken = game.save.repairShop.filter(r => !r.fixed).length;
   const learnedTotal = Object.values(game.save.skills).filter(s => ['learned', 'mastered', 'automatic'].includes(s.status)).length;
 
   const BLOCK = {
@@ -35,7 +36,7 @@
   );
 
   onMount(() => {
-    W.dim = false; W.world?.setMode('hub'); W.world?.bitMood(done ? 'happy' : 'idle');
+    W.dim = false; W.world?.clearMob(); W.world?.setMode('hub'); W.world?.bitMood(done ? 'happy' : 'idle');
     W.world?.setEnergy(learnedTotal % 10, 10);
     audio.setMood('hub');
   });
@@ -80,10 +81,13 @@
         </button>
       {/if}
     {/if}
-    <div class="row">
-      <button class="btn ghost" onclick={() => { audio.unlock(); go({ name: 'sound' }); }}>Дыбыс</button>
-      <span class="info">Тақырыптар: {learnedTotal} / {skillDefs.length} · Кристалдар: {crystals}</span>
-    </div>
+    <nav class="menu">
+      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'playtime' }); }}><i class="ic clock"></i><span>Ойын</span></button>
+      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'album' }); }}><i class="ic cards"></i><span>Альбом</span>{#if broken}<b class="badge">{broken}</b>{/if}</button>
+      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'sound' }); }}><i class="ic sound"></i><span>Дыбыс</span></button>
+      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'commander' }); }}><i class="ic lock"></i><span>Командир</span></button>
+    </nav>
+    <p class="info">Тақырыптар: {learnedTotal} / {skillDefs.length} · Кристалдар: {crystals}</p>
   </section>
 </div>
 
@@ -107,8 +111,16 @@
   .qi.star { background: radial-gradient(circle, var(--code) 30%, transparent 32%), var(--panel); }
   .qi.swords { background: repeating-linear-gradient(45deg, var(--gold) 0 3px, transparent 3px 8px), var(--panel); }
   .qi.book { background: linear-gradient(var(--crystal), var(--crystal)) center/60% 70% no-repeat, var(--panel); }
-  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-  .info { color: var(--dim); font-size: var(--fs-s); }
+  .menu { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .mi { position: relative; display: grid; justify-items: center; gap: 4px; padding: 10px 4px 8px; font: 800 var(--fs-xs) var(--txt); color: var(--dim); background: var(--panel); border: 2px solid var(--line); border-bottom-width: 4px; border-radius: 8px; cursor: pointer; }
+  .mi:hover { color: var(--ink); border-color: var(--line-hi); }
+  .ic { width: 22px; height: 22px; display: block; }
+  .ic.clock { border: 4px solid var(--gold); border-radius: 50%; }
+  .ic.cards { background: var(--crystal); clip-path: polygon(50% 0, 100% 40%, 50% 100%, 0 40%); }
+  .ic.sound { background: var(--code); clip-path: polygon(0 35%, 35% 35%, 70% 0, 70% 100%, 35% 65%, 0 65%); }
+  .ic.lock { background: var(--dim); clip-path: polygon(20% 45%, 20% 25%, 35% 8%, 65% 8%, 80% 25%, 80% 45%, 100% 45%, 100% 100%, 0 100%, 0 45%, 30% 45%, 30% 28%, 40% 18%, 60% 18%, 70% 28%, 70% 45%); }
+  .badge { position: absolute; top: 4px; right: 8px; min-width: 18px; height: 18px; padding: 0 4px; display: grid; place-items: center; font-size: 11px; color: var(--void); background: var(--glitch); border-radius: 9px; }
+  .info { color: var(--dim); font-size: var(--fs-s); text-align: center; }
   .cap { font-weight: 700; opacity: .8; }
   .pulse { animation: pulse-glow 2s infinite; }
 </style>

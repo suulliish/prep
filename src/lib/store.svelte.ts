@@ -27,12 +27,14 @@ function load(): Save {
 
 export type Screen =
   | { name: 'hub' }
-  | { name: 'session'; block: 'warmup' | 'new' | 'mixed' | 'extra' | 'boss' }
+  | { name: 'session'; block: 'warmup' | 'new' | 'mixed' | 'extra' | 'boss' | 'repair' }
   | { name: 'lesson'; skill: string }
   | { name: 'summary' }
   | { name: 'diagnostic' }
   | { name: 'album' }
-  | { name: 'sound' };
+  | { name: 'sound' }
+  | { name: 'commander' }
+  | { name: 'playtime' };
 
 export const game = $state({
   save: load(),
@@ -62,4 +64,18 @@ export function levelOf(xp: number) {
   let lvl = 1, need = 100, left = xp;
   while (left >= need) { left -= need; lvl++; need = Math.round(need * 1.15); }
   return { lvl, into: left, need };
+}
+
+// PIN командира хранится как SHA-256 (не в открытом виде)
+export async function hashPin(pin: string) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('razlom:' + pin));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function downloadSave() {
+  const blob = new Blob([exportSave()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `razlom-progress-${game.day}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }

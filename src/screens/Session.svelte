@@ -10,7 +10,7 @@
   import { audio } from '../lib/audio';
   import { sparksAt, floatText, centerOf, flash } from '../ui/fx.svelte';
 
-  type Block = 'warmup' | 'new' | 'mixed' | 'extra' | 'boss';
+  type Block = 'warmup' | 'new' | 'mixed' | 'extra' | 'boss' | 'repair';
   let { block }: { block: Block } = $props();
 
   const plan = ensurePlan();
@@ -25,9 +25,10 @@
       .map(d => d.id);
     return [...new Set([...learning, ...weak])].slice(0, 5);
   }
-  const skills = block === 'extra' ? extraSkills() : pb?.skills ?? [];
-  const total = block === 'extra' ? 8 : pb?.items ?? 8;
-  const TITLE: Record<Block, string> = { warmup: 'Глитч-мобтар шабуылы', new: 'Жаңа миссия', mixed: 'Аралас шайқас', extra: 'Қосымша тапсырма', boss: 'Босс' };
+  const broken = game.save.repairShop.filter(r => !r.fixed);
+  const skills = block === 'extra' ? extraSkills() : block === 'repair' ? [...new Set(broken.map(r => r.skill))].slice(0, 5) : pb?.skills ?? [];
+  const total = block === 'extra' ? 8 : block === 'repair' ? Math.min(8, broken.length + 1) : pb?.items ?? 8;
+  const TITLE: Record<Block, string> = { warmup: 'Глитч-мобтар шабуылы', new: 'Жаңа миссия', mixed: 'Аралас шайқас', extra: 'Қосымша тапсырма', boss: 'Босс', repair: 'Шеберхана: жөндеу' };
 
   let idx = $state(0);
   let item = $state<Item | null>(null);
@@ -66,7 +67,7 @@
       else if (phase === 'feedback' && e.key === 'Enter') next();
     };
     addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
+    return () => { removeEventListener('keydown', onKey); W.world?.clearMob(); };
   });
 
   function pick(i: number) { if (phase === 'feedback') return; picked = i; phase = 'confidence'; audio.play('click'); }
@@ -87,7 +88,7 @@
     if (!honest && hintLevel < 4) honestAll = false;
     const events = recordAttempt(game.save, {
       at: Date.now(), day: game.day, skill: item.skill, source: item.source, correct, confidence,
-      hintLevel, honest, timeMs: Math.round(timeMs), tag: item.choices[picked].tag, mode: block === 'new' ? 'practice' : block === 'extra' ? 'extra' : block === 'boss' ? 'boss' : block === 'warmup' ? 'warmup' : 'mixed',
+      hintLevel, honest, timeMs: Math.round(timeMs), tag: item.choices[picked].tag, mode: block === 'new' ? 'practice' : block === 'extra' ? 'extra' : block === 'boss' ? 'boss' : block === 'warmup' ? 'warmup' : block === 'repair' ? 'practice' : 'mixed',
     });
     lastCorrect = correct; phase = 'feedback';
     await tick();
@@ -103,6 +104,7 @@
       bitText = hintLevel ? 'Дұрыс! Кеңеспен болса да — жақсы.' : combo >= 3 ? 'Керемет серия!' : 'Дұрыс!';
       bitMood = combo >= 3 ? 'wow' : 'happy';
       if (battle) { mobHp--; W.world?.heroAttack(combo >= 3); }
+      if (block === 'repair' && hintLevel === 0) { const r = game.save.repairShop.find(x => !x.fixed && x.skill === item!.skill); if (r) { r.fixed = true; floatText('ЖӨНДЕЛДІ', at.x, at.y - 50, '#5ce39c'); } }
       if (confidence === 'unsure') bitText += ' Білмеймін дедің, бірақ таптың — демек, түсінік бар.';
     } else {
       combo = 0;
@@ -112,7 +114,7 @@
       const m = mistakeText(item.choices[picked].tag);
       bitText = m.kz; bitMood = 'think';
       if (confidence === 'sure') bitText = 'Сенімді едің, бірақ қателік бар — дәл осы жерді түсінейік. ' + m.kz;
-      game.save.repairShop.push({ source: item.source, skill: item.skill, tag: item.choices[picked].tag, addedDay: game.day });
+      if (block !== 'repair') game.save.repairShop.push({ source: item.source, skill: item.skill, tag: item.choices[picked].tag, addedDay: game.day });
     }
     for (const ev of events) {
       if (ev === 'learned') { audio.play('levelup'); floatText('ҮЙРЕНДІ!', innerWidth / 2, innerHeight * 0.3, '#3ff0ff', true); sparksAt(innerWidth / 2, innerHeight * 0.3, ['#3ff0ff', '#b58cff'], 70, 10); W.world?.celebrate(); bitText = `«${skillTitle(item.skill).kz}» — үйрендің! Ертең тексереміз: өтсең, кристалға айналады.`; bitMood = 'wow'; }
@@ -136,14 +138,14 @@
       bitText = 'Кейбір жауаптар тым жылдам (кездейсоқ) болды — бұл тапсырма есептелмеді. Келесіде асықпа!'; bitMood = 'sad';
       phase = 'feedback'; item = null; setTimeout(() => go({ name: 'hub' }), 3500); return;
     }
-    completeBlock(b as any);
+    if (block !== 'repair') completeBlock(b as any); else persist();
     if (battle && W.world) {
       if (mobHp <= 0 || block !== 'warmup') { await W.world.killMob(); audio.play('chest'); await W.world.openChest(); }
       else { await W.world.killMob(); }
     }
     const rec = dayRec();
     audio.play(block === 'extra' ? 'energy' : 'mission');
-    floatText(block === 'extra' ? '+15 мин' : `${rec.minutesToday} мин`, innerWidth / 2, innerHeight * 0.4, '#ffc94a', true);
+    if (block !== 'repair') floatText(block === 'extra' ? '+15 мин' : `${rec.minutesToday} мин`, innerWidth / 2, innerHeight * 0.4, '#ffc94a', true);
     go({ name: 'hub' });
   }
 

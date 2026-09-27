@@ -18,6 +18,7 @@ export interface World {
   spawnMob(hp: number, kind?: number): void;
   hitMob(crit?: boolean): void;
   killMob(): Promise<void>;
+  clearMob(): void;
   openChest(): Promise<void>;
   bitMood(m: BitMood): void;
   celebrate(color?: number): void;
@@ -415,6 +416,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
         mob.dying = 0.5; setTimeout(res, 550);
       });
     },
+    clearMob() { if (mob) { ship.remove(mob.g); mob = null; } chest.visible = false; },
     openChest() {
       return new Promise(res => {
         chest.visible = true; chest.scale.setScalar(0.01); chestOpen = false;

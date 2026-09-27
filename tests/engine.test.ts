@@ -81,3 +81,15 @@ describe('заработок', () => {
     expect(isHonest(3000, 0)).toBe(false); expect(isHonest(12000, 4)).toBe(false); expect(isHonest(12000, 2)).toBe(true);
   });
 });
+
+import { streak } from '../src/engine/streak';
+describe('серия дней', () => {
+  it('выходные не рвут серию, исключение засчитывается, пропуск съедает заморозку', () => {
+    const s = newSave();
+    s.attempts.push(att({ day: '2026-10-12' }));
+    for (const d of ['2026-10-12', '2026-10-13', '2026-10-15', '2026-10-16', '2026-10-19']) s.days[d] = { ...blankDay(d), planShare: 1 };
+    s.days['2026-10-20'] = { ...blankDay('2026-10-20'), exception: 'sick' };
+    const r = streak(s, '2026-10-20');
+    expect(r.days).toBe(6); expect(r.freezesLeft).toBe(1); // 14-е пропущено → заморозка
+  });
+});
