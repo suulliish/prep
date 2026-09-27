@@ -46,7 +46,7 @@
 html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink); font-family: var(--txt); font-size: var(--fs-m); }
 body { -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
 #app { min-height: 100%; }
-h1, h2, h3 { font-family: var(--px); font-weight: 400; letter-spacing: .02em; margin: 0; text-wrap: balance; }
+h1, h2, h3 { font-family: var(--txt); font-weight: 800; letter-spacing: .01em; margin: 0; text-wrap: balance; }
 p { margin: 0; line-height: 1.5; }
 
 /* ---------- Кнопки ---------- */
@@ -81,8 +81,10 @@ p { margin: 0; line-height: 1.5; }
 }
 .panel.glow { border-color: var(--code); box-shadow: inset 0 0 24px #3ff0ff22; }
 
-.label { font-family: var(--px); font-size: var(--fs-s); color: var(--dim); letter-spacing: .08em; text-transform: uppercase; }
-.num { font-family: var(--px); font-variant-numeric: tabular-nums; }
+.label { font-family: var(--txt); font-weight: 800; font-size: var(--fs-xs); color: var(--dim); letter-spacing: .12em; text-transform: uppercase; }
+/* пиксельный шрифт — только крупные цифры и знаки (кратно 10px, иначе размывается) */
+.px { font-family: var(--px); font-weight: 400; }
+.num { font-variant-numeric: tabular-nums; font-weight: 800; }
 
 /* ---------- Появление ---------- */
 @keyframes pop-in { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }

@@ -1,16 +1,44 @@
 <script lang="ts">
-  import Home from './screens/Home.svelte';
+  import { onMount } from 'svelte';
+  import { createWorld } from './three/world';
+  import { W } from './lib/world.svelte';
+  import { game } from './lib/store.svelte';
+  import FxLayer from './ui/FxLayer.svelte';
+  import Hub from './screens/Hub.svelte';
+  import Session from './screens/Session.svelte';
+  import Lesson from './screens/Lesson.svelte';
+  import Summary from './screens/Summary.svelte';
+  import Diagnostic from './screens/Diagnostic.svelte';
   import SoundLab from './screens/SoundLab.svelte';
-  let screen = $state<'home' | 'sound'>('home');
+
+  let canvas: HTMLCanvasElement;
+  onMount(() => {
+    W.world = createWorld(canvas, { reduceMotion: matchMedia('(prefers-reduced-motion: reduce)').matches });
+    return () => W.world?.dispose();
+  });
 </script>
 
-<svelte:head>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik:wght@400;500;700&display=swap" />
-</svelte:head>
+<canvas bind:this={canvas} class="world" class:dim={W.dim} aria-label="Корабль Разлом"></canvas>
+<div class="screen-host">
+  {#key game.screen.name}
+    <div class="screen glitch-in">
+      {#if game.screen.name === 'hub'}<Hub />
+      {:else if game.screen.name === 'session'}<Session block={game.screen.block} />
+      {:else if game.screen.name === 'lesson'}<Lesson skill={game.screen.skill} />
+      {:else if game.screen.name === 'summary'}<Summary />
+      {:else if game.screen.name === 'diagnostic'}<Diagnostic />
+      {:else if game.screen.name === 'sound'}<SoundLab back={() => (game.screen = { name: 'hub' })} />
+      {/if}
+    </div>
+  {/key}
+</div>
+<FxLayer />
 
-{#if screen === 'home'}
-  <Home go={(s) => (screen = s)} />
-{:else}
-  <SoundLab back={() => (screen = 'home')} />
-{/if}
+<style>
+  .world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; transition: filter .5s, opacity .5s; touch-action: none; }
+  .world.dim { filter: blur(6px) brightness(.45) saturate(.7); }
+  .screen-host { position: relative; min-height: 100vh; min-height: 100dvh; pointer-events: none; }
+  .screen { min-height: 100vh; min-height: 100dvh; }
+  /* экран пропускает касания к 3D-миру, кроме панелей и кнопок */
+  .screen :global(:is(.panel, button, input, label, a, .pe)) { pointer-events: auto; }
+</style>
