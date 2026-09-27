@@ -10,6 +10,10 @@
   import { audio } from '../lib/audio';
   import { currentWorld } from '../lib/look';
   import { react } from '../lib/voice';
+  // @ts-ignore
+  import { LESSONS } from '../../content/lessons.mjs';
+  // шпаргалка «Есте сақта» из урока темы — вернуться к правилу после ошибки
+  const ruleOf = (id: string) => ((LESSONS as Record<string, any[]>)[id] ?? []).find(s => s.type === 'rule') as { lines: string[] } | undefined;
   import { sparksAt, floatText, centerOf, flash, sceneCenter } from '../ui/fx.svelte';
 
   type Block = 'warmup' | 'new' | 'mixed' | 'extra' | 'boss' | 'repair';
@@ -247,6 +251,13 @@
           <summary>Шешуі</summary>
           <p>{item.sol.kz}</p>
         </details>
+        {@const rule = ruleOf(item.skill)}
+        {#if rule}
+          <details class="sol rule">
+            <summary>Ережені еске түсір (сабақтан)</summary>
+            {#each rule.lines as l}<p>★ {l}</p>{/each}
+          </details>
+        {/if}
       {/if}
 
       <div class="actions">
@@ -299,6 +310,7 @@
   .sol { background: var(--deep); border: 1px dashed var(--line-hi); padding: 10px 12px; border-radius: 6px; }
   .sol summary { cursor: pointer; font-weight: 800; color: var(--code); }
   .sol p { margin-top: 8px; line-height: 1.6; }
+  .sol.rule { border-color: var(--gold-deep); } .sol.rule summary { color: var(--gold); }
   .actions { display: flex; justify-content: flex-end; gap: 8px; }
   @media (max-width: 480px) { .q { font-size: 18px; } .formula { font-size: 19px; } }
 </style>
