@@ -1,17 +1,104 @@
+/* Дизайн-система «Разлом»: голографическая консоль корабля.
+   Тема одна (ночной космос) — сознательно. Шрифты с казахскими буквами: Tiny5 (пиксельный, заголовки и цифры),
+   Nunito (основной текст). Шрифты собраны в сайт — работают без интернета. */
+@import '@fontsource/tiny5/400.css';
+@import '@fontsource/nunito/500.css';
+@import '@fontsource/nunito/700.css';
+@import '@fontsource/nunito/800.css';
+
 :root {
   color-scheme: dark;
-  --void: #0b0f24; --panel: #141a3a; --panel-2: #1c2350; --line: #2e3875;
-  --ink: #eef0ff; --ink-dim: #a9b0e0; --cyan: #3ff0ff; --magenta: #ff4fb8; --gold: #ffc94a; --ok: #57e38b;
-  --px: "Press Start 2P", ui-monospace, monospace;
-  --txt: "Rubik", system-ui, sans-serif;
+  /* поверхности */
+  --void: #090c1d;
+  --deep: #0f1430;
+  --panel: #141b3f;
+  --panel-hi: #1c2556;
+  --line: #2c3877;
+  --line-hi: #4353a8;
+  /* текст */
+  --ink: #f1f3ff;
+  --dim: #a3abdd;
+  --faint: #6d77b3;
+  /* смысловые цвета */
+  --code: #3ff0ff;        /* энергия Кода, главный акцент */
+  --code-deep: #0d5f6c;
+  --glitch: #ff4fb8;      /* враг, глитч */
+  --gold: #ffc94a;        /* награды, игровое время */
+  --gold-deep: #6b4a0a;
+  --ok: #5ce39c;
+  --ok-deep: #135a37;
+  --miss: #ff9a6b;        /* ошибка — тёплый, не «наказывающий» */
+  --miss-deep: #5f2a16;
+  --crystal: #b58cff;
+  /* типографика */
+  --px: 'Tiny5', ui-monospace, monospace;
+  --txt: 'Nunito', system-ui, sans-serif;
+  --fs-xs: 12px; --fs-s: 14px; --fs-m: 16px; --fs-l: 20px; --fs-xl: 26px; --fs-xxl: 36px;
+  /* форма */
+  --cut: 12px;            /* срезанный угол панелей */
+  --r: 8px;
+  --shadow: 0 6px 0 #05071399, 0 18px 40px #0008;
+  --ease-out: cubic-bezier(.2, .9, .25, 1.15);
 }
+
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink); font-family: var(--txt); }
-button { font: inherit; font-weight: 700; color: var(--ink); background: var(--panel-2); border: 2px solid var(--line);
-  border-bottom-width: 5px; border-radius: 6px; padding: 10px 14px; cursor: pointer; }
-button:hover { border-color: var(--cyan); }
-button:active { transform: translateY(2px); border-bottom-width: 3px; }
-button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
-.card { background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 14px; }
-.label { font-family: var(--px); font-size: 9px; color: var(--ink-dim); letter-spacing: .04em; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink); font-family: var(--txt); font-size: var(--fs-m); }
+body { -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
+#app { min-height: 100%; }
+h1, h2, h3 { font-family: var(--px); font-weight: 400; letter-spacing: .02em; margin: 0; text-wrap: balance; }
+p { margin: 0; line-height: 1.5; }
+
+/* ---------- Кнопки ---------- */
+.btn {
+  --c: var(--panel-hi); --b: var(--line-hi); --t: var(--ink);
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font: 800 var(--fs-m)/1.1 var(--txt); color: var(--t); background: var(--c);
+  border: 2px solid var(--b); border-bottom-width: 6px; border-radius: var(--r);
+  padding: 12px 18px; cursor: pointer; user-select: none; min-height: 48px;
+  transition: transform .08s, border-color .15s, filter .15s, background .15s;
+}
+.btn:hover { filter: brightness(1.12); }
+.btn:active { transform: translateY(3px); border-bottom-width: 3px; }
+.btn:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+.btn:disabled { opacity: .45; cursor: default; filter: none; transform: none; }
+.btn.primary { --c: #11707f; --b: var(--code); }
+.btn.gold { --c: #8a5d0c; --b: var(--gold); }
+.btn.ok { --c: var(--ok-deep); --b: var(--ok); }
+.btn.ghost { --c: transparent; --b: var(--line); }
+.btn.big { font-size: var(--fs-l); padding: 16px 24px; min-height: 60px; }
+.btn.block { width: 100%; }
+
+/* ---------- Панель-голограмма ---------- */
+.panel {
+  position: relative; background: linear-gradient(180deg, var(--panel-hi), var(--panel) 40%);
+  border: 2px solid var(--line); padding: 16px;
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+}
+.panel::after { /* скан-линии, очень слабые */
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px);
+}
+.panel.glow { border-color: var(--code); box-shadow: inset 0 0 24px #3ff0ff22; }
+
+.label { font-family: var(--px); font-size: var(--fs-s); color: var(--dim); letter-spacing: .08em; text-transform: uppercase; }
+.num { font-family: var(--px); font-variant-numeric: tabular-nums; }
+
+/* ---------- Появление ---------- */
+@keyframes pop-in { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes glitch-in {
+  0% { opacity: 0; transform: translateX(-6px); filter: hue-rotate(90deg); clip-path: inset(0 0 60% 0); }
+  30% { opacity: 1; transform: translateX(4px); clip-path: inset(40% 0 0 0); }
+  60% { transform: translateX(-2px); clip-path: inset(0 0 20% 0); filter: none; }
+  100% { transform: none; clip-path: inset(0); }
+}
+@keyframes float-up { from { opacity: 1; transform: translate(-50%, 0) scale(1); } to { opacity: 0; transform: translate(-50%, -60px) scale(1.3); } }
+@keyframes shake { 0%, 100% { transform: none; } 20% { transform: translate(-4px, 2px); } 40% { transform: translate(4px, -2px); } 60% { transform: translate(-3px, -1px); } 80% { transform: translate(2px, 1px); } }
+@keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 0 0 #3ff0ff55; } 50% { box-shadow: 0 0 0 10px #3ff0ff00; } }
+.appear { animation: pop-in .35s var(--ease-out) both; }
+.glitch-in { animation: glitch-in .45s steps(6) both; }
+.shake { animation: shake .35s; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

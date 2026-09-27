@@ -9,20 +9,20 @@ const S = [];
 const s = (id, cat, grade, kz, ru, pre = [], opt = {}) => S.push({ id, cat, grade, title: { kz, ru }, prereqs: pre, templates: opt.t || [], figure: !!opt.fig, weight: W[cat] });
 
 // ---- Натуральные числа, действия ----
-s('nat.place_value', 'C', 5, 'Натурал сандар, разрядтар', 'Натуральные числа, разряды');
-s('nat.ops', 'C', 5, 'Натурал сандармен амалдар', 'Действия с натуральными числами', ['nat.place_value']);
-s('nat.order_ops', 'C', 5, 'Амалдар реті', 'Порядок действий', ['nat.ops']);
-s('nat.powers', 'C', 5, 'Дәреже: квадрат және куб', 'Степень: квадрат и куб', ['nat.ops']);
+s('nat.place_value', 'C', 5, 'Натурал сандар, разрядтар', 'Натуральные числа, разряды', [], { t: ['nat.write_number'] });
+s('nat.ops', 'C', 5, 'Натурал сандармен амалдар', 'Действия с натуральными числами', ['nat.place_value'], { t: ['nat.divide_remainder'] });
+s('nat.order_ops', 'C', 5, 'Амалдар реті', 'Порядок действий', ['nat.ops'], { t: ['nat.order_of_ops'] });
+s('nat.powers', 'C', 5, 'Дәреже: квадрат және куб', 'Степень: квадрат и куб', ['nat.ops'], { t: ['nat.powers_value'] });
 
 // ---- Делимость, свойства чисел ----
-s('div.rules', 'D', 5, 'Бөлінгіштік белгілері', 'Признаки делимости', ['nat.ops']);
-s('div.primes', 'D', 5, 'Жай және құрама сандар', 'Простые и составные числа', ['div.rules']);
-s('div.factorization', 'D', 5, 'Жай көбейткіштерге жіктеу', 'Разложение на простые множители', ['div.primes']);
-s('div.gcd', 'D', 5, 'Ең үлкен ортақ бөлгіш (ЕҮОБ)', 'НОД', ['div.factorization']);
-s('div.lcm', 'D', 5, 'Ең кіші ортақ еселік (ЕКОЕ)', 'НОК', ['div.factorization']);
-s('div.gcd_lcm_word', 'D', 5, 'ЕҮОБ пен ЕКОЕ-ге мәтінді есептер', 'Задачи на НОД и НОК', ['div.gcd', 'div.lcm']);
+s('div.rules', 'D', 5, 'Бөлінгіштік белгілері', 'Признаки делимости', ['nat.ops'], { t: ['div.which_divisible'] });
+s('div.primes', 'D', 5, 'Жай және құрама сандар', 'Простые и составные числа', ['div.rules'], { t: ['div.which_prime'] });
+s('div.factorization', 'D', 5, 'Жай көбейткіштерге жіктеу', 'Разложение на простые множители', ['div.primes'], { t: ['div.factorize'] });
+s('div.gcd', 'D', 5, 'Ең үлкен ортақ бөлгіш (ЕҮОБ)', 'НОД', ['div.factorization'], { t: ['div.gcd_pair'] });
+s('div.lcm', 'D', 5, 'Ең кіші ортақ еселік (ЕКОЕ)', 'НОК', ['div.factorization'], { t: ['div.lcm_pair'] });
+s('div.gcd_lcm_word', 'D', 5, 'ЕҮОБ пен ЕКОЕ-ге мәтінді есептер', 'Задачи на НОД и НОК', ['div.gcd', 'div.lcm'], { t: ['div.gcd_lcm_story'] });
 s('div.count_multiples', 'D', 5, 'Еселіктер санын табу', 'Сколько чисел кратны…', ['div.rules'], { t: ['logic.count_after_removal'] });
-s('div.star_digit', 'D', 5, 'Жұлдызшаның орнына цифр қою', 'Цифра вместо звёздочки', ['div.rules']);
+s('div.star_digit', 'D', 5, 'Жұлдызшаның орнына цифр қою', 'Цифра вместо звёздочки', ['div.rules'], { t: ['div.star_digit_9'] });
 s('div.powers_count', 'D', 5, 'Квадраттар мен кубтар саны', 'Сколько квадратов/кубов', ['nat.powers'], { t: ['div.count_powers'] });
 s('div.last_digit', 'D', 'olymp', 'Дәреженің соңғы цифры', 'Последняя цифра степени', ['nat.powers'], { t: ['div.last_digit_power'] });
 s('div.trailing_zeros', 'D', 'olymp', 'Көбейтіндінің соңындағы нөлдер', 'Нули в конце произведения', ['div.factorization']);

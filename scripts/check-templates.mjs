@@ -15,7 +15,7 @@ for (const t of templates) {
   for (let i = 0; i < N; i++) {
     let it;
     try { it = t.gen(r); } catch (e) { note('throws: ' + e.message, null); continue; }
-    stems.add(it.kz + (it.figure ? JSON.stringify(it.figure) : ""));
+    stems.add(it.kz + (it.figure ? JSON.stringify(it.figure) : "") + it.choices.map(c => c.text).join("|"));
     if (!it.kz || !it.ru) note('empty text', it);
     if (!Array.isArray(it.choices) || it.choices.length !== 5) note('not 5 choices', it);
     const texts = it.choices.map(c => c.text);
