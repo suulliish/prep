@@ -1,0 +1,9 @@
+{
+  "name": "prep",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check:templates": "node scripts/check-templates.mjs 2000",
+    "samples": "node scripts/sample-templates.mjs 3"
+  }
+}
