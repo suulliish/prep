@@ -10,6 +10,7 @@
   import { blankSkill } from '../engine/progress';
   import { audio } from '../lib/audio';
   import { currentWorld } from '../lib/look';
+  import { react } from '../lib/voice';
   import { sparksAt, centerOf, floatText, flash, sceneCenter } from '../ui/fx.svelte';
   // @ts-ignore
   import { LESSONS } from '../../content/lessons.mjs';
@@ -65,6 +66,9 @@
     ready = ['say', 'goal', 'rule'].includes(s.type) || (s.type === 'example' && s.frames.length <= 1);
     frame = 0; pick = null; showSkip = false; bugFound = false;
     clearTimeout(skipTimer);
+    if (s.type === 'faded') setTimeout(() => react('self'), 400);
+    if (s.type === 'bug') setTimeout(() => react('bug'), 400);
+    if (s.type === 'why') setTimeout(() => react('think'), 400);
     if (['widget', 'blitz'].includes(s.type)) skipTimer = window.setTimeout(() => (showSkip = true), s.type === 'blitz' ? 5000 : 25000);
     // на телефоне карточка ниже сцены — прокручиваем к ней
     requestAnimationFrame(() => { if (i > 0 && cardEl && cardEl.getBoundingClientRect().top > innerHeight * 0.6) cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
@@ -95,10 +99,10 @@
     if (step.type === 'final' && won) return;
     pick = k;
     const ok = k === step.answer;
-    if (step.type === 'predict') { audio.play(ok ? 'correct' : 'hint'); reward(ok ? 3 : 0); return; }
+    if (step.type === 'predict') { audio.play(ok ? 'correct' : 'hint'); if (ok) react('correct'); reward(ok ? 3 : 0); return; }
     if (step.type === 'final') {
       if (!ok) { audio.play('wrong'); flash('#ff9a6b'); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake'); return; }
-      won = true; hp = 0; audio.play('crit');
+      won = true; hp = 0; audio.play('crit'); react('win');
       W.world?.heroAttack(true);
       await W.world?.killMob();
       audio.play('chest'); W.world?.openChest(); W.world?.celebrate(0xffc94a); W.world?.bitMood('happy');
@@ -106,7 +110,7 @@
       sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#ffc94a', '#3ff0ff', '#b58cff'], 90, 10);
       reward(20, true); return;
     }
-    audio.play(ok ? 'correct' : 'wrong'); reward(ok ? 5 : 0);
+    audio.play(ok ? 'correct' : 'wrong'); react(ok ? 'correct' : 'wrong'); reward(ok ? 5 : 0);
   }
 
   function next() {

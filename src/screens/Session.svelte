@@ -9,6 +9,7 @@
   import { isHonest, addMasteryBonus, settleDay } from '../engine/planner';
   import { audio } from '../lib/audio';
   import { currentWorld } from '../lib/look';
+  import { react } from '../lib/voice';
   import { sparksAt, floatText, centerOf, flash, sceneCenter } from '../ui/fx.svelte';
 
   type Block = 'warmup' | 'new' | 'mixed' | 'extra' | 'boss' | 'repair';
@@ -42,6 +43,7 @@
   let lastCorrect = $state(false);
   let combo = $state(0);
   let honestAll = $state(true);
+  let answered = 0, guessed = 0; // ответы быстрее 5 с без подсказок = угадывание
   let twin = $state(false);
   let showSol = $state(false);
   let bitText = $state('');
@@ -64,6 +66,7 @@
     if (!skills.length) { go({ name: 'hub' }); return; }
     W.dim = false;
     W.world?.setMode('battle'); W.world?.spawnMob(mobHp, currentWorld().mob);
+    if (block === 'boss') setTimeout(() => react('boss'), 600);
     audio.setMood(block === 'new' ? 'focus' : 'battle');
     nextItem();
     const onKey = (e: KeyboardEvent) => {
@@ -90,7 +93,8 @@
     const timeMs = performance.now() - startAt;
     const correct = picked === item.answer;
     const honest = isHonest(timeMs, hintLevel);
-    if (!honest && hintLevel < 4) honestAll = false;
+    answered++;
+    if (!honest && hintLevel < 4) { honestAll = false; guessed++; }
     const events = recordAttempt(game.save, {
       at: Date.now(), day: game.day, skill: item.skill, source: item.source, correct, confidence,
       hintLevel, honest, timeMs: Math.round(timeMs), tag: item.choices[picked].tag, mode: block === 'new' ? 'practice' : block === 'extra' ? 'extra' : block === 'boss' ? 'boss' : block === 'warmup' ? 'warmup' : block === 'repair' ? 'practice' : 'mixed',
@@ -103,6 +107,7 @@
       const xp = hintLevel >= 4 ? 0 : hintLevel > 0 ? 4 : 10 + Math.min(combo - 1, 5) * 2;
       game.save.xp += xp;
       audio.play(combo >= 3 ? 'crit' : 'correct'); if (combo > 1) audio.play('combo', { combo });
+      if (combo === 3 || combo === 6) react('combo'); else react('correct', 0.4);
       sparksAt(at.x, at.y, ['#5ce39c', '#3ff0ff', '#ffc94a'], combo >= 3 ? 50 : 26);
       if (xp) floatText(`+${xp} XP`, at.x, at.y - 20, '#ffc94a', combo >= 3);
       if (combo >= 3) floatText(`КОМБО ×${combo}`, sceneCenter(0.25).x, sceneCenter(0.25).y, '#3ff0ff', true);
@@ -114,7 +119,7 @@
     } else {
       combo = 0;
       game.save.xp += 2;
-      audio.play('wrong'); flash('#ff9a6b');
+      audio.play('wrong'); flash('#ff9a6b'); react('wrong', 0.6);
       cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake');
       const m = mistakeText(item.choices[picked].tag);
       bitText = m.kz; bitMood = 'think';
@@ -122,8 +127,8 @@
       if (block !== 'repair') game.save.repairShop.push({ source: item.source, skill: item.skill, tag: item.choices[picked].tag, addedDay: game.day });
     }
     for (const ev of events) {
-      if (ev === 'learned') { audio.play('levelup'); floatText('ҮЙРЕНДІ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#3ff0ff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#3ff0ff', '#b58cff'], 70, 10); W.world?.celebrate(); bitText = `«${skillTitle(item.skill).kz}» — үйрендің! Ертең тексереміз: өтсең, кристалға айналады.`; bitMood = 'wow'; }
-      if (ev === 'crystal') { audio.play('crystal'); floatText('КРИСТАЛЛ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#b58cff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#b58cff', '#ffffff', '#3ff0ff'], 90, 11); bitText = `«${skillTitle(item.skill).kz}» кристалға айналды — енді бұл тақырып сенікі!`; bitMood = 'wow'; }
+      if (ev === 'learned') { react('learned'); audio.play('levelup'); floatText('ҮЙРЕНДІ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#3ff0ff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#3ff0ff', '#b58cff'], 70, 10); W.world?.celebrate(); bitText = `«${skillTitle(item.skill).kz}» — үйрендің! Ертең тексереміз: өтсең, кристалға айналады.`; bitMood = 'wow'; }
+      if (ev === 'crystal') { react('crystal'); audio.play('crystal'); floatText('КРИСТАЛЛ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#b58cff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#b58cff', '#ffffff', '#3ff0ff'], 90, 11); bitText = `«${skillTitle(item.skill).kz}» кристалға айналды — енді бұл тақырып сенікі!`; bitMood = 'wow'; }
       if (ev === 'learned' || ev === 'crystal') {
         const rec = dayRec(), add = addMasteryBonus(rec, `${ev === 'crystal' ? 'Проверка через день пройдена' : 'Тема освоена'}: ${skillTitle(item.skill).ru}`);
         if (add) {
@@ -165,6 +170,11 @@
   async function finish() {
     if (block === 'boss') return finishBoss();
     const b = block;
+    // план дня засчитывается только за честную работу: если больше 30% ответов — наугад, блок не засчитан
+    if (['warmup', 'new', 'mixed'].includes(block) && answered >= 3 && guessed / answered > 0.3) {
+      bitText = 'Көп жауап тым жылдам берілді (5 секундтан аз) — бұл кездейсоқ таңдауға ұқсайды. Блок есептелмеді: асықпай қайта өт, ойлануға уақыт жеткілікті!'; bitMood = 'sad';
+      phase = 'feedback'; item = null; persist(); setTimeout(() => go({ name: 'hub' }), 4500); return;
+    }
     if (block === 'extra' && !honestAll) {
       bitText = 'Кейбір жауаптар тым жылдам (кездейсоқ) болды — бұл тапсырма есептелмеді. Келесіде асықпа!'; bitMood = 'sad';
       phase = 'feedback'; item = null; setTimeout(() => go({ name: 'hub' }), 3500); return;
@@ -185,23 +195,20 @@
 
 <div class="stage">
   <div class="top panel pe">
-    <button class="btn ghost small" onclick={() => go({ name: 'hub' })} aria-label="Артқа">←</button>
-    <div class="title">
-      <b>{TITLE[block]}</b>
-      {#if item}<small>{skillTitle(item.skill).kz}</small>{/if}
-    </div>
-    <div class="segs" aria-label="Прогресс">
-      {#each Array(total) as _, i}<i class:on={i < idx} class:cur={i === idx}></i>{/each}
-    </div>
-  </div>
-
-  {#if battle}
-    <div class="mobhp pe" aria-label="Мобтың күші">
-      <span class="label">ГЛИТЧ</span>
-      <div class="hpbar"><i style="width:{Math.max(0, mobHp / hpMax) * 100}%"></i></div>
+    <div class="row1">
+      <button class="btn ghost small" onclick={() => go({ name: 'hub' })} aria-label="Артқа">←</button>
+      <div class="title">
+        <b>{TITLE[block]}</b>
+        {#if item}<small>{skillTitle(item.skill).kz}</small>{/if}
+      </div>
       {#if combo >= 2}<span class="combo num">×{combo}</span>{/if}
     </div>
-  {/if}
+    <div class="row2">
+      <span class="tag">ГЛИТЧ</span>
+      <div class="hpbar" aria-label="Мобтың күші"><i style="width:{Math.max(0, mobHp / hpMax) * 100}%"></i></div>
+      <span class="cnt num">{Math.min(idx + 1, total)}/{total}</span>
+    </div>
+  </div>
 
   <div class="stage-gap grow passthrough"></div>
 
@@ -210,7 +217,7 @@
       <p class="q">{#each item.kz.split('\n') as line, i}{#if i}<br />{/if}<span class:formula={i > 0}>{line}</span>{/each}</p>
       {#if item.figure?.svg}<div class="fig">{@html item.figure.svg}</div>{/if}
 
-      <div class="choices" class:long={item.choices.some(c => c.text.length > 7)}>
+      <div class="choices" class:long={item.choices.some(c => c.text.length > 7)} class:numeric={item.choices.every(c => /^[\d\s,.:−\-+/()·²³]+$/.test(c.text))}>
         {#each item.choices as c, i}
           <button bind:this={choiceEls[i]} class="choice"
             class:picked={picked === i}
@@ -256,17 +263,15 @@
 </div>
 
 <style>
-  .top { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
+  .top { display: grid; gap: 8px; padding: 8px 12px 10px; }
+  .row1, .row2 { display: flex; align-items: center; gap: 10px; }
+  .tag { font: 800 11px var(--txt); letter-spacing: .1em; color: var(--void); background: var(--glitch); padding: 2px 6px; border-radius: 3px; }
+  .cnt { font-size: 14px; color: var(--dim); }
   .btn.small { min-height: 40px; padding: 6px 12px; }
   .title { flex: 1; display: grid; min-width: 0; }
   .title b { font-size: 18px; font-weight: 800; }
   .title small { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .segs { display: flex; gap: 3px; }
-  .segs i { width: 10px; height: 14px; background: #070a1a; border: 1px solid var(--line); }
-  .segs i.on { background: var(--code); border-color: var(--code); }
-  .segs i.cur { border-color: var(--gold); }
-  .mobhp { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #140a1dcc; border: 1px solid #5c1d45; border-radius: 8px; }
-  .hpbar { flex: 1; height: 14px; background: #1b0b1f; border: 2px solid #5c1d45; }
+  .hpbar { flex: 1; height: 14px; box-shadow: 0 0 10px #ff4fb844; background: #1b0b1f; border: 2px solid #5c1d45; }
   .hpbar i { display: block; height: 100%; background: linear-gradient(90deg, var(--glitch), #ff9ad6); transition: width .4s var(--ease-out); }
   .combo { font-family: var(--px); font-weight: 400; font-size: 20px; color: var(--gold); text-shadow: 0 0 10px #ffc94a88; }
   .card { display: grid; gap: 14px; padding: 18px; }
@@ -276,6 +281,7 @@
   .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr)); gap: 8px; }
   .choices.long { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
   .choices.long .choice { font-size: 17px; }
+  .choices.numeric .ct { white-space: nowrap; }
   @media (min-width: 1000px) and (min-aspect-ratio: 23/20) { .choices.long { grid-template-columns: 1fr 1fr; } }
   .choice { display: flex; align-items: center; gap: 10px; text-align: left; font: 800 18px/1.25 var(--txt); color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-bottom-width: 5px; border-radius: var(--r); padding: 12px; cursor: pointer; min-height: 56px; transition: transform .08s, border-color .15s, background .2s; }
   .choice:hover:not(:disabled) { border-color: var(--line-hi); }
@@ -294,5 +300,5 @@
   .sol summary { cursor: pointer; font-weight: 800; color: var(--code); }
   .sol p { margin-top: 8px; line-height: 1.6; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; }
-  @media (max-width: 480px) { .q { font-size: 18px; } .formula { font-size: 19px; } .segs i { width: 7px; } }
+  @media (max-width: 480px) { .q { font-size: 18px; } .formula { font-size: 19px; } }
 </style>

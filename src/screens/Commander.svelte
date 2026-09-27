@@ -96,6 +96,7 @@
         <ul class="blocks">
           {#each plan.blocks as b}<li class:done={rec.blocksDone[b.id]}>{rec.blocksDone[b.id] ? '✓' : '○'} {BLOCK[b.id]}</li>{/each}
           <li>Доп. миссий: {rec.extraMissions} из {game.save.settings.extraMissionCap}</li>
+          {#if rec.hard}<li>Трудно сегодня: <b>{rec.hard === 'none' ? 'всё понятно' : skillDefs.find(d => d.id === rec.hard)?.title.ru}</b></li>{/if}
           {#each rec.bonuses as b}<li class="bonus">★ +{b.minutes} мин — {b.reason}</li>{/each}
         </ul>
         <p class="note">Задач сегодня: {todays.length}, верно: {todays.filter(a => a.correct).length}. Угадываний (быстрее 5 сек): <b class:warn={guesses > 2}>{guesses}</b>. «Был уверен, но ошибся»: <b>{sureWrong}</b> — это лучшие темы для разговора.</p>

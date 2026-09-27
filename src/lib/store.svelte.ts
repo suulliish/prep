@@ -44,7 +44,8 @@ export type Screen =
   | { name: 'commander' }
   | { name: 'playtime' }
   | { name: 'map' }
-  | { name: 'hero' };
+  | { name: 'hero' }
+  | { name: 'intro' };
 
 export const game = $state({
   save: load(),
@@ -53,6 +54,8 @@ export const game = $state({
 });
 
 refreshAvailability(game.save, skillDefs);
+// первый запуск — вступление-история
+if (!game.save.introSeen && !game.save.diagnosticDone) game.screen = { name: 'intro' };
 
 /** Подписчики на сохранение (облачная синхронизация, src/lib/cloud.svelte.ts). */
 export const afterPersist: (() => void)[] = [];

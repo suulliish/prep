@@ -36,6 +36,7 @@ export interface DayRecord {
   minutesWeekend: number;
   extraMissions: number;
   bonuses: { reason: string; minutes: number; mastery?: boolean }[];
+  hard?: string; // «что было трудно» из итога дня (id темы или 'none') — для командира
   exception?: 'sick' | 'holiday' | 'vacation';
   spent?: number;            // сколько минут игры уже потрачено сегодня (таймер)
 }
@@ -56,6 +57,7 @@ export interface Save {
   days: Record<string, DayRecord>;
   settings: Settings;
   diagnosticDone: boolean;
+  introSeen?: boolean;
   lastBackup?: string; // дата последней копии в файл
   updatedAt?: number;  // время последнего изменения (для облачной синхронизации)
   world?: string;          // текущий мир (content/worlds.mjs)

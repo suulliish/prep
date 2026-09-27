@@ -6,6 +6,7 @@
   import { applyLook } from './lib/look';
   import MapScreen from './screens/Map.svelte';
   import Hero from './screens/Hero.svelte';
+  import Intro from './screens/Intro.svelte';
   import FxLayer from './ui/FxLayer.svelte';
   import Hub from './screens/Hub.svelte';
   import Session from './screens/Session.svelte';
@@ -43,6 +44,7 @@
       {:else if game.screen.name === 'album'}<Album />
       {:else if game.screen.name === 'map'}<MapScreen />
       {:else if game.screen.name === 'hero'}<Hero />
+      {:else if game.screen.name === 'intro'}<Intro />
       {/if}
     </div>
   {/key}
