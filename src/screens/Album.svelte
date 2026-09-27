@@ -4,9 +4,14 @@
   import { game, go, skillDefs } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
+  // @ts-ignore
+  import { LESSONS } from '../../content/lessons.mjs';
 
   const CAT: Record<string, string> = { A: 'Теңдеулер', B: 'Мәтінді есептер', C: 'Есептеу', D: 'Бөлінгіштік', E: 'Геометрия', F: 'Пропорция', G: 'Пайыз', H: 'Заңдылық', I: 'Логика', J: 'Көрнекі логика', K: 'Координаталар' };
   let tab = $state<'cards' | 'repair'>('cards');
+  // Шпаргалка «Есте сақта» открывается после пройденного урока
+  const ruleOf = (id: string) => (game.save.skills[id]?.lessonDone ? (LESSONS as Record<string, any[]>)[id]?.find(s => s.type === 'rule') : undefined);
+  let openRule = $state<string | null>(null);
   const broken = $derived(game.save.repairShop.filter(r => !r.fixed));
   const fixed = $derived(game.save.repairShop.filter(r => r.fixed).length);
   onMount(() => { W.dim = true; audio.setMood('hub'); });
@@ -34,15 +39,22 @@
         <div class="cards">
           {#each list as d}
             {@const s = game.save.skills[d.id]}
-            <div class="card {tier(s?.status)}" title={d.title.ru}>
+            <button class="card {tier(s?.status)}" class:has-rule={!!ruleOf(d.id)} title={d.title.ru} onclick={() => { if (ruleOf(d.id)) { openRule = openRule === d.id ? null : d.id; audio.play('click'); } }}>
               <i class="gem"></i>
               <span>{s?.status === 'locked' || !s ? '???' : d.title.kz}</span>
               {#if s && s.status !== 'locked' && !d.templates.length}<small class="soon">жақында</small>{/if}
               {#if s?.status === 'learning'}<b class="bar"><i style="width:{Math.round((s.p ?? 0) * 100)}%"></i></b>{/if}
-            </div>
+              {#if ruleOf(d.id)}<small class="rule-mark">★</small>{/if}
+            </button>
           {/each}
           {#if hidden}<div class="card more"><span>+{hidden} жабық</span></div>{/if}
         </div>
+        {#if openRule && all.some(d => d.id === openRule)}
+          <div class="rule appear">
+            <b>★ {skillDefs.find(d => d.id === openRule)?.title.kz}</b>
+            {#each ruleOf(openRule)?.lines ?? [] as l}<p>{l}</p>{/each}
+          </div>
+        {/if}
       </section>
     {/each}
   {:else}
@@ -80,4 +92,10 @@
   .repair li { display: flex; gap: 10px; align-items: center; background: var(--deep); padding: 8px 10px; font-weight: 700; }
   .bolt { width: 14px; height: 14px; background: var(--glitch); clip-path: polygon(40% 0, 100% 0, 60% 45%, 90% 45%, 20% 100%, 40% 55%, 10% 55%); }
   .ok { color: var(--ok); font-weight: 800; }
+  button.card { font-family: inherit; color: inherit; text-align: left; cursor: default; }
+  button.card.has-rule { cursor: pointer; }
+  .rule-mark { position: absolute; right: 6px; bottom: 4px; color: var(--gold); }
+  .rule { display: grid; gap: 6px; margin-top: 10px; background: linear-gradient(135deg, #1a1f4a, #0d1030); border: 2px solid var(--gold); border-radius: 10px; padding: 12px 14px; }
+  .rule b { color: var(--gold); }
+  .rule p { font-weight: 800; }
 </style>

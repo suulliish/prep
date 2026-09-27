@@ -200,3 +200,23 @@ export function pct(q) {
   if (q.isFiniteDecimal()) return num(q) + '%';
   return '≈' + num(Math.round(q.n / q.d * 10) / 10) + '%';
 }
+
+// Число словами по-казахски (для озвучки): 7008012 → «жеті миллион сегіз мың он екі».
+const ONES = ['', 'бір', 'екі', 'үш', 'төрт', 'бес', 'алты', 'жеті', 'сегіз', 'тоғыз'];
+function below1000(n) {
+  const h = Math.floor(n / 100), t = Math.floor(n / 10) % 10, o = n % 10, w = [];
+  if (h) w.push(h === 1 ? 'жүз' : ONES[h] + ' жүз');
+  if (t) w.push(TENS[t]);
+  if (o) w.push(ONES[o]);
+  return w.join(' ');
+}
+export function kzWords(n) {
+  n = Math.trunc(n);
+  if (n === 0) return 'нөл';
+  if (n < 0) return 'минус ' + kzWords(-n);
+  const parts = [], m = Math.floor(n / 1e6), th = Math.floor(n / 1000) % 1000, u = n % 1000;
+  if (m) parts.push(below1000(m) + ' миллион');
+  if (th) parts.push(th === 1 ? 'мың' : below1000(th) + ' мың');
+  if (u) parts.push(below1000(u));
+  return parts.join(' ');
+}
