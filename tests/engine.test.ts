@@ -114,7 +114,25 @@ describe('новая тема только с уроком', () => {
     ];
     const save: any = { skills: {} }; refreshAvailability(save, defs);
     expect(nextSkill(save, defs)).toBe('b');
-    save.skills.b.status = 'learned';
+    save.skills.b.status = 'learned'; save.skills.b.lessonDone = true;
     expect(nextSkill(save, defs)).toBe(null);
+  });
+});
+
+import { taught } from '../src/engine/planner';
+describe('урок сначала (решение семьи 28.09.2026)', () => {
+  it('тема, которую диагностика признала знакомой, всё равно идёт через урок и не попадает в разминку до урока', () => {
+    const s = newSave(); refreshAvailability(s, defs);
+    Object.assign(s.skills.a, { status: 'learned', p: 0.95, lessonDone: false, learnedAt: '2026-10-19', due: '2026-10-20' });
+    expect(taught(s, defs, 'a')).toBe(false);
+    expect(nextSkill(s, defs)).toBe('a');
+    const plan = buildPlan(s, defs, '2026-10-20');
+    expect(plan.blocks.find(b => b.id === 'new')).toMatchObject({ skills: ['a'], lesson: true });
+    expect(plan.blocks.find(b => b.id === 'warmup')).toBeUndefined();
+    s.skills.a.lessonDone = true;
+    refreshAvailability(s, defs);
+    const plan2 = buildPlan(s, defs, '2026-10-20');
+    expect(plan2.blocks.find(b => b.id === 'warmup')?.skills).toContain('a');
+    expect(nextSkill(s, defs)).toBe('b');
   });
 });

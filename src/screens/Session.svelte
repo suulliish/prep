@@ -7,7 +7,7 @@
   import { makeItem, mistakeText, skillTitle, type Item } from '../engine/items';
   import { bankFor, bankToItem } from '../engine/bank';
   import { recordAttempt, isDone } from '../engine/progress';
-  import { isHonest, addMasteryBonus, settleDay } from '../engine/planner';
+  import { isHonest, addMasteryBonus, settleDay, taught } from '../engine/planner';
   import { audio } from '../lib/audio';
   import { currentWorld } from '../lib/look';
   import { react } from '../lib/voice';
@@ -28,14 +28,14 @@
   function extraSkills(): string[] {
     const st = game.save.skills;
     const learning = skillDefs.filter(d => st[d.id]?.status === 'learning' && d.templates.length).map(d => d.id);
-    const weak = skillDefs.filter(d => isDone(st[d.id]) && d.templates.length)
+    const weak = skillDefs.filter(d => isDone(st[d.id]) && d.templates.length && taught(game.save, skillDefs, d.id))
       .sort((a, b) => Object.values(st[b.id].misconceptions).reduce((s, n) => s + n, 0) - Object.values(st[a.id].misconceptions).reduce((s, n) => s + n, 0))
       .map(d => d.id);
     return [...new Set([...learning, ...weak])].slice(0, 5);
   }
   const broken = game.save.repairShop.filter(r => !r.fixed);
   // Босс мира: вперемешку по всему пройденному (чередование), нужно 7 верных из 10
-  const bossSkills = () => [...skillDefs.filter(d => isDone(game.save.skills[d.id]) && d.templates.length).map(d => d.id)].sort(() => Math.random() - 0.5).slice(0, 8);
+  const bossSkills = () => [...skillDefs.filter(d => isDone(game.save.skills[d.id]) && d.templates.length && taught(game.save, skillDefs, d.id)).map(d => d.id)].sort(() => Math.random() - 0.5).slice(0, 8);
   const BOSS_HP = 7;
   const skills = block === 'boss' ? bossSkills() : block === 'extra' ? extraSkills() : block === 'repair' ? [...new Set(broken.map(r => r.skill))].slice(0, 5) : pb?.skills ?? [];
   const total = block === 'boss' ? 10 : block === 'extra' ? 8 : block === 'repair' ? Math.min(8, broken.length + 1) : pb?.items ?? 8;
@@ -85,7 +85,7 @@
   // Босс — 3 из 10, смешанный бой и доп. миссия — 2; урок новой темы и разминка — только генераторы.
   const BANK_SLOTS: Partial<Record<Block, number[]>> = { boss: [2, 5, 8], mixed: [2, 5], extra: [3, 6] };
   const seen = new Set(game.save.attempts.map(a => a.source));
-  const bankQueue = BANK_SLOTS[block] ? bankFor(id => isDone(game.save.skills[id]), seen) : [];
+  const bankQueue = BANK_SLOTS[block] ? bankFor(id => isDone(game.save.skills[id]) && taught(game.save, skillDefs, id), seen) : [];
   function nextItem() {
     const sk = block === 'new' ? skills[0] : skills[idx % Math.max(1, skills.length)];
     const fromBank = !twin && BANK_SLOTS[block]?.includes(idx) && bankQueue.length ? bankQueue.shift() : null;
