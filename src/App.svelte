@@ -8,6 +8,7 @@
   import Hero from './screens/Hero.svelte';
   import Intro from './screens/Intro.svelte';
   import FxLayer from './ui/FxLayer.svelte';
+  import Toast from './ui/Toast.svelte';
   import Hub from './screens/Hub.svelte';
   import Session from './screens/Session.svelte';
   import Lesson from './screens/Lesson.svelte';
@@ -32,7 +33,7 @@
 <canvas bind:this={canvas} class="world" class:dim={W.dim} aria-label="«Жарық» кемесі"></canvas>
 <div class="screen-host">
   {#key game.screen.name}
-    <div class="screen glitch-in">
+    <div class="screen screen-in">
       {#if game.screen.name === 'hub'}<Hub />
       {:else if game.screen.name === 'session'}<Session block={game.screen.block} />
       {:else if game.screen.name === 'lesson'}<Lesson skill={game.screen.skill} replay={game.screen.replay} />
@@ -50,6 +51,7 @@
   {/key}
 </div>
 <FxLayer />
+<Toast />
 
 <style>
   .world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; transition: filter .5s, opacity .5s; touch-action: none; }

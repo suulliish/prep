@@ -9,6 +9,7 @@
   let filled = $state<Record<number, string>>({});
   let wrong = $state<{ at: number; pick: number } | null>(null);
   let misses = 0;
+  let missHere = $state(0); // ошибки на текущем пропуске: 1-я — подсказка, 2-я — ответ
   const cur = $derived(shown - 1);
   const waiting = $derived(!!steps[cur]?.blank && filled[cur] === undefined);
   function advance() {
@@ -17,8 +18,8 @@
   }
   function pick(k: number) {
     const b = steps[cur].blank!;
-    if (k !== b.answer) { wrong = { at: cur, pick: k }; misses++; audio.play('wrong'); return; }
-    filled[cur] = b.choices[k]; wrong = null; audio.play('correct');
+    if (k !== b.answer) { wrong = { at: cur, pick: k }; misses++; missHere++; audio.play('wrong'); return; }
+    filled[cur] = b.choices[k]; wrong = null; missHere = 0; audio.play('correct');
     if (shown === steps.length) ondone(misses === 0);
   }
   $effect(() => { if (steps.length === 1 && !steps[0].blank) ondone(true); });
@@ -37,10 +38,10 @@
   {#if waiting}
     <div class="pick">
       {#each steps[cur].blank!.choices as c, k}
-        <button class="choice" class:wrong={wrong?.at === cur && wrong.pick === k} onclick={() => pick(k)}>{c}</button>
+        <button class="ans" class:wrong={wrong?.at === cur && wrong.pick === k} class:sel={missHere >= 2 && k === steps[cur].blank!.answer} onclick={() => pick(k)}>{c}</button>
       {/each}
     </div>
-    {#if wrong?.at === cur}<p class="hint">Тағы ойлан. {steps[cur].blank!.why ?? ''}</p>{/if}
+    {#if wrong?.at === cur}<p class="hint">{missHere >= 2 ? steps[cur].blank!.why ?? '' : 'Әзірге қате. Жоғарыдағы қадамдарды қайта қарап, тағы ойлан.'}</p>{/if}
   {:else if shown < steps.length}
     <button class="btn primary" onclick={advance}>Келесі қадам ↓</button>
   {/if}
@@ -48,13 +49,13 @@
 
 <style>
   .fd { display: grid; gap: 12px; }
-  .task { font-size: 20px; font-weight: 800; color: var(--code); }
+  .task { font-size: 19px; font-weight: 800; }
   ol { margin: 0; padding-left: 24px; display: grid; gap: 10px; }
   li { opacity: .6; display: grid; gap: 2px; }
   li.cur { opacity: 1; }
-  li small { color: var(--dim); font-weight: 700; font-size: 15px; }
+  li small { color: var(--paper-dim); font-weight: 700; font-size: 15px; }
   .pick { display: flex; gap: 8px; flex-wrap: wrap; }
-  .choice { font: 800 20px var(--txt); color: var(--ink); background: var(--deep); border: 2px solid var(--code); border-bottom-width: 5px; border-radius: 8px; padding: 10px 16px; cursor: pointer; min-width: 64px; }
-  .choice.wrong { border-color: var(--miss); background: var(--miss-deep); animation: shake .35s; }
-  .hint { color: var(--gold); font-weight: 700; }
+  .pick .ans { width: auto; min-width: 72px; justify-content: center; }
+  .pick .ans.wrong { animation: shake .35s; }
+  .hint { color: var(--miss-deep); font-weight: 800; }
 </style>

@@ -4,6 +4,10 @@
   // Мини-ойын → Есте сақта → возврат к цели (вирус уничтожен, сундук).
   import { onMount } from 'svelte';
   import Bit from '../ui/Bit.svelte';
+  import Screen from '../ui/Screen.svelte';
+  import Icon from '../ui/Icon.svelte';
+  import Confirm from '../ui/Confirm.svelte';
+  import { toast } from '../ui/notify.svelte';
   import { game, go, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { skillTitle } from '../engine/items';
@@ -21,7 +25,6 @@
   import Blitz from '../lesson/Blitz.svelte';
   import Scene from '../lesson/Scene.svelte';
   import GlitchSays from '../lesson/GlitchSays.svelte';
-  import MissionBar from '../lesson/MissionBar.svelte';
   import DivideGame from '../widgets/DivideGame.svelte';
   import FactorTree from '../widgets/FactorTree.svelte';
   import OrderOps from '../widgets/OrderOps.svelte';
@@ -50,7 +53,9 @@
   const voiced = new Set<string>(VOICED as string[]);
   const voiceUrl = (k: number | string) => (voiced.has(`${skill}_${k}`) ? `${import.meta.env.BASE_URL}voice/lessons/${skill}_${k}.mp3` : '');
 
-  let i = $state(0);
+  // продолжить с того шага, где вышел
+  let i = $state(!replay && game.save.lessonPos?.skill === skill ? Math.min(game.save.lessonPos.step, steps.length - 1) : 0);
+  let askExit = $state(false);
   let ready = $state(false);
   let frame = $state(0);
   let pick = $state<number | null>(null);
@@ -74,8 +79,7 @@
     if (s.type === 'bug') setTimeout(() => react('bug'), 400);
     if (s.type === 'why') setTimeout(() => react('think'), 400);
     if (['widget', 'blitz'].includes(s.type)) skipTimer = window.setTimeout(() => (showSkip = true), s.type === 'blitz' ? 5000 : 25000);
-    // на телефоне карточка ниже сцены — прокручиваем к ней
-    requestAnimationFrame(() => { if (i > 0 && cardEl && cardEl.getBoundingClientRect().top > innerHeight * 0.6) cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    requestAnimationFrame(() => cardEl?.closest('.body')?.scrollTo({ top: 0 }));
   }
   onMount(() => {
     W.dim = false; W.world?.setMode('battle'); W.world?.spawnMob(maxHp, currentWorld().mob); W.world?.bitMood('idle');
@@ -119,12 +123,24 @@
 
   function next() {
     if (HIT(step.type) && step.type !== 'final') strike(step.type === 'blitz');
-    if (i < steps.length - 1) { i++; enter(); audio.play('click'); return; }
+    if (i < steps.length - 1) { i++; if (!replay) { game.save.lessonPos = { skill, step: i }; persist(); } enter(); audio.play('click'); return; }
     if (replay) { audio.play('mission'); go({ name: 'album' }); return; }
     (game.save.skills[skill] ??= blankSkill()).lessonDone = true;
+    delete game.save.lessonPos;
     persist(); audio.play('mission');
     go({ name: 'session', block: 'new' });
   }
+  const isExample = $derived(step.type === 'example' && step.frames.length > 1);
+  const moreFrames = $derived(isExample && frame < step.frames.length - 1);
+  const primaryLabel = $derived(
+    moreFrames ? 'Келесі кадр' : step.type === 'goal' ? 'Миссияны бастау' : i < steps.length - 1 ? (HIT(step.type) ? 'Соққы беру' : 'Келесі')
+    : replay ? 'Альбомға қайту' : 'Жаттығуға');
+  function primary() {
+    if (moreFrames) return go2(frame + 1);
+    if (!ready) { toast(step.type === 'widget' ? 'Алдымен тапсырманы орында' : 'Алдымен жауап таңда'); audio.play('click'); return; }
+    next();
+  }
+  function leave() { askExit = false; if (!replay) { game.save.lessonPos = { skill, step: i }; persist(); } go({ name: replay ? 'album' : 'hub' }); }
   const bitLine = $derived.by(() => {
     if (step.type === 'predict') return pick === null ? `${game.save.heroName}, алдымен болжап көр — қателесуден қорықпа!` : (pick === step.answer ? 'Дәл таптың! ' : 'Қызық болжам! ') + step.reveal;
     if (step.type === 'why' || step.type === 'quiz') return pick === null ? 'Қалай ойлайсың?' : pick === step.answer ? 'Дұрыс! ' + step.why : 'Жақын, бірақ: ' + step.why;
@@ -133,28 +149,24 @@
   });
 </script>
 
-<div class="stage lesson">
-  <div class="top panel">
-    <div class="row1">
-      <button class="btn ghost small" onclick={() => go({ name: 'hub' })} aria-label="Артқа">←</button>
-      <div class="title"><b>{target}</b><small>{skillTitle(skill).kz}</small></div>
-      {#if earned}<span class="xp num">+{earned} XP</span>{/if}
+<Screen scene="short" back={() => (askExit = true)}>
+  {#snippet head()}
+    <div class="hd">
+      <div class="t1"><b>{target}</b>{#if earned}<span class="xp num">+{earned} XP</span>{/if}</div>
+      <div class="t2"><span class="bar glitch hp" aria-label="Вирус күші"><i style="width:{(hp / maxHp) * 100}%"></i></span><span class="cnt">Қадам <b class="num">{i + 1}</b>/{steps.length}</span></div>
     </div>
-    <MissionBar types={steps.map(s => s.type)} at={i} {hp} max={maxHp} {target} />
-  </div>
-  <!-- на шагах-объяснениях сцена боя — узкая полоска: больше места под тему -->
-  <div class="stage-gap passthrough" class:slim={EXPLAIN.includes(step.type)}></div>
+  {/snippet}
 
   {#key i}
-    <section class="card panel glitch-in" class:final={step.type === 'final'} class:bugcard={step.type === 'bug'} bind:this={cardEl}>
-      <span class="chip c-{step.type}">{CHIP[step.type] ?? ''}</span>
+    <div class="card" class:final={step.type === 'final'} bind:this={cardEl}>
+      <span class="tag c-{step.type}">{CHIP[step.type] ?? ''}</span>
 
       {#if step.type === 'say'}
         <Bit text={step.kz} mood="wow" voice={voiceUrl(i)} />
       {:else if step.type === 'goal'}
         {#if step.scene}<Scene name={step.scene} s={step.s} />{/if}
         <Bit text={step.kz} mood="wow" voice={voiceUrl(i)} />
-        <div class="lock"><span class="pad" aria-hidden="true">🔒</span><MathLine text={step.task} big /></div>
+        <div class="paper lock"><Icon name="lock" fill="var(--gold)" size={28} /><MathLine text={step.task} big /></div>
       {:else if step.type === 'widget'}
         {@const Comp = WIDGETS[step.w]}
         <Bit text={step.kz} mood="think" compact voice={voiceUrl(i)} />
@@ -164,102 +176,100 @@
         {#if step.scene || fr.scene}
           {#key frame}
             <Scene name={fr.scene ?? step.scene} s={fr.s} />
-            {#if fr.math}<div class="mline appear"><MathLine text={fr.math} big /></div>{/if}
-            <div class="cap appear"><Bit text={fr.kz} mood="think" compact voice={voiceUrl(`${i}_f${frame}`)} /></div>
+            {#if fr.math}<div class="paper mline appear"><MathLine text={fr.math} big /></div>{/if}
+            <div class="appear"><Bit text={fr.kz} mood="think" compact voice={voiceUrl(`${i}_f${frame}`)} /></div>
           {/key}
-          <div class="fnav">
-            <button class="btn ghost small" disabled={frame === 0} onclick={() => go2(frame - 1)} aria-label="Алдыңғы">←</button>
-            <div class="fdots">{#each step.frames as _, k}<button class:on={k === frame} class:seen={k < frame} onclick={() => k <= frame && go2(k)} aria-label="Қадам {k + 1}"></button>{/each}</div>
-            <button class="btn primary small" disabled={frame >= step.frames.length - 1} onclick={() => go2(frame + 1)}>Келесі қадам →</button>
-          </div>
+          <div class="fdots" aria-label="Кадр {frame + 1} / {step.frames.length}">{#each step.frames as _, k}<button class:on={k === frame} class:seen={k < frame} onclick={() => k <= frame && go2(k)} aria-label="Кадр {k + 1}"></button>{/each}</div>
         {:else}
-          <ol class="frames">
+          <ol class="paper frames">
             {#each step.frames.slice(0, frame + 1) as f, k}
               <li class="appear" class:cur={k === frame}>{#if f.math}<MathLine text={f.math} big={k === frame} />{/if}<span>{f.kz}</span></li>
             {/each}
           </ol>
-          {#if frame < step.frames.length - 1}<button class="btn primary" onclick={() => go2(frame + 1)}>Келесі қадам ↓</button>{/if}
         {/if}
       {:else if step.type === 'faded'}
         <Bit text="Енді өзің! Бұзылған модульдерді жөнде." mood="think" compact />
-        <Faded task={step.kz} steps={step.steps} ondone={clean => reward(clean ? 8 : 3)} />
+        <div class="paper"><Faded task={step.kz} steps={step.steps} ondone={clean => reward(clean ? 8 : 3)} /></div>
       {:else if step.type === 'bug'}
         <GlitchSays text={step.kz} beaten={bugFound} />
-        <BugHunt lines={step.lines} bad={step.bad} follows={step.follows} fix={step.fix} ondone={clean => { bugFound = true; W.world?.heroAttack(clean); reward(clean ? 8 : 3); }} />
+        <div class="paper"><BugHunt lines={step.lines} bad={step.bad} follows={step.follows} fix={step.fix} ondone={clean => { bugFound = true; W.world?.heroAttack(clean); reward(clean ? 8 : 3); }} /></div>
       {:else if step.type === 'blitz'}
         <Bit text={step.kz} mood="wow" compact />
-        <Blitz title={step.title} count={step.count} make={step.make} onhit={crit => W.world?.heroAttack(crit)} ondone={stars => reward(stars * 5, stars === 3)} />
+        <div class="paper"><Blitz title={step.title} count={step.count} make={step.make} onhit={crit => W.world?.heroAttack(crit)} ondone={stars => reward(stars * 5, stars === 3)} /></div>
       {:else if step.type === 'rule'}
-        <div class="rule">
-          <b>★ {step.kz}</b>
+        <div class="paper rule">
+          <b><Icon name="star" fill="var(--gold)" size={22} />{step.kz}</b>
           {#each step.lines as l, k}<p class="appear" style="animation-delay:{k * 120}ms">{l}</p>{/each}
+          <small>Бұл ереже Альбомдағы тақырып картасына сақталды.</small>
         </div>
-        <p class="dim">Шпаргалка тақырып карточкасына сақталды — Альбомда ашылады.</p>
       {:else}
         {#if step.type === 'final' && step.scene}<Scene name={step.scene} s={won ? step.s : goal?.s ?? step.s} />{/if}
         <Bit text={bitLine} mood={pick === null ? 'think' : pick === step.answer ? 'happy' : 'think'} compact />
-        {#if step.type === 'final'}<div class="lock" class:open={won}><span class="pad" aria-hidden="true">{won ? '🔓' : '🔒'}</span><span class="q">{step.kz}</span></div>
-        {:else}<p class="q">{step.kz}</p>{/if}
+        <div class="paper qbox">
+          {#if step.type === 'final'}<Icon name={won ? 'check' : 'lock'} fill={won ? 'var(--ok)' : 'var(--gold)'} size={24} />{/if}
+          <p class="q">{step.kz}</p>
+        </div>
         <div class="choices">
           {#each step.choices as c, k}
-            <button class="choice" class:right={pick !== null && k === step.answer && (step.type !== 'final' || won)} class:wrong={pick === k && k !== step.answer}
-              disabled={step.type === 'final' ? won : pick !== null} onclick={() => choose(k)}>{c}</button>
+            <button class="ans" class:right={pick !== null && k === step.answer && (step.type !== 'final' || won)} class:wrong={pick === k && k !== step.answer}
+              disabled={step.type === 'final' ? won : pick !== null} onclick={() => choose(k)}>
+              <span class="l">{#if pick !== null && k === step.answer && (step.type !== 'final' || won)}<Icon name="check" fill="#fff" size={16} />{:else if pick === k && k !== step.answer}<Icon name="cross" fill="#fff" size={16} />{:else}{'ABCDE'[k]}{/if}</span><span>{c}</span>
+            </button>
           {/each}
         </div>
       {/if}
-
-      <div class="actions">
-        {#if showSkip && !ready}<button class="btn ghost" onclick={() => (ready = true)}>Өткізіп жіберу</button>{/if}
-        <button bind:this={nextBtn} class="btn primary big" class:gold={step.type === 'goal' || won} disabled={!ready} onclick={next}>
-          {step.type === 'goal' ? 'Миссияны қабылдау →' : i < steps.length - 1 ? (HIT(step.type) ? 'Соққы беру →' : 'Келесі →') : replay ? 'Альбомға қайту' : `Жаттығуға!${earned ? ` (+${earned} XP)` : ''}`}
-        </button>
-      </div>
-    </section>
+    </div>
   {/key}
-</div>
+
+  {#snippet footer()}
+    {#if showSkip && !ready}<button class="btn ghost" onclick={() => (ready = true)}>Өткізу</button>{/if}
+    <button bind:this={nextBtn} class="btn big grow {ready || moreFrames ? (won || step.type === 'goal' ? 'primary' : 'go') : 'wait'}" onclick={primary}>
+      {primaryLabel}<Icon name="chevron" fill={ready || moreFrames ? 'var(--outline)' : '#d7dcf5'} size={20} />
+    </button>
+  {/snippet}
+</Screen>
+
+<Confirm open={askExit} title="Миссиядан шығасың ба?" text="Қай қадамда тұрғаның сақталады — кейін осы жерден жалғастырасың."
+  yes="Шығу" no="Жалғастыру" onyes={leave} onno={() => (askExit = false)} />
 
 <style>
-  .top { display: grid; gap: 8px; padding: 8px 12px 10px; }
-  .row1 { display: flex; align-items: center; gap: 12px; }
-  .stage-gap.slim { flex-basis: clamp(40px, 7vh, 80px); }
-  .btn.small { min-height: 40px; padding: 6px 12px; font-size: var(--fs-s); }
-  .title { flex: 1; display: grid; min-width: 0; }
-  .title b { font-size: 18px; font-weight: 800; }
-  .title small { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .xp { color: var(--gold); font-size: 16px; }
-  .card { display: grid; gap: 14px; padding: 16px; scroll-margin-top: 12px; }
-  .card.final { border-color: var(--gold); box-shadow: 0 0 30px #ffc94a33, var(--shadow); }
-  .card.bugcard { border-color: #7a2a63; background: linear-gradient(#1f0f2e, #141b3f); }
-  .chip { justify-self: start; font: 800 12px var(--txt); letter-spacing: .08em; text-transform: uppercase; color: var(--void); background: var(--code); padding: 3px 10px; border-radius: 4px; }
-  .chip.c-goal, .chip.c-final { background: var(--gold); }
-  .chip.c-bug { background: var(--glitch); }
-  .chip.c-blitz { background: var(--ok); }
-  .chip.c-why, .chip.c-predict { background: var(--crystal); }
-  .widget { background: var(--deep); border: 1px solid var(--line); padding: 16px 8px; border-radius: 10px; }
-  .h { font-size: 20px; color: var(--code); }
-  .mline { display: flex; justify-content: center; padding: 4px 0; }
-  .fnav { display: flex; align-items: center; gap: 8px; }
-  .fdots { flex: 1; display: flex; justify-content: center; gap: 6px; }
-  .fdots button { width: 12px; height: 12px; padding: 0; border-radius: 50%; border: 2px solid var(--line-hi); background: #070a1a; cursor: pointer; }
-  .fdots button.seen { background: var(--code-deep); border-color: var(--code); }
-  .fdots button.on { background: var(--code); border-color: #b9fdff; box-shadow: 0 0 8px var(--code); transform: scale(1.25); }
-  .frames { margin: 0; padding-left: 22px; display: grid; gap: 12px; font-size: 18px; font-weight: 700; line-height: 1.5; }
-  .frames li { opacity: .55; display: grid; gap: 4px; }
+  .hd { flex: 1; min-width: 0; display: grid; gap: 6px; }
+  .t1 { display: flex; align-items: center; gap: 8px; }
+  .t1 b { flex: 1; min-width: 0; font: 900 18px var(--disp); text-shadow: 0 2px 0 var(--outline); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .xp { color: var(--gold); font-size: 15px; text-shadow: 0 2px 0 var(--outline); }
+  .t2 { display: flex; align-items: center; gap: 8px; }
+  .hp { flex: 1; height: 14px; }
+  .cnt { font-size: 13px; color: var(--dim); white-space: nowrap; }
+  .cnt b { color: var(--ink); font-size: 15px; }
+
+  .card { display: grid; gap: 12px; animation: pop-in .3s var(--ease-out) both; }
+  .tag { justify-self: start; }
+  .tag.c-goal, .tag.c-final { background: var(--gold); }
+  .tag.c-bug { background: var(--glitch); }
+  .tag.c-blitz { background: var(--ok); }
+  .tag.c-why, .tag.c-predict { background: var(--crystal); }
+  .widget { background: var(--deep); border: 3px solid var(--outline); padding: 14px 8px; border-radius: 16px; }
+  .h { font-size: 19px; text-shadow: 0 2px 0 var(--outline); }
+  .mline { display: flex; justify-content: center; }
+  .fdots { display: flex; justify-content: center; gap: 8px; }
+  .fdots button { width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 2px solid var(--outline); background: #0b1030; cursor: pointer; }
+  .fdots button.seen { background: var(--code-deep); }
+  .fdots button.on { background: var(--code); transform: scale(1.3); }
+  .frames { margin: 0; padding: 14px 16px 14px 36px; display: grid; gap: 12px; font-size: 18px; }
+  .frames li { opacity: .5; display: grid; gap: 4px; }
   .frames li.cur { opacity: 1; }
-  .lock { display: flex; align-items: center; gap: 12px; background: var(--deep); border: 2px dashed var(--gold-deep); border-radius: 10px; padding: 12px 14px; }
-  .lock.open { border-style: solid; border-color: var(--gold); box-shadow: 0 0 20px #ffc94a44; }
-  .lock .pad { font-size: 26px; }
-  .dim { color: var(--dim); font-weight: 700; font-size: var(--fs-s); }
-  .rule { display: grid; gap: 8px; background: linear-gradient(135deg, #2a2350, #0d1030); border: 2px solid var(--gold); border-radius: 12px; padding: 16px; box-shadow: 0 0 24px #ffc94a33; animation: card-flip .6s var(--ease-out); }
-  .rule b { color: var(--gold); font-size: 20px; }
-  .rule p { font-size: 18px; font-weight: 800; }
-  .q { font-size: 20px; font-weight: 800; }
-  .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; }
-  .choice { font: 800 18px/1.25 var(--txt); color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-bottom-width: 5px; border-radius: 8px; padding: 12px; cursor: pointer; transition: transform .08s, border-color .15s; }
-  .choice:hover:not(:disabled) { border-color: var(--line-hi); transform: translateY(-1px); }
-  .choice.right { border-color: var(--ok); background: var(--ok-deep); animation: pop-in .3s var(--ease-out); }
-  .choice.wrong { border-color: var(--miss); background: var(--miss-deep); animation: shake .35s; }
-  .actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-  @keyframes card-flip { from { transform: perspective(600px) rotateY(80deg); opacity: 0; } }
-  @media (max-width: 480px) { .card { padding: 14px 12px; } .h { font-size: 18px; } .q { font-size: 18px; } .actions .btn.big { width: 100%; } }
+  .lock, .qbox { display: flex; align-items: center; gap: 12px; }
+  .rule { display: grid; gap: 8px; box-shadow: inset 0 -4px 0 #ffe38a, 0 0 0 3px var(--gold); }
+  .rule b { display: flex; align-items: center; gap: 8px; font: 900 19px var(--disp); }
+  .rule p { font-size: 17px; font-weight: 800; }
+  .q { font-size: 19px; font-weight: 800; }
+  .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
+  .grow { flex: 1; min-width: 0; }
+  .btn.wait { --c: #5b6699; --e: #3d4670; --t: #d7dcf5; text-shadow: none; }
+  /* выкладка на бумаге: подсветка и пропуски — тёмные цвета */
+  .card :global(.paper .hl) { color: #7a4d00; background: #ffe38a; border-bottom-color: var(--gold-deep); }
+  .card :global(.paper .blank) { color: #b0276f; background: #ffe0f1; }
+  .card :global(.paper .blank.filled) { color: var(--code-deep); background: #d9f8ff; border-color: var(--code-deep); }
+  .card :global(.paper li small), .card :global(.paper .note) { color: var(--paper-dim); }
+  .card :global(.paper .task) { color: var(--paper-ink); }
 </style>

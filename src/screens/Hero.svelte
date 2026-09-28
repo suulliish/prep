@@ -8,6 +8,8 @@
   import { streak } from '../engine/streak';
   import { OUTFITS, crystals, wearOutfit } from '../lib/look';
   import { sparksAt, centerOf } from '../ui/fx.svelte';
+  import Screen from '../ui/Screen.svelte';
+  import Icon from '../ui/Icon.svelte';
 
   onMount(() => { W.dim = false; W.world?.setMode('hero'); audio.setMood('hub'); return () => W.world?.setMode('hub'); });
 
@@ -55,20 +57,19 @@
   const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 </script>
 
-<div class="hero-screen side-dock">
-  <header class="top panel">
-    <button class="btn ghost small" onclick={() => go({ name: 'hub' })} aria-label="Кемеге қайту">←</button>
-    <div class="lvl num" aria-label="Деңгей {lv.lvl}">{lv.lvl}</div>
-    <div class="nm">
-      <b>{game.save.heroName}</b>
-      <span class="xp"><i style="width:{(lv.into / lv.need) * 100}%"></i></span>
-      <small>Келесі деңгейге <span class="num">{lv.need - lv.into}</span> XP</small>
+<Screen scene="tall" back={() => go({ name: 'hub' })}>
+  {#snippet head()}
+    <div class="me">
+      <div class="lvl num" aria-label="Деңгей {lv.lvl}">{lv.lvl}</div>
+      <div class="nm">
+        <b>{game.save.heroName}</b>
+        <span class="bar"><i style="width:{(lv.into / lv.need) * 100}%"></i></span>
+        <small>Келесі деңгейге <span class="num">{lv.need - lv.into}</span> XP</small>
+      </div>
     </div>
-  </header>
+  {/snippet}
 
-  <div class="spacer portrait" aria-hidden="true"></div>
-
-  <section class="panel card">
+  <section class="block">
     <div class="h"><h2>Қасиеттер</h2><small>Тек оқу арқылы өседі</small></div>
     <ul class="stats">
       {#each STATS as s}
@@ -88,7 +89,7 @@
     </ul>
   </section>
 
-  <section class="panel card">
+  <section class="block">
     <div class="h"><h2>Гардероб</h2><small class="cr"><i class="gem"></i><span class="num">{cr}</span> кристалл</small></div>
     {#if nextOutfit}
       <div class="goal">
@@ -109,23 +110,20 @@
       {/each}
     </div>
   </section>
-</div>
+</Screen>
 
 <style>
-  .hero-screen { min-height: 100dvh; width: min(640px, 100%); margin: 0 auto; display: flex; flex-direction: column; gap: 10px; padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px calc(env(safe-area-inset-bottom, 0px) + 16px); }
-  .top { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 8px); z-index: 5; display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
-  .btn.small { min-height: 44px; min-width: 44px; padding: 6px 12px; font-size: 20px; }
-  .lvl { flex: none; width: 46px; height: 46px; display: grid; place-items: center; font-family: var(--px); font-size: 22px; background: var(--code); color: var(--void); clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); box-shadow: 0 0 16px var(--code); }
+  .me { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
+  .lvl { flex: none; width: 44px; height: 44px; display: grid; place-items: center; font-size: 20px; color: var(--outline); background: var(--code); border: 3px solid var(--outline); border-radius: 12px; box-shadow: inset 0 -4px 0 var(--code-deep); }
   .nm { flex: 1; display: grid; gap: 4px; min-width: 0; }
-  .nm b { font-size: 20px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nm b { font: 900 18px var(--disp); line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 2px 0 var(--outline); }
   .nm small { color: var(--dim); font-size: 12px; font-weight: 700; }
   .xp { display: block; height: 8px; background: #070a1a; border-radius: 999px; overflow: hidden; border: 1px solid var(--line); }
   .xp i { display: block; height: 100%; background: linear-gradient(90deg, var(--code), #b9fdff); transition: width .6s var(--ease-out); }
-  .portrait { flex: 0 0 clamp(210px, 38vh, 340px); }
 
-  .card { display: grid; gap: 12px; padding: 14px; }
+  .block { display: grid; gap: 10px; }
   .h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-  h2 { font-size: 18px; }
+  h2 { font-size: 18px; text-shadow: 0 2px 0 var(--outline); }
   .h small { color: var(--dim); font-size: 12px; font-weight: 700; }
 
   .stats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

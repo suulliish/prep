@@ -3,6 +3,8 @@
   // (с проверкой на следующий учебный день), ошибка — тема откроется для изучения, ветка выше не сканируется.
   import { onMount } from 'svelte';
   import Bit from '../ui/Bit.svelte';
+  import Screen from '../ui/Screen.svelte';
+  import Icon from '../ui/Icon.svelte';
   import { game, go, persist, skillDefs } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { makeItem, skillTitle, type Item } from '../engine/items';
@@ -63,41 +65,34 @@
   }
 </script>
 
-<div class="wrap side-dock">
-  <div class="top panel"><b class="t">Код-сканер</b><span class="num prog">{scanned} тақырып</span></div>
-  <div class="spacer passthrough"></div>
-  <section class="card panel glow" bind:this={el}>
+<Screen scene="short" title="Код-сканер" sub={done ? 'Сканер аяқталды' : `Тексерілді: ${scanned} тақырып`}>
+  {#snippet right()}<span class="pill"><Icon name="bolt" fill="var(--code)" size={20} /><span class="num">{scanned}</span></span>{/snippet}
+  {#if !done && item}
+    <Bit text="Білмесең — «Білмеймін» бас. Қателік бұл жерде қалыпты: бұл сынақ емес." mood="think" compact />
+    <div class="paper q">{#each item.kz.split('\n') as line, i}{#if i}<br />{/if}{line}{/each}</div>
+    <div class="choices" bind:this={el}>
+      {#each item.choices as c, i}<button class="ans" class:sel={picked === i} onclick={() => pick(i)} disabled={picked !== null}><span class="l">{'ABCDE'[i]}</span><span>{c.text}</span></button>{/each}
+    </div>
+  {:else}
+    <Bit text={`Сканер аяқталды! ${known.size} тақырып саған таныс, қалғанын бірге үйренеміз. Әр тақырыптың сабағын бір рет өтеміз.`} mood="happy" />
+    <ul class="paper res">{#each [...known] as k}<li class="ok"><Icon name="check" fill="var(--ok-deep)" size={16} />{skillTitle(k).kz}</li>{/each}{#each [...failed] as k}<li><Icon name="star" fill="var(--paper-line)" size={16} />{skillTitle(k).kz}</li>{/each}</ul>
+  {/if}
+
+  {#snippet footer()}
     {#if !done && item}
-      <Bit text="Сканерлеп жатырмын… Білмесең — ойлап таңда, қателік бұл жерде қалыпты." mood="think" compact />
-      <div class="scan"><i></i></div>
-      <p class="q">{#each item.kz.split('\n') as line, i}{#if i}<br />{/if}{line}{/each}</p>
-      <div class="choices">
-        {#each item.choices as c, i}<button class="choice" class:picked={picked === i} onclick={() => pick(i)} disabled={picked !== null}>{c.text}</button>{/each}
-      </div>
-      <button class="btn ghost" onclick={() => { failed.add(cur!); scanned++; cur = null; nextItem(); }}>Бұл тақырыпты әлі білмеймін</button>
+      <button class="btn big grow" onclick={() => { failed.add(cur!); scanned++; cur = null; nextItem(); }}>Білмеймін</button>
     {:else}
-      <Bit text={`Сканер аяқталды! ${known.size} тақырып саған таныс (ертең тексереміз), қалғанын бірге үйренеміз. Карта ашылды!`} mood="happy" />
-      <ul class="res">{#each [...known] as k}<li class="ok">✓ {skillTitle(k).kz}</li>{/each}{#each [...failed] as k}<li>○ {skillTitle(k).kz}</li>{/each}</ul>
-      <button class="btn primary big block" onclick={() => go({ name: 'hub' })}>Кемеге</button>
+      <button class="btn primary big grow" onclick={() => go({ name: 'hub' })}>Кемеге<Icon name="chevron" fill="var(--outline)" size={20} /></button>
     {/if}
-  </section>
-</div>
+  {/snippet}
+</Screen>
 
 <style>
-  .wrap { min-height: 100dvh; width: min(640px, 100%); margin: 0 auto; display: flex; flex-direction: column; gap: 10px; padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px); }
-  .top { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; }
-  .t { font-weight: 800; font-size: 20px; color: var(--code); }
-  .prog { font-size: 20px; }
-  .spacer { flex: 1; min-height: 18vh; }
-  .card { display: grid; gap: 14px; padding: 18px; }
-  .scan { height: 4px; background: #070a1a; overflow: hidden; }
-  .scan i { display: block; width: 30%; height: 100%; background: var(--code); box-shadow: 0 0 12px var(--code); animation: sweep 1.2s linear infinite; }
-  @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
-  .q { font-size: 19px; font-weight: 800; line-height: 1.5; }
-  .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 8px; }
-  .choice { font: 800 17px var(--txt); color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-bottom-width: 5px; border-radius: 8px; padding: 12px; cursor: pointer; }
-  .choice.picked { border-color: var(--code); }
-  .res { margin: 0; padding-left: 4px; list-style: none; display: grid; gap: 4px; max-height: 30vh; overflow: auto; }
-  .res li { color: var(--dim); }
-  .res li.ok { color: var(--ok); font-weight: 700; }
+  .q { font-size: 19px; font-weight: 800; }
+  .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
+  .choices .ans { font-size: 17px; }
+  .res { margin: 0; list-style: none; display: grid; gap: 6px; }
+  .res li { display: flex; align-items: center; gap: 8px; color: var(--paper-dim); }
+  .res li.ok { color: var(--paper-ink); }
+  .grow { flex: 1; }
 </style>

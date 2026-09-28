@@ -28,9 +28,9 @@
 
 <style>
   .bit { display: flex; gap: 12px; align-items: flex-start; }
-  .face { flex: none; position: relative; width: 52px; height: 46px; background: #cfd6ee; border: 3px solid #7d86b8; border-radius: 6px; display: grid; place-items: center; animation: bob 2.4s ease-in-out infinite; }
+  .face { flex: none; position: relative; width: 52px; height: 46px; background: #dfe5ff; border: 3px solid var(--outline); border-radius: 12px; box-shadow: inset 0 -4px 0 #b3bde8; display: grid; place-items: center; animation: bob 2.4s ease-in-out infinite; }
   .compact .face { width: 40px; height: 36px; }
-  .ant { position: absolute; top: -12px; left: 50%; width: 3px; height: 10px; background: #7d86b8; transform: translateX(-50%); }
+  .ant { position: absolute; top: -12px; left: 50%; width: 3px; height: 10px; background: var(--outline); transform: translateX(-50%); }
   .ant::after { content: ''; position: absolute; top: -6px; left: -3px; width: 9px; height: 9px; background: var(--glitch); box-shadow: 0 0 8px var(--glitch); animation: blinkant 1.2s infinite; }
   .screen { width: 36px; height: 24px; background: #0c1036; border-radius: 3px; display: flex; justify-content: space-around; align-items: center; padding: 0 4px; }
   .compact .screen { width: 28px; height: 18px; }
@@ -39,9 +39,10 @@
   .wow .screen b { width: 9px; height: 12px; }
   .think .screen b { height: 5px; transform: translateY(2px); }
   .sad .screen b { background: #9fb0ff; height: 7px; transform: translateY(3px); }
-  .bubble { position: relative; flex: 1; background: var(--panel-hi); border: 2px solid var(--line-hi); border-radius: 10px; padding: 10px 14px; font-size: var(--fs-m); line-height: 1.5; font-weight: 700; }
+  .bubble { position: relative; flex: 1; background: #fff; color: var(--paper-ink); border: 3px solid var(--outline); border-radius: 16px; padding: 10px 14px; font-size: var(--fs-m); line-height: 1.45; font-weight: 800; box-shadow: 0 3px 0 var(--outline); }
   .compact .bubble { font-size: var(--fs-s); padding: 8px 12px; }
-  .bubble::before { content: ''; position: absolute; left: -9px; top: 14px; border: 8px solid transparent; border-right-color: var(--line-hi); border-left: 0; }
+  .bubble::before { content: ''; position: absolute; left: -11px; top: 12px; border: 9px solid transparent; border-right-color: var(--outline); border-left: 0; }
+  .bubble::after { content: ''; position: absolute; left: -6px; top: 15px; border: 6px solid transparent; border-right-color: #fff; border-left: 0; }
   .ghost { visibility: hidden; }
   .typed { position: absolute; inset: 10px 14px; }
   .compact .typed { inset: 8px 12px; }

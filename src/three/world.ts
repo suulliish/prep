@@ -36,6 +36,8 @@ export interface World {
   mapLabels(): MapLabel[];
   /** Мир, к которому сейчас пролистана карта. */
   mapFocused(): number;
+  /** Окно сцены в каркасе экрана (доли высоты): камера центрирует цель в этом окне. */
+  setFrame(top: number, height: number): void;
   resize(): void;
   dispose(): void;
 }
@@ -294,7 +296,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     hub: { target: new THREE.Vector3(0, 2.0, 0), radius: 25, phi: 1.02, theta: 0.9 },
     battle: { target: new THREE.Vector3(0.2, 1.2, 0.6), radius: 11, phi: 1.12, theta: 1.62 },
     portal: { target: new THREE.Vector3(4.6, 2.2, 0), radius: 9, phi: 1.25, theta: 0.15 },
-    hero: { target: new THREE.Vector3(-2, 1.4, 0.6), radius: 6.8, phi: 1.32, theta: 0.55 }, // портрет героя на палубе
+    hero: { target: new THREE.Vector3(-2, 1.3, 0.6), radius: 9, phi: 1.3, theta: 0.55 }, // портрет героя на палубе
   };
   let mode: CamMode = 'hub';
   const cam = { target: CAM.hub.target.clone(), radius: CAM.hub.radius, phi: CAM.hub.phi, theta: CAM.hub.theta };
@@ -323,16 +325,18 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     camera.aspect = w / h; camera.updateProjectionMatrix(); map.resize(w, h);
     const narrow = w / h < 0.8;
     const side = isSide(w, h);
-    CAM.hub.radius = narrow ? 30 : side ? 23 : 25; CAM.battle.radius = narrow ? 16.5 : side ? 14 : 11.5;
+    CAM.hub.radius = narrow ? 30 : side ? 23 : 25; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 9.5 : 8;
     applyOffset();
   }
   // Раскладка экрана (та же, что в app.css): на широком экране панель справа — сцена сдвигается влево;
   // на узком панель снизу — сцена поднимается вверх.
   const isSide = (w: number, h: number) => w >= 1000 && w / h >= 1.15;
   let viewShift = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8 ? 0.2 : 0.08;
+  const frameWin = { top: 0, h: 1 };
   function applyOffset() {
     const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
     if (isSide(w, h)) camera.setViewOffset(w, h, (Math.min(540, w * 0.42) + 24) / 2, h * (mode === 'hub' ? 0.02 : 0.04), w, h);
+    else if (frameWin.h < 0.99) camera.setViewOffset(w, h, 0, h * (0.5 - (frameWin.top + frameWin.h / 2)), w, h); // цель — в центр окна сцены
     else if (viewShift) camera.setViewOffset(w, h, 0, h * viewShift, w, h); else camera.clearViewOffset();
     camera.updateProjectionMatrix();
   }
@@ -482,6 +486,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     celebrate(color = 0x3ff0ff) { celebrateT = 1.2; burst(worldPos(hero.g, 2.5), color, 50, 5); },
     openPortal() { portalOpen = true; flash = 1; burst(worldPos(portal, 2), 0x3ff0ff, 90, 7); },
     setTheme(sky, fog) { themeTo = sky.map(c => new THREE.Vector3(c[0], c[1], c[2])); fogTo.setHex(fog); },
+    setFrame(top, height) { frameWin.top = top; frameWin.h = height; applyOffset(); },
     setOutfit(jacket, dark, visor) { outfitNow = [jacket, dark, visor]; paintOutfit(jacket, dark, visor); },
     mapSetup(isles, current) { map.setup(isles, current); },
     mapFocus(i) { map.focus(i); },

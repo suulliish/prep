@@ -22,18 +22,18 @@
     </button>
   {/each}
   {#if note}<p class="note">{note.text}</p>{/if}
-  {#if found}<p class="fix appear">🔧 {fix}</p>{/if}
+  {#if found}<p class="fix appear">{fix}</p>{/if}
 </div>
 
 <style>
   .bh { display: grid; gap: 8px; }
-  .line { position: relative; display: flex; gap: 12px; align-items: center; text-align: left; color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; font: inherit; }
-  .line:hover { border-color: var(--line-hi); }
-  .n { color: var(--dim); font-weight: 800; }
-  .line.ok { border-color: var(--ok); }
-  .line.after { border-color: var(--gold); }
-  .line.bad { border-color: var(--glitch); background: #ff4fb81a; animation: shake .35s; }
+  .line { position: relative; display: flex; gap: 12px; align-items: center; text-align: left; color: var(--paper-ink); background: #fff; border: 3px solid var(--outline); border-radius: 12px; padding: 10px 12px; cursor: pointer; font: inherit; box-shadow: 0 3px 0 var(--outline); }
+  .line:active { transform: translateY(2px); }
+  .n { color: var(--paper-dim); font-weight: 800; }
+  .line.ok { background: #c9f7d8; }
+  .line.after { background: #fff3c2; }
+  .line.bad { background: #ffe0f1; animation: shake .35s; }
   .stamp { position: absolute; right: 10px; top: 50%; transform: translateY(-50%) rotate(-8deg); font: 800 14px var(--txt); font-style: normal; color: var(--glitch); border: 2px solid var(--glitch); padding: 2px 6px; }
-  .note { color: var(--dim); font-weight: 700; }
-  .fix { font-weight: 800; color: var(--ok); font-size: 18px; }
+  .note { color: var(--paper-dim); font-weight: 700; }
+  .fix { font-weight: 800; color: var(--ok-deep); font-size: 18px; }
 </style>

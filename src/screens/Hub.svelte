@@ -1,41 +1,59 @@
 <script lang="ts">
+  // Корабль — дом (docs/DESIGN_SYSTEM.md 11, 12.1–12.2). Главная кнопка всегда ведёт к следующему шагу дня.
+  // Задания дня идут строго по порядку; у каждого видна награда. Закрытое при нажатии объясняет причину.
   import { onMount } from 'svelte';
-  import Hud from '../ui/Hud.svelte';
+  import Screen from '../ui/Screen.svelte';
+  import Icon from '../ui/Icon.svelte';
   import Bit from '../ui/Bit.svelte';
-  import { game, go, skillDefs } from '../lib/store.svelte';
+  import { game, go, levelOf } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { ensurePlan, dayRec } from '../lib/session.svelte';
-  import { canStartExtra, planComplete } from '../engine/planner';
+  import { canStartExtra, planComplete, TODAY_MAX, round5 } from '../engine/planner';
   import { isWeekday } from '../engine/dates';
+  import { streak } from '../engine/streak';
   import { skillTitle } from '../engine/items';
   import { audio } from '../lib/audio';
+  import { toast } from '../ui/notify.svelte';
+  // @ts-ignore
+  import { LESSONS } from '../../content/lessons.mjs';
 
   const plan = ensurePlan();
   const rec = $derived(dayRec());
   const weekday = isWeekday(game.day);
-  const crystals = Object.values(game.save.skills).filter(s => s.status === 'mastered' || s.status === 'automatic').length;
+  const lv = $derived(levelOf(game.save.xp));
+  const st = $derived(streak(game.save, game.day));
+  const crystals = $derived(Object.values(game.save.skills).filter(s => s.status === 'mastered' || s.status === 'automatic').length);
   const broken = game.save.repairShop.filter(r => !r.fixed).length;
   const learnedTotal = Object.values(game.save.skills).filter(s => ['learned', 'mastered', 'automatic'].includes(s.status)).length;
 
   const BLOCK = {
-    warmup: { kz: 'Глитч-мобтар шабуылы', ru: 'Разминка: повторение вперемешку', icon: 'mob' },
-    new: { kz: 'Жаңа миссия', ru: 'Новая тема', icon: 'star' },
-    mixed: { kz: 'Аралас шайқас', ru: 'Смешанные задачи', icon: 'swords' },
-    summary: { kz: 'Кеме күнделігі', ru: 'Итог дня', icon: 'book' },
+    warmup: { kz: 'Жылыну', what: 'Ескі тақырыптар аралас', icon: 'mob', c: 'var(--glitch)' },
+    new: { kz: 'Жаңа миссия', what: '', icon: 'star', c: 'var(--gold)' },
+    mixed: { kz: 'Аралас шайқас', what: 'Нағыз емтихан есептері', icon: 'sword', c: 'var(--code)' },
+    summary: { kz: 'Күн қорытындысы', what: 'Жинаған уақытың', icon: 'book', c: 'var(--crystal)' },
   } as const;
+  const planMin = plan.blocks.reduce((s, b) => s + b.minutes, 0) || 1;
+  const reward = (m: number) => Math.max(5, round5((TODAY_MAX * m) / planMin));
 
   const nextBlock = $derived(plan.blocks.find(b => !rec.blocksDone[b.id]));
+  // недоконченный урок: «Жалғастыру · 5/11»
+  const resume = $derived.by(() => {
+    const p = game.save.lessonPos, b = plan.blocks.find(x => x.id === 'new');
+    if (!p || !b?.lesson || b.skills[0] !== p.skill || p.step < 1) return null;
+    return `${p.step + 1}/${((LESSONS as Record<string, any[]>)[p.skill] ?? []).length}`;
+  });
+  const doneN = $derived(plan.blocks.filter(b => rec.blocksDone[b.id]).length);
   const done = $derived(planComplete(rec, plan));
   const extraOk = $derived(canStartExtra(rec, plan, game.save.settings.extraMissionCap));
-
   const name = $derived(game.save.heroName);
-  const bossReady = $derived(weekday && done && !game.save.worldsCleared?.includes(game.save.world ?? 'village') && Object.values(game.save.skills).filter(x => ['learned', 'mastered', 'automatic'].includes(x.status)).length >= 3);
+  const bossReady = $derived(weekday && done && !game.save.worldsCleared?.includes(game.save.world ?? 'village') && learnedTotal >= 3);
+
   const greeting = $derived(
-    !game.save.diagnosticDone ? `Сәлем, ${name}! Мен — Бит. Алдымен сенің Код-күшіңді сканерлейік: бірнеше есеп, қателесуден қорықпа — бұл тек карта ашу үшін.`
-    : !weekday ? `Бүгін демалыс, ${name}! Жинаған уақытыңды ойнап алуға болады. Дүйсенбіде жалғастырамыз.`
-    : done ? `Керемет, ${name}! Бүгінгі жоспар орындалды: +${rec.minutesToday} мин. Қосымша тапсырма — тағы +15 мин.${bossReady ? ' Картада босс күтіп тұр!' : ''}`
-    : !plan.blocks.some(b => b.id === 'new') ? `${name}, жаңа тақырыптың сабағы әлі дайындалуда. Бүгін — қайталау мен шайқас күні: бұл да білімді бекітеді!`
-    : `${name}, бүгін ${plan.blocks.length} тапсырма. Бастайық па?`
+    !game.save.diagnosticDone ? `Сәлем, ${name}! Алдымен Код-күшіңді сканерлейік — бұл сынақ емес, карта ашу.`
+    : !weekday ? `Бүгін демалыс! Жинаған уақытыңды ойнап ал. Дүйсенбіде жалғастырамыз.`
+    : done ? `Керемет! Бүгінгі жол бітті: +${rec.minutesToday} мин.${bossReady ? ' Картада босс күтіп тұр!' : ''}`
+    : doneN === 0 ? `${name}, бүгін ${plan.blocks.length} қадам. Бастайық!`
+    : `Жарайсың! Тағы ${plan.blocks.length - doneN} қадам қалды.`
   );
 
   onMount(() => {
@@ -51,87 +69,132 @@
     if (id === 'new' && b.lesson) return go({ name: 'lesson', skill: b.skills[0] });
     go({ name: 'session', block: id as any });
   }
+  function tapQuest(id: string) {
+    if (rec.blocksDone[id]) { toast('Бұл қадам орындалды ✓'); return; }
+    if (nextBlock?.id !== id) { toast(`Алдымен: ${BLOCK[nextBlock!.id].kz}`); audio.play('click'); return; }
+    start(id);
+  }
+  function nav(to: 'map' | 'hero' | 'album' | 'playtime') { audio.unlock(); audio.play('click'); go({ name: to }); }
+  let muted = $state(audio.settings.master === 0);
+  function toggleSound() { audio.unlock(); muted = !muted; audio.save({ master: muted ? 0 : 0.8 }); if (!muted) audio.play('click'); }
+
+  const primary = $derived(
+    !game.save.diagnosticDone ? { label: 'Сканерлеуді бастау', go: () => { audio.unlock(); go({ name: 'diagnostic' }); } }
+    : !weekday ? { label: 'Ойын уақыты', go: () => nav('playtime') }
+    : nextBlock ? { label: nextBlock.id === 'new' && nextBlock.lesson ? (resume ? `Жалғастыру · ${resume}` : `Миссия: ${skillTitle(nextBlock.skills[0]).kz}`) : BLOCK[nextBlock.id].kz, go: () => start(nextBlock!.id) }
+    : extraOk ? { label: 'Қосымша миссия · +15 мин', go: () => { audio.unlock(); audio.play('energy'); go({ name: 'session', block: 'extra' }); } }
+    : { label: 'Ойын уақыты', go: () => nav('playtime') }
+  );
 </script>
 
-<div class="hub">
-  <Hud />
-  <div class="spacer passthrough"></div>
-  <section class="dock">
-    <div class="panel talk appear"><Bit text={greeting} mood={done ? 'happy' : 'idle'} /></div>
+<Screen scene="tall">
+  {#snippet head()}
+    <div class="me">
+      <span class="lvl num" aria-label="Деңгей {lv.lvl}">{lv.lvl}</span>
+      <div class="who"><b>{name}</b><span class="bar"><i style="width:{(lv.into / lv.need) * 100}%"></i></span></div>
+    </div>
+  {/snippet}
+  {#snippet right()}
+    <button class="ibtn ghost" onclick={toggleSound} aria-label={muted ? 'Дыбысты қосу' : 'Дыбысты өшіру'}><Icon name={muted ? 'mute' : 'sound'} fill="#fff" /></button>
+    <button class="ibtn ghost" onclick={() => go({ name: 'commander' })} aria-label="Командир (ата-ана)"><Icon name="gear" fill="#c4cfff" /></button>
+  {/snippet}
 
-    {#if !game.save.diagnosticDone}
-      <button class="btn primary big block pulse" onclick={() => { audio.unlock(); go({ name: 'diagnostic' }); }}>Сканерлеуді бастау</button>
-    {:else if weekday}
-      <div class="quests">
-        {#each plan.blocks as b, i (b.id)}
-          {@const q = BLOCK[b.id]}
-          {@const isDone = !!rec.blocksDone[b.id]}
-          {@const isNext = nextBlock?.id === b.id}
-          <button class="quest panel appear" class:done={isDone} class:next={isNext} style="animation-delay:{i * 70}ms"
-            disabled={!isNext} onclick={() => start(b.id)}>
-            <span class="qi {q.icon}" aria-hidden="true"></span>
+  {#snippet overlay()}
+  <div class="res" role="group" aria-label="Ресурстар">
+    <span class="pill"><Icon name="clock" fill="var(--gold)" size={22} /><span class="num">{rec.minutesToday}</span><small>мин</small></span>
+    <span class="pill"><Icon name="crystal" fill="var(--crystal)" size={22} /><span class="num">{crystals}</span><small>кристалл</small></span>
+    <span class="pill"><Icon name="fire" fill="var(--fire)" size={22} /><span class="num">{st.days}</span><small>күн</small></span>
+  </div>
+  <div class="say"><Bit text={greeting} mood={done ? 'happy' : 'idle'} compact /></div>
+  {/snippet}
+
+  {#if game.save.diagnosticDone && weekday}
+    <div class="today">
+      <div class="ring" style="--p:{(doneN / plan.blocks.length) * 100}" aria-label="Бүгін {doneN} / {plan.blocks.length}">
+        <span class="num">{doneN}<small>/{plan.blocks.length}</small></span>
+      </div>
+      <div class="tt"><b>Бүгінгі жол</b><small>Барлығы ~{planMin} мин · сыйлық {TODAY_MAX} мин ойынға дейін</small></div>
+    </div>
+    <ol class="quests">
+      {#each plan.blocks as b (b.id)}
+        {@const q = BLOCK[b.id]}
+        {@const isDone = !!rec.blocksDone[b.id]}
+        {@const isNext = nextBlock?.id === b.id}
+        <li>
+          <button class="quest" class:done={isDone} class:next={isNext} class:locked={!isDone && !isNext} onclick={() => tapQuest(b.id)}>
+            <span class="qi" style="--c:{isDone ? 'var(--ok)' : q.c}"><Icon name={isDone ? 'check' : !isNext ? 'lock' : q.icon} fill={isDone ? '#fff' : '#fff'} size={22} /></span>
             <span class="qt">
               <b>{q.kz}</b>
-              <small>{b.id === 'new' && b.skills[0] ? skillTitle(b.skills[0]).kz : q.ru}{b.minutes > 2 ? ` · ~${b.minutes} мин` : ''}</small>
+              <small>{b.id === 'new' && resume ? `Жалғастыру · қадам ${resume}` : b.id === 'new' && b.skills[0] ? skillTitle(b.skills[0]).kz : q.what}{b.minutes > 2 && !(b.id === 'new' && resume) ? ` · ~${b.minutes} мин` : ''}</small>
             </span>
-            <span class="qs">{isDone ? '✓' : isNext ? '▶' : ''}</span>
+            {#if b.id !== 'summary'}<span class="rw" class:got={isDone}><Icon name="clock" fill="var(--gold)" size={16} />+{reward(b.minutes)}</span>{/if}
           </button>
-        {/each}
-      </div>
-      {#if done}
-        <button class="btn gold big block" disabled={!extraOk} onclick={() => { audio.unlock(); audio.play('energy'); go({ name: 'session', block: 'extra' }); }}>
-          Қосымша тапсырма · +15 мин <small class="cap">({rec.extraMissions}/{game.save.settings.extraMissionCap})</small>
-        </button>
-      {/if}
-    {/if}
-    <nav class="menu">
-      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'map' }); }}><i class="ic map"></i><span>Карта</span>{#if bossReady}<b class="badge gold">!</b>{/if}</button>
-      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'hero' }); }}><i class="ic hero"></i><span>Кейіпкер</span></button>
-      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'album' }); }}><i class="ic cards"></i><span>Альбом</span>{#if broken}<b class="badge">{broken}</b>{/if}</button>
-      <button class="mi" onclick={() => { audio.unlock(); audio.play('click'); go({ name: 'playtime' }); }}><i class="ic clock"></i><span>Ойын</span></button>
-    </nav>
-    <p class="info">Тақырыптар: {learnedTotal} / {skillDefs.length} · Кристалдар: {crystals}</p>
-  </section>
-</div>
+        </li>
+      {/each}
+    </ol>
+    {#if done}<p class="note center">Қосымша миссиялар: {rec.extraMissions} / {game.save.settings.extraMissionCap} · әрқайсысы +15 мин</p>{/if}
+  {/if}
+
+  {#snippet footer()}
+    <div class="stack">
+      <button class="btn primary big block" onclick={primary.go}><Icon name="play" fill="var(--outline)" stroke="none" size={20} />{primary.label}</button>
+      <nav class="menu" aria-label="Мәзір">
+        <button class="mi" onclick={() => nav('map')}><Icon name="map" fill="#7ee08f" size={26} /><span>Карта</span>{#if bossReady}<b class="badge">!</b>{/if}</button>
+        <button class="mi" onclick={() => nav('hero')}><Icon name="hero" fill="#5ea0ff" size={26} /><span>Кейіпкер</span></button>
+        <button class="mi" onclick={() => nav('album')}><Icon name="cards" fill="var(--crystal)" size={26} /><span>Альбом</span>{#if broken}<b class="badge">{broken}</b>{/if}</button>
+        <button class="mi" onclick={() => nav('playtime')}><Icon name="clock" fill="var(--gold)" size={26} /><span>Ойын</span></button>
+      </nav>
+    </div>
+  {/snippet}
+</Screen>
 
 <style>
-  .hub { min-height: 100dvh; display: flex; flex-direction: column; }
-  .spacer { flex: 1; min-height: 30vh; }
-  .dock { width: min(560px, 100%); margin: 0 auto; padding: 0 16px calc(env(safe-area-inset-bottom, 0px) + 16px); display: grid; gap: 10px; }
-  .talk { padding: 12px; }
-  .quests { display: grid; gap: 8px; }
-  .quest { display: flex; align-items: center; gap: 12px; text-align: left; font: inherit; color: var(--ink); cursor: pointer; padding: 12px 14px; }
-  .quest:disabled { cursor: default; }
-  .quest.done { opacity: .6; }
-  .quest.next { border-color: var(--code); box-shadow: inset 0 0 24px #3ff0ff22; animation: pop-in .35s var(--ease-out) both, pulse-glow 2s 1s infinite; }
-  .qt { flex: 1; display: grid; gap: 2px; }
-  .qt b { font-size: var(--fs-m); }
-  .qt small { color: var(--dim); font-size: var(--fs-s); }
-  .qs { font-size: 20px; font-weight: 800; color: var(--code); }
-  .quest.done .qs { color: var(--ok); }
-  .qi { flex: none; width: 34px; height: 34px; background: var(--panel); border: 2px solid var(--line-hi); display: grid; place-items: center; }
-  .qi.mob { background: linear-gradient(135deg, var(--glitch), #8a3cff); }
-  .qi.star { background: radial-gradient(circle, var(--code) 30%, transparent 32%), var(--panel); }
-  .qi.swords { background: repeating-linear-gradient(45deg, var(--gold) 0 3px, transparent 3px 8px), var(--panel); }
-  .qi.book { background: linear-gradient(var(--crystal), var(--crystal)) center/60% 70% no-repeat, var(--panel); }
+  .me { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .lvl { flex: none; width: 44px; height: 44px; display: grid; place-items: center; font-size: 20px; color: var(--outline); background: var(--code);
+    border: 3px solid var(--outline); border-radius: 12px; box-shadow: inset 0 -4px 0 var(--code-deep); }
+  .who { flex: 1; min-width: 0; display: grid; gap: 4px; }
+  .who b { font: 900 18px var(--disp); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 2px 0 var(--outline); }
+  .who .bar { height: 12px; }
+
+  .res { display: flex; gap: 6px; justify-content: center; width: 100%; padding: 0 4px; }
+  .res .pill { flex: 1; justify-content: center; min-width: 0; }
+  .say { padding: 0 4px 6px; width: min(460px, 100%); align-self: flex-start; }
+  @media (min-width: 1000px) and (min-aspect-ratio: 23/20) { .say { width: 100%; } }
+
+  .today { display: flex; align-items: center; gap: 12px; }
+  .ring { --p: 0; flex: none; width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center;
+    background: conic-gradient(var(--ok) calc(var(--p) * 1%), #0b1030 0); border: 3px solid var(--outline); position: relative; }
+  .ring::before { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: var(--panel-2); border: 2px solid var(--outline); }
+  .ring span { position: relative; font-size: 20px; }
+  .ring small { font-size: 12px; color: var(--dim); }
+  .tt { display: grid; }
+  .tt b { font: 900 18px var(--disp); text-shadow: 0 2px 0 var(--outline); }
+  .tt small { color: var(--dim); font-size: 13px; }
+
+  .quests { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .quest { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; font: inherit; color: var(--ink); cursor: pointer;
+    padding: 10px 12px; background: var(--deep); border: 3px solid var(--outline); border-radius: 16px; box-shadow: inset 0 -4px 0 #0c1a5a, 0 3px 0 var(--outline);
+    transition: transform .08s; }
+  .quest:active { transform: translateY(2px); }
+  .quest.next { background: linear-gradient(180deg, #3a5cf0, #2440c0); box-shadow: inset 0 -4px 0 #1a2f96, 0 0 0 3px var(--gold), 0 3px 0 var(--outline); animation: nudge 2.4s ease-in-out infinite; }
+  .quest.done { opacity: .75; }
+  .quest.locked { opacity: .6; }
+  @keyframes nudge { 0%, 100% { transform: none; } 50% { transform: translateY(-2px); } }
+  .qi { flex: none; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; background: var(--c); border: 3px solid var(--outline); box-shadow: inset 0 -4px 0 #00000033; }
+  .quest.locked .qi { background: #5b6699; }
+  .qt { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .qt b { font: 800 17px var(--disp); }
+  .qt small { color: var(--dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rw { flex: none; display: inline-flex; align-items: center; gap: 3px; font: 900 15px var(--disp); color: var(--gold); padding: 4px 8px; border-radius: 999px; background: #0b1030; border: 2px solid var(--outline); }
+  .rw.got { color: var(--ok); }
+  .center { text-align: center; }
+
+  .stack { flex: 1; display: grid; gap: 8px; }
+  .stack .btn { gap: 10px; }
   .menu { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-  .mi { position: relative; display: grid; justify-items: center; gap: 4px; padding: 10px 4px 8px; font: 800 var(--fs-xs) var(--txt); color: var(--dim); background: var(--panel); border: 2px solid var(--line); border-bottom-width: 4px; border-radius: 8px; cursor: pointer; }
-  .mi:hover { color: var(--ink); border-color: var(--line-hi); }
-  .ic { width: 22px; height: 22px; display: block; }
-  .ic.clock { border: 4px solid var(--gold); border-radius: 50%; }
-  .ic.cards { background: var(--crystal); clip-path: polygon(50% 0, 100% 40%, 50% 100%, 0 40%); }
-  .ic.map { background: linear-gradient(90deg, var(--ok) 0 33%, var(--code) 33% 66%, var(--gold) 66%); clip-path: polygon(0 10%, 33% 0, 66% 10%, 100% 0, 100% 90%, 66% 100%, 33% 90%, 0 100%); }
-  .ic.hero { background: var(--code); clip-path: polygon(30% 0, 70% 0, 70% 40%, 100% 45%, 100% 70%, 70% 65%, 70% 100%, 30% 100%, 30% 65%, 0 70%, 0 45%, 30% 40%); }
-  .ic.lock { background: var(--dim); clip-path: polygon(20% 45%, 20% 25%, 35% 8%, 65% 8%, 80% 25%, 80% 45%, 100% 45%, 100% 100%, 0 100%, 0 45%, 30% 45%, 30% 28%, 40% 18%, 60% 18%, 70% 28%, 70% 45%); }
-  .badge.gold { background: var(--gold); }
-  .badge { position: absolute; top: 4px; right: 8px; min-width: 18px; height: 18px; padding: 0 4px; display: grid; place-items: center; font-size: 11px; color: var(--void); background: var(--glitch); border-radius: 9px; }
-  .info { color: var(--dim); font-size: var(--fs-s); text-align: center; }
-  .cap { font-weight: 700; opacity: .8; }
-  .pulse { animation: pulse-glow 2s infinite; }
-  /* широкий экран: корабль слева, панель квестов справа (как в app.css .stage) */
-  @media (min-width: 1000px) and (min-aspect-ratio: 23/20) {
-    .spacer { display: none; }
-    .dock { width: calc(var(--side-w) + 24px); margin: auto 0 auto auto; padding: 0 24px 24px 0; }
-  }
-  @media (min-width: 700px) and (max-aspect-ratio: 23/20) { .dock { width: min(620px, 100%); } }
+  .mi { position: relative; display: grid; justify-items: center; gap: 2px; padding: 6px 2px 5px; min-height: 56px; font: 800 12px var(--disp); color: var(--ink);
+    background: transparent; border: 0; border-radius: 12px; cursor: pointer; }
+  .mi:active { transform: translateY(2px); }
+  .mi:focus-visible { outline: 3px solid var(--code); }
+  .badge { position: absolute; top: 0; right: 14%; min-width: 20px; height: 20px; padding: 0 5px; display: grid; place-items: center; font: 900 12px var(--disp); color: var(--outline); background: var(--gold); border: 2px solid var(--outline); border-radius: 10px; }
 </style>
