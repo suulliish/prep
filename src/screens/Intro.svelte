@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Screen from '../ui/Screen.svelte';
+  import Icon from '../ui/Icon.svelte';
   // Первый запуск: история «Жарық» и правила (как учёба двигает игру) — 5 экранов с голосом Бита и действием в 3D.
   import { onMount } from 'svelte';
   import Bit from '../ui/Bit.svelte';
@@ -34,38 +36,41 @@
   }
 </script>
 
-<div class="wrap side-dock">
-  <div class="spacer passthrough"></div>
+<Screen scene="tall">
   {#if !started}
-    <section class="panel card glitch-in">
-      <b class="logo px">ЖАРЫҚ</b>
+    <div class="brand">
+      <b class="logo">ЖАРЫҚ</b>
       <p class="sub">Математика · логика · БИЛ-ге дайындық</p>
-      <button class="btn gold big block pulse intro-next" onclick={start}>Ойынды бастау ▶</button>
-      <p class="hint">Дыбысты қос — Бит сөйлейді 🔊</p>
-    </section>
+      <p class="hint"><Icon name="sound" fill="#fff" size={18} />Дыбысты қос — Бит сөйлейді</p>
+    </div>
   {:else}
     {#key i}
-      <section class="panel card glitch-in">
-        <div class="dots">{#each slides as _, k}<i class:on={k <= i}></i>{/each}</div>
+      <div class="slide">
+        <div class="dots" aria-label="{i + 1} / {slides.length}">{#each slides as _, k}<i class:on={k <= i}></i>{/each}</div>
         <h2>{s.title}</h2>
         <Bit text={s.kz.replace('{name}', game.save.heroName)} mood={s.act === 'glitch' ? 'think' : 'wow'} voice={voice(i)} />
-        <button class="btn primary big block intro-next" onclick={next}>{i < slides.length - 1 ? 'Әрі қарай →' : 'Сканерлеуге!'}</button>
-      </section>
+      </div>
     {/key}
   {/if}
-</div>
+
+  {#snippet footer()}
+    {#if !started}
+      <button class="btn primary big grow intro-next" onclick={start}><Icon name="play" fill="var(--outline)" stroke="none" size={20} />Ойынды бастау</button>
+    {:else}
+      <button class="btn primary big grow intro-next" onclick={next}>{i < slides.length - 1 ? 'Әрі қарай' : 'Сканерлеуге!'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
+    {/if}
+  {/snippet}
+</Screen>
 
 <style>
-  .wrap { min-height: 100dvh; width: min(560px, 100%); margin: 0 auto; display: flex; flex-direction: column; padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px); }
-  .spacer { flex: 1; min-height: 30vh; }
-  .card { display: grid; gap: 14px; padding: 20px; }
-  .logo { font-size: 56px; text-align: center; color: var(--code); text-shadow: 0 0 20px #3ff0ff, 3px 0 var(--glitch); letter-spacing: .06em; animation: flick 3s infinite; }
-  .sub { text-align: center; color: var(--dim); font-weight: 800; }
-  .hint { text-align: center; color: var(--faint); font-size: var(--fs-s); }
-  h2 { font-size: 22px; color: var(--gold); }
+  .brand { display: grid; gap: 8px; justify-items: center; text-align: center; padding: 6px 0; }
+  .logo { font: 900 52px var(--disp); letter-spacing: .04em; color: var(--gold); -webkit-text-stroke: 3px var(--outline); paint-order: stroke fill; text-shadow: 0 5px 0 var(--outline); }
+  .sub { color: var(--ink); font-weight: 800; }
+  .hint { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: var(--fs-s); }
+  .slide { display: grid; gap: 12px; animation: pop-in .3s var(--ease-out) both; }
+  h2 { font-size: 24px; color: var(--gold); -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; text-shadow: 0 3px 0 var(--outline); }
   .dots { display: flex; gap: 6px; }
-  .dots i { flex: 1; height: 4px; background: var(--line); border-radius: 2px; }
-  .dots i.on { background: var(--code); box-shadow: 0 0 6px var(--code); }
-  .pulse { animation: pulse-glow 2s infinite; }
-  @keyframes flick { 0%, 92%, 100% { opacity: 1; } 94% { opacity: .6; transform: translateX(2px); } 96% { opacity: 1; } }
+  .dots i { flex: 1; height: 8px; border-radius: 999px; background: var(--deep); border: 2px solid var(--outline); }
+  .dots i.on { background: var(--code); }
+  .grow { flex: 1; }
 </style>

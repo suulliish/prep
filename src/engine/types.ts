@@ -66,6 +66,7 @@ export interface Save {
   repairShop: { source: string; skill: string; tag?: string; addedDay: string; fixed?: boolean }[];
   kzReview?: Record<string, 'ok' | 'fix'>;   // проверка казахских текстов носителем
   weekendSpent?: Record<string, number>;      // потрачено из копилки выходных (ключ — понедельник недели)
+  lessonPos?: { skill: string; step: number };  // где остановился в уроке — «Жалғастыру»
   aiLog?: AiTurn[];                           // вопросы к ИИ-помощнику (видит командир), последние 100
 }
 

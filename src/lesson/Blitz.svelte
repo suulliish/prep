@@ -59,7 +59,7 @@
       <p class="q appear" bind:this={qBox}>{item.q}</p>
       <div class="ch" class:two={item.choices.length === 2}>
         {#each item.choices as c, k}
-          <button class="choice" class:right={flashK !== null && k === item.answer} class:wrong={flashK === k && k !== item.answer} onclick={() => answer(k)}>{c}</button>
+          <button class="ans" class:right={flashK !== null && k === item.answer} class:wrong={flashK === k && k !== item.answer} onclick={() => answer(k)}>{c}</button>
         {/each}
       </div>
     {/key}
@@ -77,16 +77,15 @@
   .intro { display: grid; gap: 10px; justify-items: center; text-align: center; }
   .intro b.px { font-size: 30px; color: var(--gold); }
   .hud { display: flex; align-items: center; gap: 10px; }
-  .bar { flex: 1; height: 12px; background: #070a1a; border: 1px solid var(--line-hi); }
+  .bar { flex: 1; height: 14px; border-radius: 999px; overflow: hidden; background: var(--paper-2); border: 3px solid var(--outline); }
   .bar i { display: block; height: 100%; background: var(--code); transition: width .1s linear; }
   .bar i.low { background: var(--miss); }
   .bar i.prog { background: var(--ok); transition: width .3s var(--ease-out); }
-  .combo { color: var(--dim); } .combo.on { color: var(--code); text-shadow: 0 0 10px #3ff0ff; }
+  .combo { color: var(--paper-dim); } .combo.on { color: var(--code-deep); }
   .q { font-size: 26px; font-weight: 800; text-align: center; }
   .ch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .choice { font: 800 20px var(--txt); color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-bottom-width: 5px; border-radius: 8px; padding: 14px 8px; cursor: pointer; }
-  .choice.right { border-color: var(--ok); background: var(--ok-deep); }
-  .choice.wrong { border-color: var(--miss); background: var(--miss-deep); animation: shake .35s; }
+  .ch .ans { justify-content: center; }
+  .ch .ans.wrong { animation: shake .35s; }
   .stars { display: flex; gap: 8px; font-size: 48px; }
-  .stars i { font-style: normal; color: #2a3160; } .stars i.on { color: var(--gold); text-shadow: 0 0 16px #ffc94a; animation: pop-in .4s var(--ease-out); }
+  .stars i { font-style: normal; color: var(--paper-line); -webkit-text-stroke: 2px var(--outline); } .stars i.on { color: var(--gold); animation: pop-in .4s var(--ease-out); }
 </style>

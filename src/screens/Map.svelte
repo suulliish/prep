@@ -11,6 +11,7 @@
   import { isWeekday } from '../engine/dates';
   import { WORLDS, energy, cleared, currentWorld, worldOpen, travel } from '../lib/look';
   import type { IsleState, MapLabel } from '../three/map';
+  import Icon from '../ui/Icon.svelte';
 
   const plan = ensurePlan();
   const e = $derived(energy());
@@ -75,9 +76,9 @@
 
 <div class="map-screen">
   <header class="top panel">
-    <button class="btn ghost small" onclick={() => go({ name: 'hub' })} aria-label="Кемеге қайту">←</button>
+    <button class="ibtn" onclick={() => go({ name: 'hub' })} aria-label="Кемеге қайту"><Icon name="back" fill="#fff" /></button>
     <div class="ttl"><b>Жарық картасы</b><small>{curIdx + 1}-әлем · {WORLDS.length} әлемнің</small></div>
-    <span class="en num" title="Код энергиясы — әр үйренген тақырып +1, кристалл +2"><i class="bolt"></i>{e}</span>
+    <span class="pill" title="Код энергиясы — әр үйренген тақырып +1, кристалл +2"><Icon name="bolt" fill="var(--code)" size={22} /><span class="num">{e}</span><small>энергия</small></span>
   </header>
 
   <!-- подписи над островами (не перехватывают касания, кроме самой подписи) -->
@@ -95,12 +96,12 @@
 
   <section class="sheet panel" aria-live="polite">
     <div class="nav">
-      <button class="btn ghost small" onclick={() => pick(sel - 1)} disabled={sel === 0} aria-label="Алдыңғы әлем">‹</button>
+      <button class="ibtn" onclick={() => pick(sel - 1)} disabled={sel === 0} aria-label="Алдыңғы әлем"><Icon name="back" fill="#fff" size={20} /></button>
       <div class="head" style="--a:{w.isle[0]}">
         <small class="status {st}">{STATUS[st]}</small>
         <h2>{known(sel) ? w.kz : 'Белгісіз әлем'}</h2>
       </div>
-      <button class="btn ghost small" onclick={() => pick(sel + 1)} disabled={sel === WORLDS.length - 1} aria-label="Келесі әлем">›</button>
+      <button class="ibtn" onclick={() => pick(sel + 1)} disabled={sel === WORLDS.length - 1} aria-label="Келесі әлем"><Icon name="chevron" fill="#fff" size={20} /></button>
     </div>
 
     {#if st === 'current'}
@@ -135,14 +136,14 @@
   .top { display: flex; align-items: center; gap: 12px; padding: 8px 12px; width: min(760px, 100%); margin: 0 auto; }
   .btn.small { min-height: 44px; min-width: 44px; padding: 6px 12px; font-size: 20px; }
   .ttl { flex: 1; display: grid; line-height: 1.15; }
-  .ttl b { font-size: 18px; }
+  .ttl b { font: 900 19px var(--disp); text-shadow: 0 2px 0 var(--outline); }
   .ttl small { color: var(--dim); font-size: 12px; font-weight: 700; }
   .en { display: flex; align-items: center; gap: 6px; font-size: 20px; color: var(--code); }
   .bolt { width: 14px; height: 18px; background: var(--code); clip-path: polygon(40% 0, 100% 0, 60% 45%, 90% 45%, 20% 100%, 40% 55%, 10% 55%); box-shadow: 0 0 8px var(--code); }
 
   .tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
-  .tag { position: absolute; transform: translate(-50%, -100%); pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
-    font: 800 13px var(--txt); color: var(--ink); background: #0b0f2acc; border: 1.5px solid var(--line-hi); border-radius: 999px; padding: 5px 11px; cursor: pointer;
+  .tag { position: absolute; text-transform: none; letter-spacing: 0; transform: translate(-50%, -100%); pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    font: 800 13px var(--disp); color: var(--ink); background: #0b1030dd; border: 2.5px solid var(--outline); border-radius: 999px; padding: 5px 11px; cursor: pointer;
     backdrop-filter: blur(4px); transition: transform .2s var(--ease-out), border-color .2s; }
   .tag.current { border-color: var(--code); color: var(--code); box-shadow: 0 0 14px #3ff0ff55; }
   .tag.cleared { border-color: var(--ok); }
@@ -156,7 +157,8 @@
   .sheet { width: min(560px, 100%); margin: 0 auto; display: grid; gap: 10px; padding: 12px 14px 14px; position: relative; z-index: 2; }
   .nav { display: flex; align-items: center; gap: 10px; }
   .head { flex: 1; text-align: center; display: grid; gap: 2px; }
-  .head h2 { font-size: 22px; text-shadow: 0 0 18px color-mix(in srgb, var(--a) 45%, transparent); }
+  .head h2 { font-size: 22px; }
+  .ibtn:disabled { opacity: .4; }
   .status { font: 800 11px var(--txt); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
   .status.current { color: var(--code); } .status.cleared { color: var(--ok); } .status.next { color: var(--gold); }
   .note { color: var(--dim); font-size: var(--fs-s); font-weight: 700; text-align: center; }
