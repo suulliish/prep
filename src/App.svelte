@@ -35,7 +35,7 @@
     <div class="screen glitch-in">
       {#if game.screen.name === 'hub'}<Hub />
       {:else if game.screen.name === 'session'}<Session block={game.screen.block} />
-      {:else if game.screen.name === 'lesson'}<Lesson skill={game.screen.skill} />
+      {:else if game.screen.name === 'lesson'}<Lesson skill={game.screen.skill} replay={game.screen.replay} />
       {:else if game.screen.name === 'summary'}<Summary />
       {:else if game.screen.name === 'diagnostic'}<Diagnostic />
       {:else if game.screen.name === 'sound'}<SoundLab back={() => (game.screen = { name: 'commander' })} />

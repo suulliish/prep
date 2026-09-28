@@ -36,7 +36,7 @@ function load(): Save {
 export type Screen =
   | { name: 'hub' }
   | { name: 'session'; block: 'warmup' | 'new' | 'mixed' | 'extra' | 'boss' | 'repair' }
-  | { name: 'lesson'; skill: string }
+  | { name: 'lesson'; skill: string; replay?: boolean }
   | { name: 'summary' }
   | { name: 'diagnostic' }
   | { name: 'album' }

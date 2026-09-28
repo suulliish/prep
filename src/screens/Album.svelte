@@ -11,7 +11,7 @@
   const CC: Record<string, string> = { A: '#3ff0ff', B: '#ffc94a', C: '#5ce39c', D: '#b58cff', E: '#ff9a6b', F: '#6ab8ff', G: '#ff4fb8', H: '#e6ff5c', I: '#c0c8ff', J: '#ff7de0', K: '#7dffd4' };
   let tab = $state<'cards' | 'repair'>('cards');
   // Шпаргалка «Есте сақта» открывается после пройденного урока
-  const ruleOf = (id: string) => (game.save.skills[id]?.lessonDone ? (LESSONS as Record<string, any[]>)[id]?.find(s => s.type === 'rule') : undefined);
+  const ruleOf = (id: string) => (game.save.skills[id]?.lessonDone || ['learned', 'mastered', 'automatic'].includes(game.save.skills[id]?.status) ? (LESSONS as Record<string, any[]>)[id]?.find(s => s.type === 'rule') : undefined);
   let openRule = $state<string | null>(null);
   const broken = $derived(game.save.repairShop.filter(r => !r.fixed));
   const fixed = $derived(game.save.repairShop.filter(r => r.fixed).length);
@@ -54,6 +54,9 @@
           <div class="rule appear">
             <b>★ {skillDefs.find(d => d.id === openRule)?.title.kz}</b>
             {#each ruleOf(openRule)?.lines ?? [] as l}<p>{l}</p>{/each}
+            {#if (LESSONS as Record<string, any[]>)[openRule]?.some(s => s.type === 'goal')}
+              <button class="btn ghost" onclick={() => go({ name: 'lesson', skill: openRule!, replay: true })}>▶ Сабақты қайта көру</button>
+            {/if}
           </div>
         {/if}
       </section>

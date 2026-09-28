@@ -33,7 +33,8 @@
   import StarPicker from '../widgets/StarPicker.svelte';
   import SetSort from '../widgets/SetSort.svelte';
 
-  let { skill }: { skill: string } = $props();
+  // replay — пересмотр из альбома: без XP и без перехода к практике
+  let { skill, replay = false }: { skill: string; replay?: boolean } = $props();
   const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline, MultipleHunt, StarPicker, SetSort };
   const steps: any[] = (LESSONS as Record<string, any[]>)[skill] ?? [{ type: 'say', kz: 'Бұл тақырыптың сабағы әзірленуде. Бірден жаттығуға көшейік!' }];
   const goal = steps.find(s => s.type === 'goal');
@@ -47,7 +48,7 @@
   const HIT = (t: string) => !['goal', 'rule', 'say'].includes(t);
   const maxHp = Math.max(1, steps.filter(s => HIT(s.type)).length);
   const voiced = new Set<string>(VOICED as string[]);
-  const voiceUrl = (k: number) => (voiced.has(`${skill}_${k}`) ? `${import.meta.env.BASE_URL}voice/lessons/${skill}_${k}.mp3` : '');
+  const voiceUrl = (k: number | string) => (voiced.has(`${skill}_${k}`) ? `${import.meta.env.BASE_URL}voice/lessons/${skill}_${k}.mp3` : '');
 
   let i = $state(0);
   let ready = $state(false);
@@ -93,7 +94,7 @@
     if (!nextBtn) return;
     const c = centerOf(nextBtn);
     sparksAt(c.x, c.y - 40, ['#3ff0ff', '#5ce39c', '#ffc94a'], big ? 60 : 26);
-    if (xp) { earned += xp; game.save.xp += xp; floatText(`+${xp} XP`, c.x, c.y - 60, '#ffc94a', big); persist(); }
+    if (xp && !replay) { earned += xp; game.save.xp += xp; floatText(`+${xp} XP`, c.x, c.y - 60, '#ffc94a', big); persist(); }
   }
   function widgetDone() { audio.play('correct'); reward(0); }
   function go2(k: number) { if (k < 0 || k >= step.frames.length) return; frame = k; audio.play('click'); if (frame === step.frames.length - 1) ready = true; }
@@ -119,6 +120,7 @@
   function next() {
     if (HIT(step.type) && step.type !== 'final') strike(step.type === 'blitz');
     if (i < steps.length - 1) { i++; enter(); audio.play('click'); return; }
+    if (replay) { audio.play('mission'); go({ name: 'album' }); return; }
     (game.save.skills[skill] ??= blankSkill()).lessonDone = true;
     persist(); audio.play('mission');
     go({ name: 'session', block: 'new' });
@@ -155,7 +157,7 @@
         <div class="lock"><span class="pad" aria-hidden="true">🔒</span><MathLine text={step.task} big /></div>
       {:else if step.type === 'widget'}
         {@const Comp = WIDGETS[step.w]}
-        <Bit text={step.kz} mood="think" compact />
+        <Bit text={step.kz} mood="think" compact voice={voiceUrl(i)} />
         <div class="widget pe"><Comp {...step.props} ondone={widgetDone} /></div>
       {:else if step.type === 'example'}
         <h2 class="h">{step.kz}</h2>
@@ -163,7 +165,7 @@
           {#key frame}
             <Scene name={fr.scene ?? step.scene} s={fr.s} />
             {#if fr.math}<div class="mline appear"><MathLine text={fr.math} big /></div>{/if}
-            <div class="cap appear"><Bit text={fr.kz} mood="think" compact /></div>
+            <div class="cap appear"><Bit text={fr.kz} mood="think" compact voice={voiceUrl(`${i}_f${frame}`)} /></div>
           {/key}
           <div class="fnav">
             <button class="btn ghost small" disabled={frame === 0} onclick={() => go2(frame - 1)} aria-label="Алдыңғы">←</button>
@@ -209,7 +211,7 @@
       <div class="actions">
         {#if showSkip && !ready}<button class="btn ghost" onclick={() => (ready = true)}>Өткізіп жіберу</button>{/if}
         <button bind:this={nextBtn} class="btn primary big" class:gold={step.type === 'goal' || won} disabled={!ready} onclick={next}>
-          {step.type === 'goal' ? 'Миссияны қабылдау →' : i < steps.length - 1 ? (HIT(step.type) ? 'Соққы беру →' : 'Келесі →') : `Жаттығуға!${earned ? ` (+${earned} XP)` : ''}`}
+          {step.type === 'goal' ? 'Миссияны қабылдау →' : i < steps.length - 1 ? (HIT(step.type) ? 'Соққы беру →' : 'Келесі →') : replay ? 'Альбомға қайту' : `Жаттығуға!${earned ? ` (+${earned} XP)` : ''}`}
         </button>
       </div>
     </section>
