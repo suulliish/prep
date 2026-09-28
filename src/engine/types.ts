@@ -66,4 +66,7 @@ export interface Save {
   repairShop: { source: string; skill: string; tag?: string; addedDay: string; fixed?: boolean }[];
   kzReview?: Record<string, 'ok' | 'fix'>;   // проверка казахских текстов носителем
   weekendSpent?: Record<string, number>;      // потрачено из копилки выходных (ключ — понедельник недели)
+  aiLog?: AiTurn[];                           // вопросы к ИИ-помощнику (видит командир), последние 100
 }
+
+export interface AiTurn { at: number; day: string; skill: string; task: string; q: string; a: string }
