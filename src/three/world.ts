@@ -6,8 +6,9 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { makeHero, makeBit, makeMob as buildMob, addShipDetails, waveFlag } from './characters';
+import { createMap, type MapIsle, type MapLabel } from './map';
 
-export type CamMode = 'hub' | 'battle' | 'portal';
+export type CamMode = 'hub' | 'battle' | 'portal' | 'map' | 'hero';
 export type BitMood = 'idle' | 'happy' | 'wow' | 'think' | 'sad';
 
 export interface World {
@@ -27,6 +28,14 @@ export interface World {
   setTheme(sky: number[][], fog: number): void;
   /** Костюм героя (путь наград). */
   setOutfit(jacket: number, dark: number, visor: number): void;
+  /** 3D-карта миров (режим 'map'): острова, текущий мир, выбор касанием, перелёт корабля с героем. */
+  mapSetup(isles: MapIsle[], current: number): void;
+  mapFocus(i: number): void;
+  mapTravel(i: number): Promise<void>;
+  onMapPick(cb: (i: number) => void): void;
+  mapLabels(): MapLabel[];
+  /** Мир, к которому сейчас пролистана карта. */
+  mapFocused(): number;
   resize(): void;
   dispose(): void;
 }
@@ -191,11 +200,17 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   const outfitMats = { jacket: [] as THREE.MeshToonMaterial[], dark: [] as THREE.MeshToonMaterial[], visor: [] as THREE.MeshToonMaterial[] };
   // материалы из общего кэша — клонируем, чтобы не перекрасить заодно корабль
   const own = new Map<THREE.Material, THREE.MeshToonMaterial>();
-  hero.g.traverse(o => { const mesh = o as THREE.Mesh, m = mesh.material as THREE.MeshToonMaterial | undefined; if (!m?.color || Array.isArray(m)) return;
+  let outfitNow: [number, number, number] | null = null;
+  const dressHero = (root: THREE.Object3D) => root.traverse(o => { const mesh = o as THREE.Mesh, m = mesh.material as THREE.MeshToonMaterial | undefined; if (!m?.color || Array.isArray(m)) return;
     const hx = m.color.getHex(), slot = hx === 0x22b8cc ? 'jacket' : hx === 0x137e8f ? 'dark' : hx === 0x3ff0ff && m.emissive?.getHex() === 0x3ff0ff ? 'visor' : null;
     if (!slot) return;
     if (!own.has(m)) { const c = m.clone(); own.set(m, c); outfitMats[slot].push(c); }
     mesh.material = own.get(m)!; });
+  dressHero(hero.g);
+  function paintOutfit(jacket: number, dark: number, visor: number) {
+    outfitMats.jacket.forEach(m => m.color.setHex(jacket)); outfitMats.dark.forEach(m => m.color.setHex(dark));
+    outfitMats.visor.forEach(m => { m.color.setHex(visor); m.emissive?.setHex(visor); });
+  }
   let themeTo: THREE.Vector3[] | null = null; const fogTo = new THREE.Color(0x17104a);
   hero.g.position.set(-2, 0.15, 0.6); hero.g.rotation.y = Math.PI / 2; ship.add(hero.g);
   const shipAnim = addShipDetails(ship, quality);
@@ -261,27 +276,40 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     bursts.push({ g, parts, life: 1.3 });
   }
 
+  // ---------- 3D-карта миров (своя сцена) ----------
+  const map = createMap({ skyMat, starGeo, starMat, km, dressHero: g => { dressHero(g); if (outfitNow) paintOutfit(...outfitNow); } });
+
   // ---------- Постобработка ----------
   let composer: EffectComposer | null = null;
+  let renderPass: RenderPass | null = null;
   if (quality === 'high') {
     composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
+    renderPass = new RenderPass(scene, camera); composer.addPass(renderPass);
     composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 0.75, 0.45, 0.55));
     composer.addPass(new OutputPass());
   }
 
   // ---------- Камера ----------
-  const CAM: Record<CamMode, { target: THREE.Vector3; radius: number; phi: number; theta: number }> = {
+  const CAM: Record<Exclude<CamMode, 'map'>, { target: THREE.Vector3; radius: number; phi: number; theta: number }> = {
     hub: { target: new THREE.Vector3(0, 2.0, 0), radius: 25, phi: 1.02, theta: 0.9 },
     battle: { target: new THREE.Vector3(0.2, 1.2, 0.6), radius: 11, phi: 1.12, theta: 1.62 },
     portal: { target: new THREE.Vector3(4.6, 2.2, 0), radius: 9, phi: 1.25, theta: 0.15 },
+    hero: { target: new THREE.Vector3(-2, 1.4, 0.6), radius: 6.8, phi: 1.32, theta: 0.55 }, // портрет героя на палубе
   };
   let mode: CamMode = 'hub';
   const cam = { target: CAM.hub.target.clone(), radius: CAM.hub.radius, phi: CAM.hub.phi, theta: CAM.hub.theta };
   let dragging = false, lastX = 0, lastY = 0, idle = 0, userTheta = 0, userPhi = 0, shakeT = 0;
-  const onDown = (e: PointerEvent) => { dragging = true; lastX = e.clientX; lastY = e.clientY; };
-  const onMove = (e: PointerEvent) => { if (!dragging) return; userTheta -= (e.clientX - lastX) * 0.006; userPhi = Math.max(-0.5, Math.min(0.35, userPhi - (e.clientY - lastY) * 0.004)); lastX = e.clientX; lastY = e.clientY; idle = 0; };
-  const onUp = () => { dragging = false; };
+  let downX = 0, downY = 0;
+  const onDown = (e: PointerEvent) => { dragging = true; lastX = downX = e.clientX; lastY = downY = e.clientY; };
+  const onMove = (e: PointerEvent) => { if (!dragging) return; if (mode === 'map') { map.drag(e.clientX - lastX, e.clientY - lastY); lastX = e.clientX; lastY = e.clientY; return; } userTheta -= (e.clientX - lastX) * 0.006; userPhi = Math.max(-0.5, Math.min(0.35, userPhi - (e.clientY - lastY) * 0.004)); lastX = e.clientX; lastY = e.clientY; idle = 0; };
+  const onUp = (e: PointerEvent) => {
+    if (dragging && mode === 'map' && Math.hypot(e.clientX - downX, e.clientY - downY) < 8) {
+      const r = canvas.getBoundingClientRect(); map.click(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    }
+    dragging = false;
+  };
+  const onWheel = (e: WheelEvent) => { if (mode === 'map') { e.preventDefault(); map.wheel(e.deltaY); } };
+  canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('pointerdown', onDown); window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
 
   // ---------- Анимации героя ----------
@@ -292,7 +320,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   function resize() {
     const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
     renderer.setSize(w, h, false); composer?.setSize(w, h);
-    camera.aspect = w / h; camera.updateProjectionMatrix();
+    camera.aspect = w / h; camera.updateProjectionMatrix(); map.resize(w, h);
     const narrow = w / h < 0.8;
     const side = isSide(w, h);
     CAM.hub.radius = narrow ? 30 : side ? 23 : 25; CAM.battle.radius = narrow ? 16.5 : side ? 14 : 11.5;
@@ -396,7 +424,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     }
 
     // камера плавно к режиму
-    const C = CAM[mode];
+    const C = CAM[mode === 'map' ? 'hub' : mode];
     idle += dt;
     if (!dragging && idle > 2.5 && mode === 'hub' && km === 1) userTheta += dt * 0.04;
     cam.target.lerp(C.target, 0.05); cam.radius += (C.radius - cam.radius) * 0.05; cam.phi += (C.phi + userPhi - cam.phi) * 0.08; cam.theta += (C.theta + userTheta - cam.theta) * 0.08;
@@ -404,7 +432,14 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     camera.position.set(cam.target.x + cam.radius * Math.sin(cam.phi) * Math.cos(cam.theta) + sh, cam.target.y + cam.radius * Math.cos(cam.phi) + sh, cam.target.z + cam.radius * Math.sin(cam.phi) * Math.sin(cam.theta));
     camera.lookAt(cam.target);
 
-    if (composer) composer.render(); else renderer.render(scene, camera);
+    if (mode === 'map') {
+      map.setFog((scene.fog as THREE.Fog).color); map.update(dt, t);
+      if (composer && renderPass) { renderPass.scene = map.scene; renderPass.camera = map.camera; composer.render(); }
+      else renderer.render(map.scene, map.camera);
+    } else {
+      if (renderPass) { renderPass.scene = scene; renderPass.camera = camera; }
+      if (composer) composer.render(); else renderer.render(scene, camera);
+    }
     raf = requestAnimationFrame(frame);
   }
   raf = requestAnimationFrame(frame);
@@ -447,10 +482,13 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     celebrate(color = 0x3ff0ff) { celebrateT = 1.2; burst(worldPos(hero.g, 2.5), color, 50, 5); },
     openPortal() { portalOpen = true; flash = 1; burst(worldPos(portal, 2), 0x3ff0ff, 90, 7); },
     setTheme(sky, fog) { themeTo = sky.map(c => new THREE.Vector3(c[0], c[1], c[2])); fogTo.setHex(fog); },
-    setOutfit(jacket, dark, visor) {
-      outfitMats.jacket.forEach(m => m.color.setHex(jacket)); outfitMats.dark.forEach(m => m.color.setHex(dark));
-      outfitMats.visor.forEach(m => { m.color.setHex(visor); m.emissive?.setHex(visor); });
-    },
+    setOutfit(jacket, dark, visor) { outfitNow = [jacket, dark, visor]; paintOutfit(jacket, dark, visor); },
+    mapSetup(isles, current) { map.setup(isles, current); },
+    mapFocus(i) { map.focus(i); },
+    mapTravel(i) { return map.travel(i); },
+    onMapPick(cb) { map.onPick(cb); },
+    mapLabels() { return map.labels(); },
+    mapFocused() { return map.focusIndex; },
     resize,
     dispose() {
       cancelAnimationFrame(raf); removeEventListener('resize', resize);

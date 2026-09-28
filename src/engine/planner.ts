@@ -11,18 +11,29 @@ const CAT_ORDER = 'CDABFGEIHJK';
 /** Следующий навык для изучения: сначала начатый, иначе доступный с наибольшим весом и меньшим классом.
  *  Новая тема — только с готовым полным уроком (lesson !== false): без объяснения новичку не «доходит»
  *  (Kirschner, Sweller & Clark 2006). Нет урока — день идёт на повторение и смешанный бой. */
+/** Тема «пройдена с уроком»: урок показан (или урока для темы нет вовсе). Решение семьи 28.09.2026: каждую тему
+ *  сначала объясняем уроком хотя бы один раз — даже если диагностика показала, что ребёнок её знает. Пока урока
+ *  не было, тема не попадает в разминку, смешанные бои и боссов. */
+export function taught(save: Save, defs: SkillDef[], id: string): boolean {
+  return !!save.skills[id]?.lessonDone || defs.find(d => d.id === id)?.lesson === false;
+}
+
 export function nextSkill(save: Save, defs: SkillDef[]): string | null {
   const learning = defs.find(d => save.skills[d.id]?.status === 'learning');
   if (learning) return learning.id;
-  const avail = defs.filter(d => save.skills[d.id]?.status === 'available' && d.templates.length && d.lesson !== false);
+  const avail = defs.filter(d => {
+    const st = save.skills[d.id];
+    const open = st?.status === 'available' || (isDone(st) && !st.lessonDone); // «знает» по диагностике, но урока не было
+    return open && d.templates.length && d.lesson !== false;
+  });
   const g = (x: number | string) => (typeof x === 'number' ? x : 7);
   avail.sort((a, b) => g(a.grade) - g(b.grade) || b.weight - a.weight || CAT_ORDER.indexOf(a.cat) - CAT_ORDER.indexOf(b.cat));
   return avail[0]?.id ?? null;
 }
 
 export function buildPlan(save: Save, defs: SkillDef[], day: string): Plan {
-  const due = dueSkills(save, day);
-  const recent = defs.filter(d => isDone(save.skills[d.id]) && d.templates.length).map(d => d.id).slice(-6);
+  const due = dueSkills(save, day).filter(id => taught(save, defs, id));
+  const recent = defs.filter(d => isDone(save.skills[d.id]) && d.templates.length && taught(save, defs, d.id)).map(d => d.id).slice(-6);
   const warm = [...new Set([...due, ...recent])].slice(0, 6);
   const next = nextSkill(save, defs);
   const blocks: Block[] = [];
