@@ -1,8 +1,9 @@
 name: Deploy site to GitHub Pages
 
 on:
+  # основная ветка репозитория (default branch) и main — на будущее
   push:
-    branches: [main]
+    branches: [main, claude/wonderful-rubin-e0bawv]
   workflow_dispatch:
 
 permissions:
@@ -19,6 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22
