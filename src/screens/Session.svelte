@@ -11,6 +11,7 @@
   import { audio } from '../lib/audio';
   import { currentWorld } from '../lib/look';
   import { react } from '../lib/voice';
+  import { askBit, HELPER_ERR, MAX_QUESTIONS, type Turn, type HelperError } from '../lib/helper';
   // @ts-ignore
   import { LESSONS } from '../../content/lessons.mjs';
   // шпаргалка «Есте сақта» из урока темы — вернуться к правилу после ошибки
@@ -53,6 +54,27 @@
   let showSol = $state(false);
   let bitText = $state('');
   let bitMood = $state<'idle' | 'happy' | 'wow' | 'think' | 'sad'>('idle');
+  // ИИ-помощник «Түсінбедім»: только после ответа (правильный ответ уже показан)
+  let aiTurns = $state<Turn[]>([]);
+  let aiBusy = $state(false);
+  let aiErr = $state('');
+  let aiQ = $state('');
+  const aiAsked = $derived(aiTurns.filter(t => t.role === 'kid').length);
+  async function helpMe(question?: string) {
+    if (!item || aiBusy) return;
+    aiBusy = true; aiErr = '';
+    const rule = ruleOf(item.skill)?.lines.join(' ');
+    const mistake = picked != null && picked !== item.answer ? mistakeText(item.choices[picked].tag).kz : undefined;
+    const history = $state.snapshot(aiTurns) as Turn[];
+    try {
+      const text = await askBit({ item, picked, mistake, rule }, history, question);
+      if (question) aiTurns.push({ role: 'kid', text: question });
+      aiTurns.push({ role: 'bit', text });
+      aiQ = '';
+      audio.play('hint');
+    } catch (e) { aiErr = HELPER_ERR[(e as HelperError)] ?? HELPER_ERR.ai_unavailable; }
+    aiBusy = false;
+  }
   let mobHp = $state(block === 'boss' ? BOSS_HP : total);
   const hpMax = block === 'boss' ? BOSS_HP : total;
   let startAt = 0;
@@ -69,6 +91,7 @@
     const fromBank = !twin && BANK_SLOTS[block]?.includes(idx) && bankQueue.length ? bankQueue.shift() : null;
     item = fromBank ? bankToItem(fromBank) : makeItem(sk);
     picked = null; phase = 'answer'; hintLevel = 0; showSol = false;
+    aiTurns = []; aiErr = ''; aiQ = ''; aiBusy = false;
     bitText = twin ? 'Реванш! Дәл осындай есеп — енді өзің шығарып көр.' : ''; bitMood = twin ? 'think' : 'idle';
     startAt = performance.now();
   }
@@ -269,6 +292,23 @@
         {/if}
       {/if}
 
+      {#if phase === 'feedback'}
+        <div class="ai">
+          {#each aiTurns as t}
+            {#if t.role === 'bit'}<Bit text={t.text} mood="think" compact />{:else}<p class="kidq">— {t.text}</p>{/if}
+          {/each}
+          {#if aiErr}<p class="aierr">{aiErr}</p>{/if}
+          {#if !aiTurns.length}
+            <button class="btn ghost" onclick={() => helpMe()} disabled={aiBusy}>{aiBusy ? 'Бит ойланып жатыр…' : 'Түсінбедім — Биттен сұра'}</button>
+          {:else if aiAsked < MAX_QUESTIONS}
+            <form class="askrow" onsubmit={(e) => { e.preventDefault(); if (aiQ.trim()) helpMe(aiQ); }}>
+              <input bind:value={aiQ} maxlength="200" placeholder="Тағы сұрағың бар ма? Жаз…" disabled={aiBusy} onkeydown={(e) => e.stopPropagation()} />
+              <button class="btn" disabled={aiBusy || !aiQ.trim()}>{aiBusy ? '…' : 'Сұрау'}</button>
+            </form>
+          {/if}
+        </div>
+      {/if}
+
       <div class="actions">
         {#if phase !== 'feedback'}
           <button class="btn ghost" onclick={hint} disabled={hintLevel >= 4}>Бит сканері {hintLevel ? `${hintLevel}/4` : ''}</button>
@@ -327,5 +367,10 @@
   .sol p { margin-top: 8px; line-height: 1.6; }
   .sol.rule { border-color: var(--gold-deep); } .sol.rule summary { color: var(--gold); }
   .actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .ai { display: grid; gap: 8px; }
+  .ai .kidq { color: var(--dim); font-style: italic; margin: 0; }
+  .ai .aierr { color: var(--gold); margin: 0; }
+  .askrow { display: flex; gap: 8px; }
+  .askrow input { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: var(--deep); border: 1px solid var(--line-hi); border-radius: 6px; padding: 8px 10px; }
   @media (max-width: 480px) { .q { font-size: 18px; } .formula { font-size: 19px; } }
 </style>

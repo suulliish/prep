@@ -13,7 +13,7 @@
   let unlocked = $state(false);
   let pin = $state('');
   let pinErr = $state('');
-  let tab = $state<'today' | 'settings' | 'skills' | 'kz' | 'data'>('today');
+  let tab = $state<'today' | 'settings' | 'skills' | 'kz' | 'ai' | 'data'>('today');
   let confirmReset = $state(false);
   let importMsg = $state('');
   const hasPin = !!game.save.settings.pin;
@@ -74,7 +74,7 @@
     </section>
   {:else}
     <nav class="tabs panel">
-      {#each [['today', 'Сегодня'], ['settings', 'Настройки'], ['skills', 'Темы'], ['kz', 'Казахский текст'], ['data', 'Данные']] as [id, name]}
+      {#each [['today', 'Сегодня'], ['settings', 'Настройки'], ['skills', 'Темы'], ['kz', 'Казахский текст'], ['ai', 'Вопросы к ИИ'], ['data', 'Данные']] as [id, name]}
         <button class="tab" class:on={tab === id} onclick={() => (tab = id as any)}>{name}</button>
       {/each}
     </nav>
@@ -150,6 +150,18 @@
         <ul>{#each lessonIds as id}{@const v = game.save.kzReview?.[id]}
           <li><span>{skillDefs.find(d => d.id === id)?.title.kz}</span>
             <span class="rv"><button class="btn small" class:on={v === 'ok'} onclick={() => mark(id, 'ok')}>дұрыс</button><button class="btn small" class:on={v === 'fix'} onclick={() => mark(id, 'fix')}>исправить</button></span></li>{/each}</ul>
+      </section>
+    {:else if tab === 'ai'}
+      <section class="panel card list">
+        <p class="note">Кнопка «Түсінбедім» появляется только после ответа, когда решение уже показано: ИИ объясняет иначе и отвечает на уточняющие вопросы (до {3} на задачу, до 30 в день). Работает, только если на устройстве выполнен вход в облако (вкладка «Данные»). Модель — Gemini через Vertex, как у бота.</p>
+        {#if !(game.save.aiLog ?? []).length}<p class="note">Вопросов пока не было.</p>{/if}
+        {#each [...(game.save.aiLog ?? [])].reverse().slice(0, 30) as t}
+          <details class="ailog">
+            <summary><b>{t.day}</b> · {skillDefs.find(d => d.id === t.skill)?.title.ru ?? t.skill} · {t.q === 'түсінбедім' ? '«не понял»' : `«${t.q}»`}</summary>
+            <p class="note">{t.task}</p>
+            <p>{t.a}</p>
+          </details>
+        {/each}
       </section>
     {:else}
       <section class="panel card">

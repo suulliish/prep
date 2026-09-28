@@ -127,3 +127,5 @@ async function finishEmailLink() {
 
 export async function signOutCloud() { await push(); await signOut(auth); }
 export const syncNow = () => pull();
+/** Токен входа для ИИ-помощника (helper/): без входа помощник не отвечает. */
+export async function idToken(): Promise<string | null> { return auth.currentUser ? auth.currentUser.getIdToken() : null; }
