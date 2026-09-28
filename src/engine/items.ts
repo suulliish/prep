@@ -15,7 +15,8 @@ export interface Item {
   source: string; skill: string;
   kz: string; ru: string;
   choices: { text: string; tag: string }[]; answer: number;
-  hints: Text[]; sol: Text; figure?: { kind: string; svg?: string };
+  hints: Text[]; sol: Text; figure?: { kind: string; svg?: string; src?: string };
+  real?: boolean; // настоящая задача экзамена из банка
 }
 
 const byId: Record<string, any> = Object.fromEntries((templates as any[]).map(t => [t.id, t]));

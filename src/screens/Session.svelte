@@ -5,6 +5,7 @@
   import { W } from '../lib/world.svelte';
   import { ensurePlan, completeBlock, dayRec } from '../lib/session.svelte';
   import { makeItem, mistakeText, skillTitle, type Item } from '../engine/items';
+  import { bankFor, bankToItem } from '../engine/bank';
   import { recordAttempt, isDone } from '../engine/progress';
   import { isHonest, addMasteryBonus, settleDay } from '../engine/planner';
   import { audio } from '../lib/audio';
@@ -58,9 +59,15 @@
   let cardEl: HTMLElement;
   let choiceEls: HTMLElement[] = $state([]);
 
+  // Настоящие задачи экзамена (банк «Дарын»): только по пройденным темам, сначала невиданные.
+  // Босс — 3 из 10, смешанный бой и доп. миссия — 2; урок новой темы и разминка — только генераторы.
+  const BANK_SLOTS: Partial<Record<Block, number[]>> = { boss: [2, 5, 8], mixed: [2, 5], extra: [3, 6] };
+  const seen = new Set(game.save.attempts.map(a => a.source));
+  const bankQueue = BANK_SLOTS[block] ? bankFor(id => isDone(game.save.skills[id]), seen) : [];
   function nextItem() {
     const sk = block === 'new' ? skills[0] : skills[idx % Math.max(1, skills.length)];
-    item = makeItem(sk);
+    const fromBank = !twin && BANK_SLOTS[block]?.includes(idx) && bankQueue.length ? bankQueue.shift() : null;
+    item = fromBank ? bankToItem(fromBank) : makeItem(sk);
     picked = null; phase = 'answer'; hintLevel = 0; showSol = false;
     bitText = twin ? 'Реванш! Дәл осындай есеп — енді өзің шығарып көр.' : ''; bitMood = twin ? 'think' : 'idle';
     startAt = performance.now();
@@ -219,9 +226,11 @@
   {#if item}
     <section class="card panel" bind:this={cardEl}>
       <p class="q">{#each item.kz.split('\n') as line, i}{#if i}<br />{/if}<span class:formula={i > 0}>{line}</span>{/each}</p>
-      {#if item.figure?.svg}<div class="fig">{@html item.figure.svg}</div>{/if}
+      {#if item.real}<span class="real">★ НАҒЫЗ ЕМТИХАН ЕСЕБІ · {item.source.startsWith('daryn') ? `«Дарын» ${item.source.slice(5, 9)}` : 'Bolashak'}</span>{/if}
+      {#if item.figure?.svg}<div class="fig">{@html item.figure.svg}</div>
+      {:else if item.figure?.src}<div class="fig paper"><img src={import.meta.env.BASE_URL + item.figure.src} alt="Есептің суреті" /></div>{/if}
 
-      <div class="choices" class:long={item.choices.some(c => c.text.length > 7)} class:numeric={item.choices.every(c => /^[\d\s,.:−\-+/()·²³]+$/.test(c.text))}>
+      <div class="choices" class:long={item.choices.some(c => c.text.length > 6)} class:xlong={item.choices.some(c => c.text.length > 18)} class:numeric={item.choices.every(c => /^[\d\s,.:−\-+/()·²³]+(\s?[а-яa-z°%²³]{1,4})?$/i.test(c.text))}>
         {#each item.choices as c, i}
           <button bind:this={choiceEls[i]} class="choice"
             class:picked={picked === i}
@@ -289,10 +298,16 @@
   .q { font-size: 20px; line-height: 1.5; font-weight: 700; }
   .formula { display: inline-block; margin-top: 6px; font-size: 22px; letter-spacing: .02em; color: #e6f7ff; }
   .fig { color: var(--ink); display: grid; place-items: center; }
+  .fig :global(svg) { width: min(100%, 420px); height: auto; max-height: 300px; }
+  .fig.paper { background: #f6f3ea; border-radius: 10px; padding: 10px; }
+  .fig.paper img { max-width: 100%; max-height: 300px; display: block; }
+  .real { justify-self: start; font: 800 12px var(--txt); letter-spacing: .06em; color: var(--void); background: var(--gold); padding: 3px 10px; border-radius: 4px; box-shadow: 0 0 12px #ffc94a66; }
   .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr)); gap: 8px; }
   .choices.long { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
   .choices.long .choice { font-size: 17px; }
   .choices.numeric .ct { white-space: nowrap; }
+  .choices.xlong { grid-template-columns: 1fr !important; }
+  .choices.xlong .ct { overflow-wrap: anywhere; }
   @media (min-width: 1000px) and (min-aspect-ratio: 23/20) { .choices.long { grid-template-columns: 1fr 1fr; } }
   .choice { display: flex; align-items: center; gap: 10px; text-align: left; font: 800 18px/1.25 var(--txt); color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-bottom-width: 5px; border-radius: var(--r); padding: 12px; cursor: pointer; min-height: 56px; transition: transform .08s, border-color .15s, background .2s; }
   .choice:hover:not(:disabled) { border-color: var(--line-hi); }
