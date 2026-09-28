@@ -1,4 +1,4 @@
-// 3D-мир «Разлома»: летающий корабль-хаб, Кодер, дрон Бит, портал, глитч-мобы.
+// 3D-мир «Жарық»: летающий корабль-хаб, Кодер, дрон Бит, портал, глитч-мобы.
 // Всё собрано из блоков кодом (Three.js). Режимы камеры: hub (общий вид), battle (бой на палубе), portal.
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';

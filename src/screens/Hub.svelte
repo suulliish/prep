@@ -21,7 +21,7 @@
     warmup: { kz: 'Глитч-мобтар шабуылы', ru: 'Разминка: повторение вперемешку', icon: 'mob' },
     new: { kz: 'Жаңа миссия', ru: 'Новая тема', icon: 'star' },
     mixed: { kz: 'Аралас шайқас', ru: 'Смешанные задачи', icon: 'swords' },
-    summary: { kz: 'Бортжурнал', ru: 'Итог дня', icon: 'book' },
+    summary: { kz: 'Кеме күнделігі', ru: 'Итог дня', icon: 'book' },
   } as const;
 
   const nextBlock = $derived(plan.blocks.find(b => !rec.blocksDone[b.id]));

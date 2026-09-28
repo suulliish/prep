@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Карта Разлома: 12 миров снизу вверх. Портал в следующий мир открывают энергия Кода (изученные и освоенные
+  // Карта мира «Жарық»: 12 миров снизу вверх. Портал в следующий мир открывают энергия Кода (изученные и освоенные
   // темы — любые) и побеждённый босс текущего мира. Босс — смешанный бой по всему пройденному.
   import { onMount } from 'svelte';
   import { game, go } from '../lib/store.svelte';
@@ -40,7 +40,7 @@
 <div class="map-wrap">
   <div class="top panel">
     <button class="btn ghost small" onclick={() => go({ name: 'hub' })} aria-label="Артқа">←</button>
-    <b class="t">Разлом картасы</b>
+    <b class="t">Жарық картасы</b>
     <span class="en num" title="Код энергиясы"><i class="bolt"></i>{e}</span>
   </div>
 

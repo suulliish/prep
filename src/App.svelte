@@ -29,7 +29,7 @@
   });
 </script>
 
-<canvas bind:this={canvas} class="world" class:dim={W.dim} aria-label="Корабль Разлом"></canvas>
+<canvas bind:this={canvas} class="world" class:dim={W.dim} aria-label="«Жарық» кемесі"></canvas>
 <div class="screen-host">
   {#key game.screen.name}
     <div class="screen glitch-in">

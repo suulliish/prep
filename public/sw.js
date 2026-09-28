@@ -1,5 +1,5 @@
-// Офлайн-кэш «Разлома»: страница — сначала сеть (обновления), файлы сборки и голос — из кэша (хэши в именах).
-const CACHE = 'razlom-v1';
+// Офлайн-кэш «Жарық»: страница — сначала сеть (обновления), файлы сборки и голос — из кэша (хэши в именах).
+const CACHE = 'zharyq-v1';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', e => {

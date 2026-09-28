@@ -42,7 +42,7 @@
 <div class="wrap side-dock">
   <div class="spacer passthrough"></div>
   <section class="card panel glow appear">
-    <h1>Бортжурнал</h1>
+    <h1>Кеме күнделігі</h1>
     <Bit text={finished ? 'Бүгін керемет жұмыс! Ойын уақыты жиналды. Қаласаң — қосымша тапсырма бар.' : `${game.save.heroName}, бүгінгі жұмысың — бортжурналда. Жарайсың!`} mood="happy" compact />
     <div class="stats3">
       <div><b class="num">{solved}</b><small>есеп шешілді</small></div>

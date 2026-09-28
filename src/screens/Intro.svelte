@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Первый запуск: история «Разлома» и правила (как учёба двигает игру) — 5 экранов с голосом Бита и действием в 3D.
+  // Первый запуск: история «Жарық» и правила (как учёба двигает игру) — 5 экранов с голосом Бита и действием в 3D.
   import { onMount } from 'svelte';
   import Bit from '../ui/Bit.svelte';
   import { game, go, persist } from '../lib/store.svelte';
@@ -38,7 +38,7 @@
   <div class="spacer passthrough"></div>
   {#if !started}
     <section class="panel card glitch-in">
-      <b class="logo px">РАЗЛОМ</b>
+      <b class="logo px">ЖАРЫҚ</b>
       <p class="sub">Математика · логика · БИЛ-ге дайындық</p>
       <button class="btn gold big block pulse intro-next" onclick={start}>Ойынды бастау ▶</button>
       <p class="hint">Дыбысты қос — Бит сөйлейді 🔊</p>
