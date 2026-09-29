@@ -7,6 +7,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { makeHero, makeBit, makeMob as buildMob, addShipDetails, waveFlag } from './characters';
 import { createMap, type MapIsle, type MapLabel } from './map';
+import { createArena } from './arena';
 
 export type CamMode = 'hub' | 'battle' | 'portal' | 'map' | 'hero';
 export type BitMood = 'idle' | 'happy' | 'wow' | 'think' | 'sad';
@@ -15,8 +16,17 @@ export interface World {
   setEnergy(v: number, max: number): void;
   setMode(m: CamMode): void;
   heroWalk(x: number, z: number): Promise<void>;
-  heroAttack(crit?: boolean): Promise<void>;
-  spawnMob(hp: number, kind?: number): void;
+  /** Удар героя в бою; sup — суперудар. Возвращает, повержен ли враг. */
+  heroAttack(crit?: boolean, sup?: boolean): Promise<boolean>;
+  spawnMob(hp: number, kind?: number, boss?: boolean): void;
+  /** Ход врага при ошибке: снаряд и щит героя (урона нет). */
+  enemyAttack(): Promise<void>;
+  /** Герой выходит из портала в локацию. */
+  arrive(): Promise<void>;
+  /** Тема боевой локации: номер мира, цвета острова. */
+  setArena(k: number, a: string, b: string): void;
+  /** Катсцена на корабле: герой идёт в портал. */
+  portalWalk(): Promise<void>;
   hitMob(crit?: boolean): void;
   killMob(): Promise<void>;
   clearMob(): void;
@@ -280,6 +290,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   // ---------- 3D-карта миров (своя сцена) ----------
   const map = createMap({ skyMat, starGeo, starMat, km, dressHero: g => { dressHero(g); if (outfitNow) paintOutfit(...outfitNow); } });
+  const arena = createArena({ skyMat, starGeo, starMat, km, dressHero: g => { dressHero(g); if (outfitNow) paintOutfit(...outfitNow); } });
 
   // ---------- Постобработка ----------
   let composer: EffectComposer | null = null;
@@ -303,7 +314,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   let dragging = false, lastX = 0, lastY = 0, idle = 0, userTheta = 0, userPhi = 0, shakeT = 0;
   let downX = 0, downY = 0;
   const onDown = (e: PointerEvent) => { dragging = true; lastX = downX = e.clientX; lastY = downY = e.clientY; };
-  const onMove = (e: PointerEvent) => { if (!dragging) return; if (mode === 'map') { map.drag(e.clientX - lastX, e.clientY - lastY); lastX = e.clientX; lastY = e.clientY; return; } userTheta -= (e.clientX - lastX) * 0.006; userPhi = Math.max(-0.5, Math.min(0.35, userPhi - (e.clientY - lastY) * 0.004)); lastX = e.clientX; lastY = e.clientY; idle = 0; };
+  const onMove = (e: PointerEvent) => { if (!dragging) return; if (mode === 'battle') return; if (mode === 'map') { map.drag(e.clientX - lastX, e.clientY - lastY); lastX = e.clientX; lastY = e.clientY; return; } userTheta -= (e.clientX - lastX) * 0.006; userPhi = Math.max(-0.5, Math.min(0.35, userPhi - (e.clientY - lastY) * 0.004)); lastX = e.clientX; lastY = e.clientY; idle = 0; };
   const onUp = (e: PointerEvent) => {
     if (dragging && mode === 'map' && Math.hypot(e.clientX - downX, e.clientY - downY) < 8) {
       const r = canvas.getBoundingClientRect(); map.click(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -316,13 +327,15 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   // ---------- Анимации героя ----------
   let walk: { x: number; z: number; res: () => void } | null = null;
+  const STATIONS: [number, number][] = [[-4.2, 1.2], [-2, 0.6], [0.4, -1.2], [2.4, 1.4], [-0.6, 1.9], [3.2, -0.8]];
+  let nextWander = 4;
   let attack: { t: number; crit: boolean; res: () => void } | null = null;
   let celebrateT = 0;
 
   function resize() {
     const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
     renderer.setSize(w, h, false); composer?.setSize(w, h);
-    camera.aspect = w / h; camera.updateProjectionMatrix(); map.resize(w, h);
+    camera.aspect = w / h; camera.updateProjectionMatrix(); map.resize(w, h); arena.resize(w, h);
     const narrow = w / h < 0.8;
     const side = isSide(w, h);
     CAM.hub.radius = narrow ? 30 : side ? 23 : 25; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 9.5 : 8;
@@ -339,6 +352,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     else if (frameWin.h < 0.99) camera.setViewOffset(w, h, 0, h * (0.5 - (frameWin.top + frameWin.h / 2)), w, h); // цель — в центр окна сцены
     else if (viewShift) camera.setViewOffset(w, h, 0, h * viewShift, w, h); else camera.clearViewOffset();
     camera.updateProjectionMatrix();
+    arena.frame(isSide(w, h) ? (Math.min(540, w * 0.42) + 24) / 2 : 0, !isSide(w, h) && frameWin.h < 0.99 ? h * (0.5 - (frameWin.top + frameWin.h / 2)) : 0, w, h);
   }
   resize();
 
@@ -369,6 +383,12 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     for (let i = 0; i < pCount; i++) { const s = pSeed[i]; s.a += dt * s.s * (1 + pw * 2); s.r -= dt * 0.25 * s.s; if (s.r < 0.1) s.r = 1.4; pPos[i * 3] = -0.1 - (1.4 - s.r) * 0.5; pPos[i * 3 + 1] = 2.05 + Math.sin(s.a) * s.r * 1.2; pPos[i * 3 + 2] = Math.cos(s.a) * s.r; }
     pGeo.attributes.position.needsUpdate = true; pMat.opacity = 0.35 + pw * 0.55;
 
+    // живой корабль: герой сам ходит между станциями палубы (штурвал, портал, мачта, консоль)
+    if (mode === 'hub' && !walk && !attack && km === 1 && t > nextWander) {
+      const st = STATIONS[Math.floor(Math.random() * STATIONS.length)];
+      nextWander = t + 5 + Math.random() * 5;
+      walk = { x: st[0], z: st[1], res: () => { if (Math.random() < 0.35) celebrateT = 0.5; } };
+    }
     // герой
     let walking = false;
     if (walk) {
@@ -440,6 +460,10 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       map.setFog((scene.fog as THREE.Fog).color); map.update(dt, t);
       if (composer && renderPass) { renderPass.scene = map.scene; renderPass.camera = map.camera; composer.render(); }
       else renderer.render(map.scene, map.camera);
+    } else if (mode === 'battle') {
+      arena.setFog((scene.fog as THREE.Fog).color); arena.update(dt, t);
+      if (composer && renderPass) { renderPass.scene = arena.scene; renderPass.camera = arena.camera; composer.render(); }
+      else renderer.render(arena.scene, arena.camera);
     } else {
       if (renderPass) { renderPass.scene = scene; renderPass.camera = camera; }
       if (composer) composer.render(); else renderer.render(scene, camera);
@@ -453,37 +477,31 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   return {
     setEnergy(v, max) { energy = Math.max(0, Math.min(1, v / max)); },
-    setMode(m) { mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? (narrow ? 0.2 : 0.08) : narrow ? 0.24 : 0.12; applyOffset(); },
+    setMode(m) {
+      if ((m === 'hub' || m === 'hero') && mode !== m) { walk = null; hero.g.scale.setScalar(1); if (m === 'hero' || hero.g.position.x > 3.5) hero.g.position.set(-2, 0.15, 0.6); hero.g.rotation.y = Math.PI / 2; portalOpen = false; }
+      mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? (narrow ? 0.2 : 0.08) : narrow ? 0.24 : 0.12; applyOffset(); },
     heroWalk(x, z) { return new Promise(res => (walk = { x, z, res })); },
-    heroAttack(crit = false) {
-      return new Promise(res => {
-        attack = { t: 0, crit, res: () => res() };
-        setTimeout(() => { if (mob) { mob.hitT = 0.35; burst(worldPos(mob.g, 1), crit ? 0xffc94a : 0xff4fb8, crit ? 36 : 16, crit ? 6 : 3); shakeT = crit ? 0.5 : 0.25; } }, 180);
-      });
-    },
-    spawnMob(hp, kind = 0) {
-      if (mob) ship.remove(mob.g);
-      const m = makeMob(kind); mob = { g: m.g, parts: m.parts, pupil: m.pupil, shards: m.shards, hp, max: hp, hitT: 0, dying: 0 };
-      burst(new THREE.Vector3(2.3, 1.3, 0.6).applyMatrix4(ship.matrixWorld), 0x8a3cff, 30, 3);
-    },
-    hitMob(crit = false) { if (mob) { mob.hp--; mob.hitT = 0.35; shakeT = crit ? 0.5 : 0.2; } },
-    killMob() {
-      return new Promise(res => {
-        if (!mob) return res();
-        const p = worldPos(mob.g, 1); burst(p, 0xff4fb8, 70, 6); burst(p, 0x3ff0ff, 40, 5); shakeT = 0.6;
-        mob.dying = 0.5; setTimeout(res, 550);
-      });
-    },
-    clearMob() { if (mob) { ship.remove(mob.g); mob = null; } chest.visible = false; },
-    openChest() {
-      return new Promise(res => {
-        chest.visible = true; chest.scale.setScalar(0.01); chestOpen = false;
-        setTimeout(() => { chestOpen = true; burst(worldPos(chest, 1), 0xffc94a, 60, 5); }, 700);
-        setTimeout(res, 1300);
+    heroAttack(crit = false, sup = false) { return arena.attack({ crit, sup, dmg: sup ? 2 : 1 }); },
+    spawnMob(hp, kind = 0, boss = false) { arena.spawn(hp, kind, boss); },
+    enemyAttack() { return arena.enemyAttack(); },
+    arrive() { return arena.arrive(); },
+    setArena(k, a, b) { arena.theme(k, a, b); },
+    hitMob() {},
+    killMob() { return arena.defeat(); },
+    clearMob() { arena.clear(); if (mob) { ship.remove(mob.g); mob = null; } chest.visible = false; },
+    openChest() { return arena.victory(); },
+    portalWalk() {
+      return new Promise<void>(res => {
+        walk = { x: 3.9, z: 0, res: () => {
+          portalOpen = true; flash = 1; burst(worldPos(portal, 2), 0x3ff0ff, 90, 7);
+          const t0 = performance.now();
+          const shrink = () => { const u = Math.min(1, (performance.now() - t0) / 350); hero.g.scale.setScalar(Math.max(0.01, 1 - u)); if (u < 1) requestAnimationFrame(shrink); else res(); };
+          shrink();
+        } };
       });
     },
     bitMood(m) { mood = m; drawFace(); },
-    celebrate(color = 0x3ff0ff) { celebrateT = 1.2; burst(worldPos(hero.g, 2.5), color, 50, 5); },
+    celebrate(color = 0x3ff0ff) { if (mode === 'battle') { arena.celebrate(); return; } celebrateT = 1.2; burst(worldPos(hero.g, 2.5), color, 50, 5); },
     openPortal() { portalOpen = true; flash = 1; burst(worldPos(portal, 2), 0x3ff0ff, 90, 7); },
     setTheme(sky, fog) { themeTo = sky.map(c => new THREE.Vector3(c[0], c[1], c[2])); fogTo.setHex(fog); },
     setFrame(top, height) { frameWin.top = top; frameWin.h = height; applyOffset(); },

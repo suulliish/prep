@@ -24,6 +24,7 @@ export function worldOpen(i: number): boolean {
 export function applyLook() {
   const w = currentWorld();
   W.world?.setTheme(w.sky, w.fog);
+  W.world?.setArena(Math.max(0, WORLDS.indexOf(w)), w.isle[0], w.isle[1]); // бой идёт на острове текущего мира
   const o = OUTFITS.find(x => x.id === game.save.outfit) ?? OUTFITS[0];
   W.world?.setOutfit(o.jacket, o.dark, o.visor);
 }

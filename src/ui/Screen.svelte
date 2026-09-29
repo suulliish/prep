@@ -9,7 +9,7 @@
     title = '', sub = '', back, scene = 'short', right, head, children, footer, overlay,
   }: {
     title?: string; sub?: string; back?: () => void;
-    scene?: 'tall' | 'short' | 'none';
+    scene?: 'tall' | 'short' | 'strip' | 'none';
     right?: Snippet; head?: Snippet; children?: Snippet; footer?: Snippet; overlay?: Snippet;
   } = $props();
 
@@ -61,6 +61,7 @@
   .ov { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; align-items: stretch; gap: 6px; pointer-events: none; width: min(640px, 100%); margin: 0 auto; }
   .tall .window { height: clamp(190px, 33dvh, 400px); }
   .short .window { height: clamp(150px, 27dvh, 300px); }
+  .strip .window { height: clamp(130px, 21dvh, 230px); }
 
   .sheet { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0; width: min(640px, 100%); margin: 0 auto; overflow: hidden; }
   .body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 12px; }

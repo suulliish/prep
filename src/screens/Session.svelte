@@ -4,6 +4,7 @@
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
   import { toast } from '../ui/notify.svelte';
+  import { ReadGate, readMs } from '../lib/readgate.svelte';
   import { game, go, persist, skillDefs } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { ensurePlan, completeBlock, dayRec } from '../lib/session.svelte';
@@ -41,7 +42,7 @@
   const bossSkills = () => [...skillDefs.filter(d => isDone(game.save.skills[d.id]) && d.templates.length && taught(game.save, skillDefs, d.id)).map(d => d.id)].sort(() => Math.random() - 0.5).slice(0, 8);
   const BOSS_HP = 7;
   const skills = block === 'boss' ? bossSkills() : block === 'extra' ? extraSkills() : block === 'repair' ? [...new Set(broken.map(r => r.skill))].slice(0, 5) : pb?.skills ?? [];
-  const total = block === 'boss' ? 10 : block === 'extra' ? 8 : block === 'repair' ? Math.min(8, broken.length + 1) : pb?.items ?? 8;
+  const total = block === 'boss' ? 10 : block === 'extra' ? 10 : block === 'repair' ? Math.min(8, broken.length + 1) : pb?.items ?? 8;
   const TITLE: Record<Block, string> = { warmup: 'Жылыну', new: 'Жаңа миссия · жаттығу', mixed: 'Аралас шайқас', extra: 'Қосымша тапсырма', boss: `Босс: ${currentWorld().kz}`, repair: 'Шеберхана: жөндеу' };
 
   let idx = $state(0);
@@ -81,8 +82,38 @@
     } catch (e) { aiErr = HELPER_ERR[(e as HelperError)] ?? HELPER_ERR.ai_unavailable; }
     aiBusy = false;
   }
-  let mobHp = $state(block === 'boss' ? BOSS_HP : total);
-  const hpMax = block === 'boss' ? BOSS_HP : total;
+  // Волны врагов (docs/GAME_LOOP.md 3): здоровье волны = число ударов (верных ответов), последняя — мини-босс
+  const waves = block === 'boss' ? [2, 2, BOSS_HP - 4] : total <= 5 ? [total] : [Math.floor(total / 3), Math.floor(total / 3), total - 2 * Math.floor(total / 3)];
+  let wave = $state(0);
+  let mobHp = $state(waves[0]);
+  const hpMax = $derived(waves[wave]);
+  let busy = $state(false);      // идёт анимация боя — кнопки ждут
+  let locked = $state(false);    // новый вопрос только появился — ввод закрыт 0.7 с
+  let banner = $state(''), bannerId = $state(0);
+  let firstTries = 0, firstRight = 0;
+  // после ошибки «дальше» открывается через время чтения разбора (GAME_LOOP.md 10)
+  const gate = new ReadGate();
+  function nudge() {
+    gate.nope(); audio.play('click'); toast('Алдымен түсіндірмені оқы — батырма зарядталып жатыр');
+    document.querySelector('.sol')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  const showSolution = () => tick().then(() => document.querySelector('.sol')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  let result = $state<{ stars: number; right: number; of: number; xp: number; minutes: number; counted: boolean; note: string } | null>(null);
+  const xpStart = game.save.xp;
+  function say(text: string) { banner = text; bannerId++; }
+  const isLastWave = () => wave >= waves.length - 1;
+  async function hit(sup: boolean) {
+    busy = true;
+    const killed = await W.world?.heroAttack(combo >= 2, sup);
+    if (killed && !isLastWave()) {
+      await W.world?.killMob(); audio.play('chest');
+      wave++; mobHp = waves[wave];
+      say(isLastWave() ? 'Мини-босс!' : `${wave + 1}-толқын`);
+      W.world?.spawnMob(mobHp, currentWorld().mob, isLastWave());
+    }
+    busy = false;
+  }
+  async function enemyTurn() { busy = true; await W.world?.enemyAttack(); busy = false; }
   let startAt = 0;
   let cardEl: HTMLElement;
   let bitEl = $state<HTMLElement>();
@@ -99,7 +130,7 @@
     const sk = block === 'new' ? skills[0] : skills[idx % Math.max(1, skills.length)];
     const fromBank = !twin && BANK_SLOTS[block]?.includes(idx) && bankQueue.length ? bankQueue.shift() : null;
     item = fromBank ? bankToItem(fromBank) : makeItem(sk);
-    picked = null; phase = 'answer'; hintLevel = 0; showSol = false; tries = 0; struck = [];
+    picked = null; phase = 'answer'; hintLevel = 0; showSol = false; tries = 0; struck = []; gate.stop();
     aiTurns = []; aiErr = ''; aiQ = ''; aiBusy = false;
     bitText = twin ? 'Реванш! Дәл осындай есеп — енді өзің шығарып көр.' : ''; bitMood = twin ? 'think' : 'idle';
     startAt = performance.now();
@@ -108,7 +139,9 @@
   onMount(() => {
     if (!skills.length) { go({ name: 'hub' }); return; }
     W.dim = false;
-    W.world?.setMode('battle'); W.world?.spawnMob(mobHp, currentWorld().mob);
+    W.world?.setMode('battle');
+    busy = true;
+    W.world?.arrive().then(() => { W.world?.spawnMob(mobHp, currentWorld().mob, waves.length === 1); say(waves.length > 1 ? '1-толқын' : 'Шайқас!'); busy = false; });
     if (block === 'boss') setTimeout(() => react('boss'), 600);
     audio.setMood(block === 'new' ? 'focus' : 'battle');
     nextItem();
@@ -122,7 +155,7 @@
     return () => { removeEventListener('keydown', onKey); W.world?.clearMob(); };
   });
 
-  function pick(i: number) { if (phase !== 'answer' || struck.includes(i)) return; picked = i; audio.play('click'); }
+  function pick(i: number) { if (phase !== 'answer' || locked || busy || struck.includes(i)) return; picked = i; audio.play('click'); }
   function needPick() { toast('Алдымен жауапты таңда'); audio.play('click'); }
   function retry() { picked = null; phase = 'answer'; bitMood = 'think'; startAt = performance.now(); }
 
@@ -143,6 +176,7 @@
     if (tries === 2) return secondTry(correct);
     const honest = isHonest(timeMs, hintLevel);
     answered++;
+    if (!twin) { firstTries++; if (correct && hintLevel === 0) firstRight++; }   // реванш — не новый вопрос, в звёзды не идёт
     if (!honest && hintLevel < 4) { honestAll = false; guessed++; }
     const events = recordAttempt(game.save, {
       at: Date.now(), day: game.day, skill: item.skill, source: item.source, correct, confidence,
@@ -164,7 +198,7 @@
       bitText = hintLevel ? 'Дұрыс! Кеңеспен болса да — жақсы.' : combo >= 3 ? 'Керемет серия!' : 'Дұрыс!';
       if (!honest && hintLevel < 4) bitText = 'Дұрыс, бірақ тым жылдам! Асықпа — алдымен оқы.';
       bitMood = combo >= 3 ? 'wow' : 'happy';
-      if (battle) { mobHp--; W.world?.heroAttack(combo >= 3); }
+      if (battle) { mobHp--; hit(combo > 0 && combo % 3 === 0); if (combo % 3 === 0) say('СУПЕР СОҚҚЫ!'); }
       if (block === 'repair' && hintLevel === 0) { const r = game.save.repairShop.find(x => !x.fixed && x.skill === item!.skill); if (r) { r.fixed = true; floatText('ЖӨНДЕЛДІ', at.x, at.y - 50, '#5ce39c'); } }
       if (confidence === 'unsure') bitText += ' Білмеймін дедің, бірақ таптың — демек, түсінік бар.';
     } else {
@@ -176,6 +210,9 @@
       bitText = (confidence === 'sure' ? 'Сенімді едің, бірақ қателік бар. ' : 'Әзірге қате. ') + m.kz + (phase === 'retry' ? ' Тағы бір рет көр!' : '');
       if (!honest && hintLevel < 4) bitText = 'Тым жылдам! Асықпа — алдымен шартты оқы. ' + bitText;
       bitMood = 'think';
+      gate.start(readMs(bitText, phase === 'feedback' ? item.sol.kz : ''));
+      if (phase === 'feedback') showSolution();
+      if (battle) enemyTurn();
       if (block !== 'repair') game.save.repairShop.push({ source: item.source, skill: item.skill, tag: item.choices[picked].tag, addedDay: game.day });
     }
     for (const ev of events) {
@@ -204,21 +241,28 @@
       game.save.xp += 3; audio.play('correct'); react('correct', 0.4);
       sparksAt(at.x, at.y, ['#5ce39c', '#3ff0ff'], 20); floatText('+3 XP', at.x, at.y - 20, '#ffc94a');
       bitText = 'Екінші әрекеттен дұрыс! Қатені өзің таптың — бұл нағыз оқу.'; bitMood = 'happy';
-      if (battle) { mobHp--; W.world?.heroAttack(false); }
+      if (battle) { mobHp--; hit(false); }
     } else {
-      struck = [...struck, picked!]; audio.play('wrong'); flash('#ff9a6b');
+      struck = [...struck, picked!]; audio.play('wrong'); flash('#ff9a6b'); if (battle) enemyTurn();
       bitText = 'Дұрыс жауабы жасылмен белгіленді. Шешуін оқы — сосын дәл осындай есепте реванш аласың.'; bitMood = 'think';
-      twin = true;
+      twin = true; gate.start(readMs(bitText, item!.sol.kz)); showSolution();
     }
     persist(); showBit();
   }
 
   async function next() {
+    if (busy) return;
+    if (gate.on) return nudge();
     if (!twin) idx++;
     const learnedNow = block === 'new' && game.save.skills[skills[0]]?.status === 'learned' && idx >= 6;
     if (idx >= total || learnedNow) return finish();
     nextItem();
+    // новый вопрос виден сразу: перелистывание, номер, ввод закрыт 0.7 с
+    locked = true; say(twin ? 'Реванш!' : `Сұрақ ${idx + 1}/${total}`); audio.play('click');
+    cardEl?.closest('.body')?.scrollTo({ top: 0 });
+    setTimeout(() => { locked = false; startAt = performance.now(); }, 700);
   }
+  const starsOf = () => { const a = firstTries ? firstRight / firstTries : 0; return a >= 0.9 ? 3 : a >= 0.7 ? 2 : 1; };
 
   // Босс не даёт минут (они — за план), зато открывает путь в следующий мир
   async function finishBoss() {
@@ -234,69 +278,99 @@
       bitText = 'Босс шегінді, бірақ жеңілген жоқ. Қателерді шеберханада жөнде де, ертең қайта кел!'; bitMood = 'think';
     }
     phase = 'feedback'; item = null; persist();
-    setTimeout(() => go({ name: 'map' }), 3200);
+    result = { stars: won ? starsOf() : 0, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: 0, counted: won, note: bitText };
   }
 
   async function finish() {
     if (block === 'boss') return finishBoss();
     const b = block;
     // план дня засчитывается только за честную работу: если больше 30% ответов — наугад, блок не засчитан
+    // план дня засчитывается за честную работу: больше 30% ответов наугад — блок не засчитан
+    // доп. миссия (GAME_LOOP.md 8): 7 верных с первой попытки из 10; быстрые ответы миссию не обнуляют
+    const before = dayRec().minutesToday;
+    let counted = true, note = '';
     if (['warmup', 'new', 'mixed'].includes(block) && answered >= 3 && guessed / answered > 0.3) {
-      bitText = 'Көп жауап тым жылдам берілді (5 секундтан аз) — бұл кездейсоқ таңдауға ұқсайды. Блок есептелмеді: асықпай қайта өт, ойлануға уақыт жеткілікті!'; bitMood = 'sad';
-      phase = 'feedback'; item = null; persist(); setTimeout(() => go({ name: 'hub' }), 4500); return;
+      counted = false; note = 'Көп жауап тым жылдам берілді (5 секундтан аз). Бұл қадам есептелмеді — асықпай қайта өт.';
+    } else if (block === 'extra' && firstRight < 7) {
+      counted = false; note = `Бірінші әрекеттен ${firstRight} дұрыс, керегі — 7. Миссия есептелмеді, тағы көр!`;
     }
-    if (block === 'extra' && !honestAll) {
-      bitText = 'Кейбір жауаптар тым жылдам (кездейсоқ) болды — бұл тапсырма есептелмеді. Келесіде асықпа!'; bitMood = 'sad';
-      phase = 'feedback'; item = null; setTimeout(() => go({ name: 'hub' }), 3500); return;
-    }
-    if (block !== 'repair') completeBlock(b as any); else persist();
+    item = null; phase = 'feedback'; busy = true;
+    if (counted && block !== 'repair') completeBlock(b as any); else persist();
     if (battle && W.world) {
-      if (mobHp <= 0 || block !== 'warmup') { await W.world.killMob(); audio.play('chest'); await W.world.openChest(); }
-      else { await W.world.killMob(); }
+      await W.world.killMob();
+      if (counted) { audio.play('chest'); await W.world.openChest(); audio.play('levelup'); }
     }
-    const rec = dayRec();
-    audio.play(block === 'extra' ? 'energy' : 'mission');
-    if (block !== 'repair') floatText(block === 'extra' ? '+15 мин' : `${rec.minutesToday} мин`, sceneCenter(0.4).x, sceneCenter(0.4).y, '#ffc94a', true);
-    go({ name: 'hub' });
+    busy = false;
+    const got = dayRec().minutesToday - before, stars = counted ? starsOf() : 0;
+    if (stars) {
+      const r = dayRec(); (r.stars ??= {})[b] = Math.max(r.stars[b] ?? 0, stars);
+      if (b === 'new' && skills[0]) (game.save.levelStars ??= {})[skills[0]] = Math.max(game.save.levelStars[skills[0]] ?? 0, stars);
+      persist();
+    }
+    result = { stars, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: Math.max(0, got), counted, note };
+    audio.play(counted ? 'energy' : 'hint');
   }
 
   const letters = 'ABCDE';
 </script>
 
-<Screen scene="short" back={() => go({ name: 'hub' })}>
+<Screen scene="strip" back={() => go({ name: result && block === 'boss' ? 'map' : 'hub' })}>
   {#snippet head()}
     <div class="hd">
       <div class="t1"><b>{TITLE[block]}</b>{#if combo >= 2}<span class="combo num">×{combo}</span>{/if}</div>
-      <div class="t2"><span class="bar glitch hp" aria-label="Глитч күші"><i style="width:{Math.max(0, mobHp / hpMax) * 100}%"></i></span><span class="cnt num">{Math.min(idx + 1, total)}/{total}</span></div>
+      <div class="t2">
+        <span class="wv">{#each waves as _, k}<i class:done={k < wave} class:on={k === wave}></i>{/each}</span>
+        <span class="bar glitch hp" aria-label="Жау күші"><i style="width:{Math.max(0, mobHp / hpMax) * 100}%"></i></span>
+        <span class="cnt num">{Math.min(idx + 1, total)}/{total}</span>
+      </div>
     </div>
   {/snippet}
 
-  {#if item}
-    <div class="paper q" bind:this={cardEl}>
-      {#if item.real}<span class="real">★ Нағыз емтихан есебі · {item.source.startsWith('daryn') ? `«Дарын» ${item.source.slice(5, 9)}` : 'Bolashak'}</span>{/if}
-      <p>{#each item.kz.split('\n') as line, i}{#if i}<br />{/if}<span class:formula={i > 0}>{line}</span>{/each}</p>
-      {#if item.figure?.svg}<div class="fig">{@html item.figure.svg}</div>
-      {:else if item.figure?.src}<div class="fig"><img src={import.meta.env.BASE_URL + item.figure.src} alt="Есептің суреті" /></div>{/if}
-      <small class="skill">{skillTitle(item.skill).kz}</small>
+  {#snippet overlay()}
+    <div class="bn">{#key bannerId}{#if banner}<span class="banner">{banner}</span>{/if}{/key}</div>
+    {#if bitText && !result && !busy}<div class="say" aria-live="polite"><Bit text={bitText} mood={bitMood} compact /></div>{/if}
+  {/snippet}
+
+  {#if result}
+    <div class="win" class:lost={!result.counted}>
+      <h2>{result.counted ? (block === 'boss' ? 'Босс жеңілді!' : 'Жеңіс!') : 'Бұл жолы есептелмеді'}</h2>
+      {#if result.counted}
+        <div class="stars" aria-label="{result.stars} жұлдыз">{#each [1, 2, 3] as k}<span class:on={result.stars >= k} style="animation-delay:{k * 180}ms"><Icon name="star" fill={result.stars >= k ? 'var(--gold)' : '#2b3a8f'} size={54} /></span>{/each}</div>
+      {/if}
+      <div class="loot">
+        <div><b class="num">{result.right}/{result.of}</b><small>бірінші әрекеттен</small></div>
+        <div><b class="num">+{result.xp}</b><small>XP</small></div>
+        {#if result.minutes}<div class="gold"><b class="num">+{result.minutes}</b><small>мин ойын</small></div>{/if}
+      </div>
+      {#if result.note}<p class="paper note">{result.note}</p>{/if}
+    </div>
+  {:else if item}
+    <div class="q-sticky">
+      {#key idx + (twin ? 1000 : 0)}
+        <div class="paper q" class:locked bind:this={cardEl}>
+          {#if item.real}<span class="real">★ Нағыз емтихан есебі · {item.source.startsWith('daryn') ? `«Дарын» ${item.source.slice(5, 9)}` : 'Bolashak'}</span>{/if}
+          <p>{#each item.kz.split('\n') as line, i}{#if i}<br />{/if}<span class:formula={i > 0}>{line}</span>{/each}</p>
+          {#if item.figure?.svg}<div class="fig">{@html item.figure.svg}</div>
+          {:else if item.figure?.src}<div class="fig"><img src={import.meta.env.BASE_URL + item.figure.src} alt="Есептің суреті" /></div>{/if}
+        </div>
+      {/key}
     </div>
 
     {@const maxLen = Math.max(...item.choices.map(c => c.text.length))}
-    <div class="choices" class:long={maxLen > 5} class:xlong={maxLen > 10}>
+    <div class="choices" class:long={maxLen > 5} class:xlong={maxLen > 10} class:locked>
       {#each item.choices as c, i}
-        <button bind:this={choiceEls[i]} class="ans"
+        <button bind:this={choiceEls[i]} class="ans" style="animation-delay:{locked ? i * 70 : 0}ms"
           class:sel={picked === i && phase === 'answer'}
           class:right={phase === 'feedback' && i === item.answer}
           class:wrong={(phase !== 'answer' && picked === i && i !== item.answer) || (struck.includes(i) && phase === 'feedback')}
           class:out={struck.includes(i) && phase === 'answer'}
-          disabled={phase !== 'answer' || struck.includes(i)} onclick={() => pick(i)}
+          disabled={phase !== 'answer' || locked || struck.includes(i)} onclick={() => pick(i)}
           aria-label="{letters[i]}: {c.text}{phase === 'feedback' && i === item.answer ? ' — дұрыс' : ''}">
           <span class="l">{#if phase === 'feedback' && i === item.answer}<Icon name="check" fill="#fff" size={16} />{:else if struck.includes(i) || (phase === 'retry' && picked === i)}<Icon name="cross" fill="#fff" size={16} />{:else}{letters[i]}{/if}</span>
           <span class="ct">{c.text}</span>
         </button>
       {/each}
     </div>
-
-    {#if bitText}<div class="appear" bind:this={bitEl}><Bit text={bitText} mood={bitMood} compact /></div>{/if}
 
     {#if showSol || (phase === 'feedback' && !lastCorrect)}
       <details class="paper sol" open>
@@ -328,30 +402,57 @@
         {/if}
       </div>
     {/if}
-  {:else if bitText}
-    <Bit text={bitText} mood={bitMood} />
   {/if}
 
   {#snippet footer()}
-    {#if item && phase === 'answer'}
-      <button class="ibtn lamp" onclick={hint} disabled={hintLevel >= 4} aria-label="Бит сканері — кеңес {hintLevel}/4">
+    {#if result}
+      <button class="btn primary big grow" onclick={() => go({ name: block === 'boss' ? 'map' : 'hub' })}>{block === 'boss' ? 'Картаға' : 'Кемеге'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
+    {:else if item && phase === 'answer'}
+      <button class="ibtn lamp" onclick={hint} disabled={hintLevel >= 4 || locked} aria-label="Бит сканері — кеңес {hintLevel}/4">
         <Icon name="bulb" fill="var(--gold)" /><b class="hl num">{hintLevel}/4</b>
       </button>
       {#if picked === null}
-        <button class="btn big grow" style="opacity:.75" onclick={needPick}>Жауапты таңда</button>
+        <button class="btn big grow wait" onclick={needPick}>Жауапты таңда</button>
       {:else}
         <button class="btn go row2 sure" onclick={() => confirm('sure')}><Icon name="check" fill="var(--outline)" size={18} />Сенімдімін</button>
         <button class="btn row2" onclick={() => confirm('maybe')}>Шамамен</button>
       {/if}
     {:else if item && phase === 'retry'}
-      <button class="btn primary big grow" onclick={retry}>Тағы көр</button>
+      <button class="btn primary big grow" class:wait={busy && !gate.on} class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms"
+        onclick={() => busy ? null : gate.on ? nudge() : retry()}>{gate.on ? 'Оқы…' : 'Тағы көр'}</button>
     {:else if item && phase === 'feedback'}
-      <button class="btn big grow {lastCorrect ? 'go' : 'primary'}" onclick={next}>{idx + (twin ? 0 : 1) >= total ? 'Аяқтау' : twin ? 'Реванш' : 'Келесі'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
+      <button class="btn big grow {busy && !gate.on ? 'wait' : lastCorrect ? 'go' : 'primary'}" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={next}>{idx + (twin ? 0 : 1) >= total ? 'Аяқтау' : twin ? 'Реванш' : 'Келесі'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
     {/if}
   {/snippet}
 </Screen>
 
 <style>
+  .wv { display: flex; gap: 3px; }
+  .wv i { width: 10px; height: 10px; border-radius: 3px; background: #0b1030; border: 2px solid var(--outline); }
+  .wv i.done { background: var(--ok); } .wv i.on { background: var(--glitch); }
+  .bn { display: flex; justify-content: center; padding-top: 6px; min-height: 40px; }
+  .banner { font: 900 24px var(--disp); color: var(--gold); -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; text-shadow: 0 3px 0 var(--outline);
+    animation: bannerIn 1.2s var(--ease-out) both; }
+  @keyframes bannerIn { 0% { opacity: 0; transform: scale(.4) translateY(10px); } 18% { opacity: 1; transform: scale(1.15); } 30% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-8px); } }
+  .say { padding: 0 4px 4px; width: min(480px, 100%); animation: pop-in .25s var(--ease-out) both; }
+  .say :global(.bubble) { font-size: 14px !important; line-height: 1.35; padding: 7px 10px !important; max-height: 5.2em; overflow: hidden; }
+  .q-sticky { position: sticky; top: -14px; z-index: 3; margin: -14px -14px 0; padding: 12px 14px 8px; background: linear-gradient(180deg, var(--panel) 85%, transparent); }
+  .q { animation: flipIn .45s var(--ease-out) both; }
+  @keyframes flipIn { from { transform: perspective(700px) rotateX(-70deg) translateY(-10px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .choices.locked .ans { animation: pop-in .3s var(--ease-out) both; }
+  .win { display: grid; gap: 14px; justify-items: center; text-align: center; padding: 6px 0; }
+  .win h2 { font-size: 28px; color: var(--gold); -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; text-shadow: 0 4px 0 var(--outline); animation: pop-in .4s var(--ease-out) both; }
+  .win.lost h2 { color: var(--ink); font-size: 22px; }
+  .stars { display: flex; gap: 6px; }
+  .stars span { animation: starIn .5s var(--ease-out) both; }
+  .stars span:nth-child(2) { transform: translateY(-10px); }
+  @keyframes starIn { from { transform: scale(0) rotate(-90deg); opacity: 0; } }
+  .loot { display: flex; gap: 8px; width: 100%; }
+  .loot > div { flex: 1; display: grid; gap: 2px; padding: 10px 4px; border-radius: 14px; background: var(--deep); border: 3px solid var(--outline); animation: pop-in .4s .5s var(--ease-out) both; }
+  .loot b { font-size: 26px; text-shadow: 0 2px 0 var(--outline); }
+  .loot .gold b { color: var(--gold); }
+  .loot small { color: var(--dim); font-size: 12px; }
+
   .hd { flex: 1; min-width: 0; display: grid; gap: 6px; }
   .t1 { display: flex; align-items: center; gap: 8px; }
   .t1 b { flex: 1; min-width: 0; font: 900 18px var(--disp); text-shadow: 0 2px 0 var(--outline); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -369,7 +470,8 @@
   .fig :global(svg) { width: min(100%, 420px); height: auto; max-height: 260px; }
   .fig img { max-width: 100%; max-height: 260px; display: block; }
 
-  .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 100px), 1fr)); gap: 8px; }
+  .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: 8px; }
+  .choices:not(.xlong) .ct { white-space: nowrap; }
   .choices.long { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
   .choices.xlong { grid-template-columns: 1fr; }
   .ct { overflow-wrap: anywhere; line-height: 1.2; }

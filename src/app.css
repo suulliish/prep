@@ -113,6 +113,7 @@ button { -webkit-user-select: none; user-select: none; }
   font-weight: 700; line-height: 1.5;
 }
 .paper .dim, .paper small { color: var(--paper-dim); }
+.paper.note { color: var(--paper-ink); }
 
 /* вариант ответа на бумаге/панели: буква в кружке + текст */
 .ans {
@@ -195,3 +196,16 @@ button { -webkit-user-select: none; user-select: none; }
   .side-dock { width: calc(var(--side-w) + 24px) !important; margin: 0 0 0 auto !important; padding-left: 0 !important; padding-right: 24px !important; justify-content: center; }
   .side-dock > .spacer { display: none; }
 }
+
+/* кнопка, пока идёт анимация хода или катсцена: видна, но серая */
+.btn.wait { --c: #5b6699; --e: #3d4670; --t: #d7dcf5; text-shadow: none; }
+
+/* кнопка заряжается, пока ребёнок читает (src/lib/readgate.svelte.ts): полоса заполняется слева направо */
+.btn.charging { --c: #5b6699; --e: #3d4670; --t: #eef1ff; position: relative; overflow: hidden; text-shadow: none; }
+.btn.charging::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, #3ff0ff55, #3ff0ff99);
+  transform-origin: left; animation: charge var(--gate, 3s) linear both; pointer-events: none; }
+.btn.nope { animation: nope .35s; }
+.btn.charged { animation: charged .4s var(--ease-out, ease-out); }
+@keyframes charge { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes nope { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+@keyframes charged { 0% { transform: scale(1); } 45% { transform: scale(1.06); } 100% { transform: scale(1); } }
