@@ -16,12 +16,13 @@ export class ReadGate {
   key = $state(0);
   #t = 0;
   #cap = 0; #id = 0;
-  start(ms: number) {
+  /** waitVoice=false — не ждать конца реплики Бита (заставка: историю можно листать через 1 с, а не дослушивать). */
+  start(ms: number, waitVoice = true) {
     clearTimeout(this.#t); clearTimeout(this.#cap); const id = ++this.#id;
     this.ms = ms; this.key++; this.on = true; this.done = false;
     const open = () => { if (id !== this.#id) return; clearTimeout(this.#cap); this.on = false; this.done = true; };
     // время чтения прошло; если Бит ещё говорит — ждём конца реплики (но не дольше 25 с: сеть могла подвиснуть)
-    this.#t = window.setTimeout(() => { if (audio.voiceBusy()) { audio.whenVoiceDone(open); this.#cap = window.setTimeout(open, 25000); } else open(); }, ms);
+    this.#t = window.setTimeout(() => { if (waitVoice && audio.voiceBusy()) { audio.whenVoiceDone(open); this.#cap = window.setTimeout(open, 25000); } else open(); }, ms);
   }
   stop() { clearTimeout(this.#t); clearTimeout(this.#cap); this.#id++; this.on = false; this.done = false; }
   /** Нажал раньше времени: кнопка качается. */

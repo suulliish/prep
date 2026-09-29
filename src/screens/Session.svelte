@@ -14,7 +14,7 @@
   import { bankFor, bankToItem } from '../engine/bank';
   import { recordAttempt, isDone } from '../engine/progress';
   import { isHonest, addMasteryBonus, settleDay, taught } from '../engine/planner';
-  import { showReward } from '../lib/reward.svelte';
+  import { showReward, queueReward } from '../lib/reward.svelte';
   import { audio } from '../lib/audio';
   import { currentWorld, totalStars, STAR_REWARDS } from '../lib/look';
   import { react } from '../lib/voice';
@@ -24,6 +24,7 @@
   // шпаргалка «Есте сақта» из урока темы — вернуться к правилу после ошибки
   const ruleOf = (id: string) => ((LESSONS as Record<string, any[]>)[id] ?? []).find(s => s.type === 'rule') as { lines: string[] } | undefined;
   import { sparksAt, floatText, centerOf, flash, sceneCenter } from '../ui/fx.svelte';
+  import { nb, longestChunk } from '../ui/text';
 
   type Block = 'warmup' | 'new' | 'mixed' | 'extra' | 'boss' | 'repair';
   let { block }: { block: Block } = $props();
@@ -46,7 +47,7 @@
   const BOSS_HP = 7;
   const skills = block === 'boss' ? bossSkills() : block === 'extra' ? extraSkills() : block === 'repair' ? [...new Set(broken.map(r => r.skill))].slice(0, 5) : pb?.skills ?? [];
   const total = block === 'boss' ? 10 : block === 'extra' ? 10 : block === 'repair' ? Math.min(8, broken.length + 1) : pb?.items ?? 8;
-  const TITLE: Record<Block, string> = { warmup: 'Жылыну', new: 'Жаңа миссия · жаттығу', mixed: 'Аралас шайқас', extra: 'Қосымша тапсырма', boss: `Босс: ${currentWorld().kz}`, repair: 'Шеберхана: жөндеу' };
+  const TITLE: Record<Block, string> = { warmup: 'Жылыну', new: 'Жаңа миссия · жаттығу', mixed: 'Аралас шайқас', extra: 'Қосымша тапсырма', boss: `Бас жау: ${currentWorld().kz}`, repair: 'Шеберхана: жөндеу' };
 
   let idx = $state(0);
   let item = $state<Item | null>(null);
@@ -134,7 +135,7 @@
       await W.world?.killMob(); audio.play('chest');
       wave++; mobHp = waves[wave];
       const boss = isLastWave(); if (boss) cine = true;
-      say(boss ? (block === 'boss' ? 'Босс!' : 'Мини-босс!') : `${wave + 1}-толқын`);
+      say(boss ? (block === 'boss' ? 'Бас жау!' : 'Күшті жау!') : `${wave + 1}-толқын`);
       await W.world?.spawnMob(mobHp, currentWorld().mob, boss, block === 'boss' && boss);
       cine = false;
     }
@@ -254,8 +255,8 @@
         if (add) {
           settleDay(rec, plan, game.save.settings.extraTo);
           bitText += ` Сыйлық: +${add} минут ойын!`;
-          // большая плашка «Қабылдау»: награду нельзя не заметить
-          void showReward({ minutes: add, title: 'Сыйлық!', why: `${ev === 'crystal' ? 'Ертеңгі тексеру өтті' : 'Тақырып үйренілді'}: ${skillTitle(item.skill).kz}`, today: rec.minutesToday, weekend: rec.minutesWeekend });
+          // без отдельного окна: бонус войдёт в единую сцену награды в конце шага (src/lib/reward.svelte.ts)
+          queueReward({ minutes: add, title: 'Сыйлық!', why: `${ev === 'crystal' ? 'Ертеңгі тексеру өтті' : 'Тақырып үйренілді'}: ${skillTitle(item.skill).kz}`, today: rec.minutesToday, weekend: rec.minutesWeekend });
         }
       }
       if (ev === 'review_failed') { bitText = 'Бұл тақырып сәл ұмытылған екен — қайта жаттығамыз, қорқынышты емес.'; bitMood = 'think'; }
@@ -305,11 +306,11 @@
       await W.world.killMob(); audio.play('chest'); await W.world.openChest(); W.world.celebrate(0xffc94a); audio.play('levelup');
       if (!game.save.worldsCleared?.includes(w.id)) (game.save.worldsCleared ??= []).push(w.id);
       game.save.xp += 50; persist();
-      floatText('БОСС ЖЕҢІЛДІ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#ffc94a', true);
-      bitText = `«${w.kz}» босы жеңілді! +50 XP. Келесі әлемге портал ашылуға дайын — картаны қара.`; bitMood = 'wow';
+      floatText('БАС ЖАУ ЖЕҢІЛДІ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#ffc94a', true);
+      bitText = `«${w.kz}» әлемінің бас жауы жеңілді! +50 XP. Келесі әлемге портал ашылуға дайын — картаны қара.`; bitMood = 'wow';
     } else {
       await W.world?.killMob();
-      bitText = 'Босс шегінді, бірақ жеңілген жоқ. Қателерді шеберханада жөнде де, ертең қайта кел!'; bitMood = 'think';
+      bitText = 'Бас жау шегінді, бірақ жеңілген жоқ. Қателерді шеберханада жөнде де, ертең қайта кел!'; bitMood = 'think';
     }
     phase = 'feedback'; item = null; persist(); cine = false;
     result = { stars: won ? starsOf() : 0, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: 0, counted: won, note: bitText };
@@ -350,15 +351,17 @@
   const letters = 'ABCDE';
 </script>
 
-<Screen scene="strip" cinema={cine} back={() => go({ name: result && block === 'boss' ? 'map' : 'hub' })}>
+<Screen scene="strip" cinema={cine} back={result ? undefined : () => go({ name: 'hub' })}>
   {#snippet head()}
     <div class="hd">
-      <div class="t1"><b>{TITLE[block]}</b>{#if combo >= 2}<span class="combo num">×{combo}</span>{/if}</div>
-      <div class="t2">
-        <span class="wv">{#each waves as _, k}<i class:done={k < wave} class:on={k === wave}></i>{/each}</span>
-        <span class="bar glitch hp" aria-label="Жау күші"><i style="width:{Math.max(0, mobHp / hpMax) * 100}%"></i></span>
-        <span class="cnt num">{Math.min(idx + 1, total)}/{total}</span>
-      </div>
+      <div class="t1"><b>{TITLE[block]}</b>{#if combo >= 2 && !result}<span class="combo num">×{combo}</span>{/if}</div>
+      {#if !result}
+        <div class="t2">
+          <span class="wv">{#each waves as _, k}<i class:done={k < wave} class:on={k === wave}></i>{/each}</span>
+          <span class="bar glitch hp" aria-label="Жау күші"><i style="width:{Math.max(0, mobHp / hpMax) * 100}%"></i></span>
+          <span class="cnt num">{Math.min(idx + 1, total)}/{total}</span>
+        </div>
+      {/if}
     </div>
   {/snippet}
 
@@ -369,7 +372,7 @@
 
   {#if result}
     <div class="win" class:lost={!result.counted}>
-      <h2>{result.counted ? (block === 'boss' ? 'Босс жеңілді!' : 'Жеңіс!') : 'Бұл жолы есептелмеді'}</h2>
+      <h2>{result.counted ? (block === 'boss' ? 'Бас жау жеңілді!' : 'Жеңіс!') : 'Бұл жолы есептелмеді'}</h2>
       {#if result.counted}
         <div class="stars" aria-label="{result.stars} жұлдыз">{#each [1, 2, 3] as k}<span class:on={result.stars >= k} style="animation-delay:{k * 180}ms"><Icon name="star" fill={result.stars >= k ? 'var(--gold)' : '#2b3a8f'} size={54} /></span>{/each}</div>
       {/if}
@@ -390,19 +393,20 @@
     </div>
   {:else if item}
     {@const maxLen = Math.max(...item.choices.map(c => c.text.length))}
+    {@const chunk = Math.max(...item.choices.map(c => longestChunk(c.text)))}
     <div class="qa" class:fit={phase !== 'feedback' && !gapOpen}>
     <div class="q-sticky">
       {#key idx + (twin ? 1000 : 0)}
         <div class="paper q" class:locked bind:this={cardEl}>
           {#if item.real}<span class="real">★ Нағыз емтихан есебі · {item.source.startsWith('daryn') ? `«Дарын» ${item.source.slice(5, 9)}` : 'Bolashak'}</span>{/if}
-          <p>{#each item.kz.split('\n') as line, i}{#if i}<br />{/if}<span class:formula={i > 0}>{line}</span>{/each}</p>
+          <p>{#each item.kz.split('\n') as line, i}{#if i}<br />{/if}<span class:formula={i > 0}>{nb(line)}</span>{/each}</p>
           {#if item.figure?.svg}<div class="fig">{@html item.figure.svg}</div>
           {:else if item.figure?.src}<div class="fig"><img src={import.meta.env.BASE_URL + item.figure.src} alt="Есептің суреті" /></div>{/if}
         </div>
       {/key}
     </div>
 
-    <div class="choices" class:long={maxLen > 5} class:xlong={maxLen > 24} class:locked>
+    <div class="choices" class:long={maxLen > 5} class:xlong={maxLen > 24 || chunk > 11} class:wide={chunk >= 10} class:xxlong={maxLen > 60} class:locked>
       {#each item.choices as c, i}
         <button bind:this={choiceEls[i]} class="ans" style="animation-delay:{locked ? i * 70 : 0}ms"
           class:sel={picked === i && phase === 'answer'}
@@ -412,10 +416,11 @@
           disabled={phase !== 'answer' || locked || struck.includes(i)} onclick={() => pick(i)}
           aria-label="{letters[i]}: {c.text}{phase === 'feedback' && i === item.answer ? ' — дұрыс' : ''}">
           <span class="l">{#if phase === 'feedback' && i === item.answer}<Icon name="check" fill="#fff" size={16} />{:else if struck.includes(i) || (phase === 'retry' && picked === i)}<Icon name="cross" fill="#fff" size={16} />{:else}{letters[i]}{/if}</span>
-          <span class="ct">{c.text}</span>
+          <span class="ct">{nb(c.text)}</span>
         </button>
       {/each}
     </div>
+      {#if bitText}<div class="say-in" bind:this={bitEl}><Bit text={bitText} mood={bitMood} compact /></div>{/if}
     </div>
 
     {#if showSol || (phase === 'feedback' && !lastCorrect)}
@@ -493,10 +498,18 @@
   .banner { font: 900 24px var(--disp); color: var(--gold); -webkit-text-stroke: 2px var(--outline); paint-order: stroke fill; text-shadow: 0 3px 0 var(--outline);
     animation: bannerIn 1.2s var(--ease-out) both; }
   @keyframes bannerIn { 0% { opacity: 0; transform: scale(.4) translateY(10px); } 18% { opacity: 1; transform: scale(1.15); } 30% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-8px); } }
-  .say { padding: 0 4px 4px; width: min(480px, 100%); animation: pop-in .25s var(--ease-out) both; }
-  .say :global(.bubble) { font-size: 14px !important; line-height: 1.35; padding: 7px 10px !important; max-height: 5.2em; overflow: hidden; }
+  /* реплика Бита: в стопке (телефон вертикально) — в панели под вариантами, полностью и без обрезки, сцену не закрывает;
+     сбоку от сцены (горизонталь, широкий экран) — поверх окна сцены, где для неё есть место */
+  .say { display: none; padding: 0 4px 4px; width: min(480px, 100%); animation: pop-in .25s var(--ease-out) both; }
+  .say :global(.bubble) { font-size: 14px !important; line-height: 1.35; padding: 7px 10px !important; }
+  .say-in { flex: none; margin-top: 12px; animation: pop-in .25s var(--ease-out) both; }
+  .say-in :global(.bubble) { font-size: 14px !important; line-height: 1.35; padding: 8px 12px !important; }
+  @media (min-width: 1000px) and (min-aspect-ratio: 23/20), (max-width: 999.98px) and (max-height: 560px) and (min-aspect-ratio: 23/20) {
+    .say { display: block; }
+    .say-in { display: none; }
+  }
   /* вопрос и ВСЕ варианты видны вместе: вопрос прокручивается внутри своей рамки, варианты закреплены внизу панели */
-  .qa { display: flex; flex-direction: column; gap: 10px; }
+  .qa { display: flex; flex-direction: column; gap: 10px; container-type: inline-size; }
   .qa.fit { flex: 1 1 auto; min-height: 0; }
   .qa.fit .q-sticky { flex: 0 1 auto; min-height: min(96px, 34%); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
   .qa .choices { flex: none; }
@@ -535,6 +548,10 @@
   .fig img { max-width: 100%; max-height: 260px; display: block; }
 
   .choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  /* числа из 10-11 знаков («470 000 850») в две колонки помещаются только с чуть меньшим шрифтом и тесной плиткой; совсем узкий экран (320) — по одной */
+  .choices.wide:not(.xlong) .ans { font-size: 14px; padding: 4px 8px; gap: 6px; }
+  .choices.wide:not(.xlong) .ans .l { width: 22px; height: 22px; font-size: 12px; }
+  @container (max-width: 300px) { .choices.wide { grid-template-columns: minmax(0, 1fr); } }
   .choices .ans { min-width: 0; min-height: 48px; padding: 6px 10px; gap: 8px; font-size: clamp(15px, 4.4vw, 19px); }
   .choices .ans .l { width: 26px; height: 26px; font-size: 14px; }
   .choices .ans:last-child:nth-child(odd) { grid-column: 1 / -1; }
@@ -542,7 +559,8 @@
   .choices.long .ans { font-size: clamp(14px, 4vw, 17px); }
   .choices.xlong { grid-template-columns: minmax(0, 1fr); }
   .choices.xlong .ans { font-size: clamp(14px, 3.9vw, 16px); }
-  .ct { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
+  .choices.xxlong .ans { font-size: clamp(13px, 3.6vw, 15px); }
+  .ct { min-width: 0; overflow-wrap: break-word; line-height: 1.2; }   /* числа склеены неразрывными пробелами (nb), рвём только слишком длинное слово */
   /* планшет: экран большой, значит и текст с вариантами крупнее (портрет 820×1180, ландшафт 1180×820) */
   @media (min-width: 700px) and (min-height: 760px) {
     .q { font-size: 24px; } .q p { line-height: 1.4; } .formula { font-size: 30px; }
@@ -550,6 +568,16 @@
     .choices .ans { min-height: 68px; padding: 10px 16px; gap: 12px; font-size: 24px; }
     .choices .ans .l { width: 36px; height: 36px; font-size: 18px; }
     .choices.long .ans, .choices.xlong .ans { font-size: 21px; }
+  }
+  /* телефон в горизонтали: колонка справа низкая (≈ 240 px под задачу) — всё чуть компактнее */
+  @media (max-width: 999.98px) and (max-height: 560px) and (min-aspect-ratio: 23/20) {
+    .q { font-size: 16px; padding: 8px 12px; gap: 6px; } .formula { font-size: 18px; margin-top: 2px; }
+    .qa { gap: 6px; } .choices { gap: 5px; }
+    .choices .ans { min-height: 38px; padding: 3px 8px; font-size: clamp(14px, 2.2vw, 16px); }
+    .choices .ans .l { width: 22px; height: 22px; font-size: 12px; }
+    .say-in { display: none; }
+    .t1 b { font-size: 16px; }
+    .win { gap: 8px; } .win h2 { font-size: 22px; } .stars :global(svg) { width: 36px; height: 36px; } .loot b { font-size: 20px; }
   }
   .sol summary { cursor: pointer; font: 900 15px var(--disp); color: var(--code-deep); }
   .sol p { margin-top: 8px; }

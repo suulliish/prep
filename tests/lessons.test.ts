@@ -8,12 +8,17 @@ import { WEEK1 as W1 } from '../content/lessons_week1.mjs';
 import { WEEK2 as W2 } from '../content/lessons_week2.mjs';
 // @ts-ignore
 import { WEEK3 as W3 } from '../content/lessons_week3.mjs';
-const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>, WEEK3 = W3 as Record<string, any[]>;
-const FULL = { ...WEEK1, ...WEEK2, ...WEEK3 };
+// @ts-ignore
+import { WEEK4 as W4 } from '../content/lessons_week4.mjs';
+const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>, WEEK3 = W3 as Record<string, any[]>, WEEK4 = W4 as Record<string, any[]>;
+const FULL = { ...WEEK1, ...WEEK2, ...WEEK3, ...WEEK4 };
 // @ts-ignore
 import { skillById } from '../content/skills.mjs';
 // @ts-ignore
-import { rng, kzWords } from '../content/templates/lib.mjs';
+import { rng, kzWords, Q } from '../content/templates/lib.mjs';
+// @ts-ignore
+import GLOSSARY from '../content/glossary.json';
+import { readFileSync } from 'node:fs';
 
 const WIDGETS = Object.keys(import.meta.glob('../src/widgets/*.svelte')).map(f => f.split('/').pop()!.replace('.svelte', ''));
 const TYPES = ['say', 'goal', 'widget', 'predict', 'example', 'faded', 'why', 'bug', 'blitz', 'rule', 'final', 'quiz'];
@@ -43,7 +48,7 @@ describe('уроки', () => {
   }
 });
 
-describe('недели 1–3 — полный сценарий', () => {
+describe('недели 1–4 — полный сценарий', () => {
   for (const [id, steps] of Object.entries(FULL) as [string, any[]][]) {
     it(`${id}: цель → … → возврат к цели`, () => {
       const t = steps.map(s => s.type);
@@ -77,6 +82,71 @@ describe('недели 1–3 — полный сценарий', () => {
       const want = it.q.includes('∩') ? As.filter((x: number) => Bs.includes(x)) : [...new Set([...As, ...Bs])];
       expect(parse(it.choices[it.answer]).sort((x: number, y: number) => x - y)).toEqual(want.sort((x: number, y: number) => x - y));
       it = bl('sets.venn').make(r); const [fa, fb, fc] = nums(it.q); expect(it.choices[it.answer]).toBe(String(fa + fb - fc));
+    }
+  });
+  it('мини-игры недели 4 (дроби) считают правильно', () => {
+    const r = rng(11), bl = (id: string) => WEEK4[id].find((s: any) => s.type === 'blitz')!;
+    const g = (a: number, b: number): number => (b ? g(b, a % b) : a), lcm = (a: number, b: number) => (a / g(a, b)) * b;
+    const fr = (t: string) => { const [a, b] = t.split('/').map(Number); return new Q(a, b); };
+    const half = new Q(1, 2);
+    for (let k = 0; k < 300; k++) {
+      // frac.concept: бөлімде — барлық бөлік; «тең емес» — бөлшек жоқ
+      let it = bl('frac.concept').make(r);
+      if (it.q.includes('тең емес')) expect(it.choices[it.answer]).toBe('Жоқ');
+      else {
+        const [d, kk] = it.q.match(/\d+/g)!.map(Number), rest = it.q.includes('қалды');
+        expect(it.choices[it.answer]).toBe(rest ? `${d - kk}/${d}` : `${kk}/${d}`);
+      }
+      // frac.magnitude: ең жақын тірек 0, 1/2, 1 немесе қай бөлшек 1/2-ден үлкен
+      it = bl('frac.magnitude').make(r);
+      if (it.q.startsWith('Қайсысы')) {
+        it.choices.forEach((c: string, i: number) => expect(fr(c).lt(half) ? 1 : 0, it.q + it.choices).toBe(i === it.answer ? 0 : 1));
+      } else {
+        const v = fr(it.q.match(/^\d+\/\d+/)![0]).valueOf(), d = [v, Math.abs(v - 0.5), 1 - v];
+        expect(d[it.answer]).toBeCloseTo(Math.min(...d), 9);
+        expect(d.filter(x => Math.abs(x - Math.min(...d)) < 1e-9).length).toBe(1);
+        expect(it.choices).toEqual(['0', '1/2', '1']);
+      }
+      // frac.basic_property: тең бөлшек, ал қосу — қате
+      it = bl('frac.basic_property').make(r);
+      const [a, b] = it.q.match(/\d+/g)!.map(Number), c = it.choices[it.answer];
+      if (it.q.includes('?/')) {
+        const D = +it.q.match(/\?\/(\d+)/)![1]; expect(new Q(a, b).eq(new Q(+c, D))).toBe(true);
+        it.choices.forEach((x: string, i: number) => expect(new Q(a, b).eq(new Q(+x, D)), it.q).toBe(i === it.answer));
+      } else {
+        it.choices.forEach((x: string, i: number) => expect(fr(x).eq(new Q(a, b)), it.q + x).toBe(i === it.answer));
+      }
+      // frac.reduce: қысқартылмайтын түр; немесе тек бір бөлшек қысқартылмайды
+      it = bl('frac.reduce').make(r);
+      if (it.q.includes('қысқартылмайтын?')) {
+        it.choices.forEach((x: string, i: number) => { const [n, d] = x.split('/').map(Number); expect(g(n, d) === 1, it.q + x).toBe(i === it.answer); });
+      } else {
+        const [n, d] = it.q.match(/\d+/g)!.map(Number), gg = g(n, d);
+        expect(it.choices[it.answer]).toBe(`${n / gg}/${d / gg}`);
+        it.choices.forEach((x: string, i: number) => { if (i !== it.answer) expect(x).not.toBe(`${n / gg}/${d / gg}`); });
+      }
+      // frac.common_denominator: ЕКОЕ; жаңа алым
+      it = bl('frac.common_denominator').make(r);
+      const [n1, d1, n2, d2] = it.q.match(/\d+/g)!.map(Number), L = lcm(d1, d2);
+      if (it.q.includes('алымы')) expect(it.choices[it.answer]).toBe(String(n1 * (L / d1)));
+      else expect(it.choices[it.answer]).toBe(String(L));
+      expect(n2).toBeGreaterThan(0);
+    }
+  });
+  it('уроки: сцены и виджеты зарегистрированы, запрещённых слов нет', () => {
+    const scenes = readFileSync('src/lesson/Scene.svelte', 'utf8'), lesson = readFileSync('src/screens/Lesson.svelte', 'utf8');
+    const avoid: string[] = (GLOSSARY as any).terms.flatMap((t: any) => t.avoid ?? []).filter((w: string) => w.length > 3);
+    for (const [id, steps] of Object.entries(WEEK4)) {
+      const txt: string[] = [];
+      for (const s of steps) {
+        if (s.scene) expect(scenes, `${id}: сцена ${s.scene}`).toMatch(new RegExp(`\\b${s.scene}\\b`));
+        for (const f of s.frames ?? []) if (f.scene) expect(scenes, `${id}: сцена ${f.scene}`).toMatch(new RegExp(`\\b${f.scene}\\b`));
+        if (s.w) expect(lesson, `${id}: виджет ${s.w}`).toMatch(new RegExp(`WIDGETS[^\\n]*\\b${s.w}\\b`));
+        txt.push(s.kz ?? '', s.task ?? '', s.reveal ?? '', s.why ?? '', s.fix ?? '', ...(s.lines ?? []), ...(s.choices ?? []), ...(s.frames ?? []).map((f: any) => f.kz ?? ''));
+        if (s.type === 'goal') expect(s.kz.split(/\s+/).length, `${id}: цель длиннее 30 слов`).toBeLessThanOrEqual(30);
+      }
+      const all = txt.join(' ').toLowerCase();
+      for (const w of avoid) expect(all, `${id}: «${w}»`).not.toContain(w.toLowerCase());
     }
   });
   it('мини-игры недели 2 считают правильно', () => {

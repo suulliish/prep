@@ -7,9 +7,8 @@
   import { game, go, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
-  import { ReadGate, readMs } from '../lib/readgate.svelte';
-  import { toast } from '../ui/notify.svelte';
-  import { sparksAt, sceneCenter } from '../ui/fx.svelte';
+  import { ReadGate } from '../lib/readgate.svelte';
+    import { sparksAt, sceneCenter } from '../ui/fx.svelte';
   // @ts-ignore
   import { INTRO } from '../../content/intro.mjs';
 
@@ -17,8 +16,9 @@
   let i = $state(0);
   let started = $state(false);
   const gate = new ReadGate();
-  // кнопка «дальше» закрыта, пока Бит не договорил и время чтения не вышло (и пока идёт действие в 3D)
-  const hold = (k: number) => gate.start(Math.max(3500, readMs(slides[k].kz)));
+  // Заставка — история, а не урок: «дальше» открывается через 1 с, дослушивать голос Бита необязательно
+  // (читать-и-ждать нужно в уроках, см. docs/GAME_LOOP.md 10). Слово торопить голосом не нужно.
+  const hold = (_k: number) => gate.start(1000, false);
   const s = $derived(slides[i]);
   const voice = (k: number) => `${import.meta.env.BASE_URL}voice/intro/intro_${k}.mp3`;
 
@@ -34,7 +34,7 @@
 
   function start() { audio.unlock(); started = true; audio.play('mission'); act(slides[0].act); hold(0); }
   function next() {
-    if (gate.on) { gate.nope(); audio.play('click'); toast('Бит әлі сөйлеп жатыр — соңына дейін тыңда'); return; }
+    if (gate.on) { gate.nope(); audio.play('click'); return; }
     audio.play('click');
     if (i < slides.length - 1) { i++; act(slides[i].act); hold(i); return; }
     game.save.introSeen = true; persist();

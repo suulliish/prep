@@ -14,7 +14,9 @@
   import Ladder from './scenes/Ladder.svelte';
   import Venn2 from './scenes/Venn2.svelte';
   import Venn3 from './scenes/Venn3.svelte';
-  const MAP: Record<string, any> = { Train, Crystals, Tiles, Cubes, Scanner, Sieve, Tree, Common, Multiples, Strike, StarDigit, Ladder, Venn2, Venn3 };
+  import FracBars from './scenes/FracBars.svelte';
+  import FracLine from './scenes/FracLine.svelte';
+  const MAP: Record<string, any> = { Train, Crystals, Tiles, Cubes, Scanner, Sieve, Tree, Common, Multiples, Strike, StarDigit, Ladder, Venn2, Venn3, FracBars, FracLine };
   let { name, s = {} }: { name: string; s?: Record<string, any> } = $props();
   const Comp = $derived(MAP[name]);
 </script>
