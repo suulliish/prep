@@ -39,6 +39,7 @@ export interface DayRecord {
   hard?: string; // «что было трудно» из итога дня (id темы или 'none') — для командира
   exception?: 'sick' | 'holiday' | 'vacation';
   spent?: number;            // сколько минут игры уже потрачено сегодня (таймер)
+  stars?: Record<string, number>; // звёзды уровней дня (id шага → 1..3), GAME_LOOP.md 5
 }
 
 export interface Settings {
@@ -67,6 +68,7 @@ export interface Save {
   kzReview?: Record<string, 'ok' | 'fix'>;   // проверка казахских текстов носителем
   weekendSpent?: Record<string, number>;      // потрачено из копилки выходных (ключ — понедельник недели)
   lessonPos?: { skill: string; step: number };  // где остановился в уроке — «Жалғастыру»
+  levelStars?: Record<string, number>;       // лучшие звёзды уровня-темы (id темы → 1..3)
   aiLog?: AiTurn[];                           // вопросы к ИИ-помощнику (видит командир), последние 100
 }
 

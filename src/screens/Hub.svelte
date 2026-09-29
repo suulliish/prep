@@ -62,12 +62,20 @@
     audio.setMood('hub');
   });
 
+  // Катсцена (GAME_LOOP.md 2): герой идёт в портал на палубе → вспышка → локация уровня
+  let entering = $state(false);
+  async function portal(to: () => void) {
+    if (entering) return;
+    entering = true; audio.play('portal');
+    await Promise.race([W.world?.portalWalk() ?? Promise.resolve(), new Promise(r => setTimeout(r, 3500))]);
+    setTimeout(to, 250);
+  }
   function start(id: string) {
     audio.unlock(); audio.play('mission');
     if (id === 'summary') return go({ name: 'summary' });
     const b = plan.blocks.find(x => x.id === id)!;
-    if (id === 'new' && b.lesson) return go({ name: 'lesson', skill: b.skills[0] });
-    go({ name: 'session', block: id as any });
+    if (id === 'new' && b.lesson) return portal(() => go({ name: 'lesson', skill: b.skills[0] }));
+    portal(() => go({ name: 'session', block: id as any }));
   }
   function tapQuest(id: string) {
     if (rec.blocksDone[id]) { toast('Бұл қадам орындалды ✓'); return; }
@@ -82,7 +90,7 @@
     !game.save.diagnosticDone ? { label: 'Сканерлеуді бастау', go: () => { audio.unlock(); go({ name: 'diagnostic' }); } }
     : !weekday ? { label: 'Ойын уақыты', go: () => nav('playtime') }
     : nextBlock ? { label: nextBlock.id === 'new' && nextBlock.lesson ? (resume ? `Жалғастыру · ${resume}` : `Миссия: ${skillTitle(nextBlock.skills[0]).kz}`) : BLOCK[nextBlock.id].kz, go: () => start(nextBlock!.id) }
-    : extraOk ? { label: 'Қосымша миссия · +15 мин', go: () => { audio.unlock(); audio.play('energy'); go({ name: 'session', block: 'extra' }); } }
+    : extraOk ? { label: 'Қосымша миссия · +15 мин', go: () => { audio.unlock(); audio.play('energy'); portal(() => go({ name: 'session', block: 'extra' })); } }
     : { label: 'Ойын уақыты', go: () => nav('playtime') }
   );
 </script>
@@ -127,7 +135,9 @@
               <b>{q.kz}</b>
               <small>{b.id === 'new' && resume ? `Жалғастыру · қадам ${resume}` : b.id === 'new' && b.skills[0] ? skillTitle(b.skills[0]).kz : q.what}{b.minutes > 2 && !(b.id === 'new' && resume) ? ` · ~${b.minutes} мин` : ''}</small>
             </span>
-            {#if b.id !== 'summary'}<span class="rw" class:got={isDone}><Icon name="clock" fill="var(--gold)" size={16} />+{reward(b.minutes)}</span>{/if}
+            {#if isDone && rec.stars?.[b.id]}
+              <span class="st" aria-label="{rec.stars[b.id]} жұлдыз">{#each [1, 2, 3] as k}<Icon name="star" fill={rec.stars[b.id] >= k ? 'var(--gold)' : '#2b3a8f'} size={18} />{/each}</span>
+            {:else if b.id !== 'summary'}<span class="rw" class:got={isDone}><Icon name="clock" fill="var(--gold)" size={16} />+{reward(b.minutes)}</span>{/if}
           </button>
         </li>
       {/each}
@@ -135,9 +145,11 @@
     {#if done}<p class="note center">Қосымша миссиялар: {rec.extraMissions} / {game.save.settings.extraMissionCap} · әрқайсысы +15 мин</p>{/if}
   {/if}
 
+  {#if entering}<div class="warp" aria-hidden="true"></div>{/if}
+
   {#snippet footer()}
     <div class="stack">
-      <button class="btn primary big block" onclick={primary.go}><Icon name="play" fill="var(--outline)" stroke="none" size={20} />{primary.label}</button>
+      <button class="btn primary big block" class:wait={entering} onclick={primary.go}><Icon name="play" fill="var(--outline)" stroke="none" size={20} />{primary.label}</button>
       <nav class="menu" aria-label="Мәзір">
         <button class="mi" onclick={() => nav('map')}><Icon name="map" fill="#7ee08f" size={26} /><span>Карта</span>{#if bossReady}<b class="badge">!</b>{/if}</button>
         <button class="mi" onclick={() => nav('hero')}><Icon name="hero" fill="#5ea0ff" size={26} /><span>Кейіпкер</span></button>
@@ -171,7 +183,15 @@
   .tt b { font: 900 18px var(--disp); text-shadow: 0 2px 0 var(--outline); }
   .tt small { color: var(--dim); font-size: 13px; }
 
-  .quests { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .quests { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; position: relative; }
+  /* тропа уровней: пунктир соединяет точки, пройденная часть зелёная */
+  .quests li { position: relative; }
+  .quests li + li::before { content: ''; position: absolute; left: 33px; top: -12px; height: 16px; border-left: 4px dashed #5b6699; z-index: 0; }
+  .quests li:has(.done) + li::before { border-left-style: solid; border-color: var(--ok); }
+  .st { flex: none; display: inline-flex; gap: 1px; padding: 3px 6px; border-radius: 999px; background: #0b1030; border: 2px solid var(--outline); }
+  .warp { position: fixed; inset: 0; z-index: 50; pointer-events: all; background: radial-gradient(circle at 70% 35%, #bff9ffcc, #3ff0ff66 30%, transparent 60%);
+    animation: warp 1.6s ease-in both; }
+  @keyframes warp { 0% { opacity: 0; } 55% { opacity: .2; } 100% { opacity: 1; background-color: #eaffff; } }
   .quest { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; font: inherit; color: var(--ink); cursor: pointer;
     padding: 10px 12px; background: var(--deep); border: 3px solid var(--outline); border-radius: 16px; box-shadow: inset 0 -4px 0 #0c1a5a, 0 3px 0 var(--outline);
     transition: transform .08s; }

@@ -8,6 +8,7 @@
   import Icon from '../ui/Icon.svelte';
   import Confirm from '../ui/Confirm.svelte';
   import { toast } from '../ui/notify.svelte';
+  import { ReadGate, readMs } from '../lib/readgate.svelte';
   import { game, go, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { skillTitle } from '../engine/items';
@@ -68,13 +69,19 @@
   let nextBtn = $state<HTMLElement>();
   let cardEl = $state<HTMLElement>();
   const step = $derived(steps[i]);
+  // объяснения нельзя пролистать вслепую: «дальше» заряжается на время чтения (GAME_LOOP.md 10)
+  const gate = new ReadGate();
+  const frameText = (s: any, k: number) => [s.frames[k]?.math, s.frames[k]?.kz].join(' ');
   const fr = $derived(step.type === 'example' ? step.frames[frame] : null);
 
   function enter() {
     const s = steps[i];
     ready = ['say', 'goal', 'rule'].includes(s.type) || (s.type === 'example' && s.frames.length <= 1);
     frame = 0; pick = null; showSkip = false; bugFound = false;
-    clearTimeout(skipTimer);
+    clearTimeout(skipTimer); gate.stop();
+    if (s.type === 'say') gate.start(readMs(s.kz));
+    if (s.type === 'rule') gate.start(readMs(s.kz, ...s.lines));
+    if (s.type === 'example') gate.start(readMs(s.kz, frameText(s, 0)));
     if (s.type === 'faded') setTimeout(() => react('self'), 400);
     if (s.type === 'bug') setTimeout(() => react('bug'), 400);
     if (s.type === 'why') setTimeout(() => react('think'), 400);
@@ -82,7 +89,8 @@
     requestAnimationFrame(() => cardEl?.closest('.body')?.scrollTo({ top: 0 }));
   }
   onMount(() => {
-    W.dim = false; W.world?.setMode('battle'); W.world?.spawnMob(maxHp, currentWorld().mob); W.world?.bitMood('idle');
+    W.dim = false; W.world?.setMode('battle'); W.world?.bitMood('idle');
+    (W.world?.arrive() ?? Promise.resolve()).then(() => W.world?.spawnMob(maxHp, currentWorld().mob));
     audio.setMood('focus'); enter();
     return () => { clearTimeout(skipTimer); W.world?.clearMob(); };
   });
@@ -101,15 +109,15 @@
     if (xp && !replay) { earned += xp; game.save.xp += xp; floatText(`+${xp} XP`, c.x, c.y - 60, '#ffc94a', big); persist(); }
   }
   function widgetDone() { audio.play('correct'); reward(0); }
-  function go2(k: number) { if (k < 0 || k >= step.frames.length) return; frame = k; audio.play('click'); if (frame === step.frames.length - 1) ready = true; }
+  function go2(k: number) { if (k < 0 || k >= step.frames.length) return; const fresh = k > frame; frame = k; audio.play('click'); if (fresh) gate.start(readMs(frameText(step, k))); if (frame === step.frames.length - 1) ready = true; }
   async function choose(k: number) {
     if (pick !== null && step.type !== 'final') return;
     if (step.type === 'final' && won) return;
     pick = k;
     const ok = k === step.answer;
-    if (step.type === 'predict') { audio.play(ok ? 'correct' : 'hint'); if (ok) react('correct'); reward(ok ? 3 : 0); return; }
+    if (step.type === 'predict') { audio.play(ok ? 'correct' : 'hint'); if (ok) react('correct'); reward(ok ? 3 : 0); gate.start(readMs(step.reveal)); return; }
     if (step.type === 'final') {
-      if (!ok) { audio.play('wrong'); flash('#ff9a6b'); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake'); return; }
+      if (!ok) { audio.play('wrong'); flash('#ff9a6b'); W.world?.enemyAttack(); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake'); return; }
       won = true; hp = 0; audio.play('crit'); react('win');
       W.world?.heroAttack(true);
       await W.world?.killMob();
@@ -119,6 +127,8 @@
       reward(20, true); return;
     }
     audio.play(ok ? 'correct' : 'wrong'); react(ok ? 'correct' : 'wrong'); reward(ok ? 5 : 0);
+    if (step.why) gate.start(readMs(step.why));
+    if (!ok) W.world?.enemyAttack();
   }
 
   function next() {
@@ -136,6 +146,7 @@
     moreFrames ? 'Келесі кадр' : step.type === 'goal' ? 'Миссияны бастау' : i < steps.length - 1 ? (HIT(step.type) ? 'Соққы беру' : 'Келесі')
     : replay ? 'Альбомға қайту' : 'Жаттығуға');
   function primary() {
+    if (gate.on) { gate.nope(); audio.play('click'); toast('Алдымен оқы — батырма зарядталып жатыр'); return; }
     if (moreFrames) return go2(frame + 1);
     if (!ready) { toast(step.type === 'widget' ? 'Алдымен тапсырманы орында' : 'Алдымен жауап таңда'); audio.play('click'); return; }
     next();
@@ -223,7 +234,7 @@
 
   {#snippet footer()}
     {#if showSkip && !ready}<button class="btn ghost" onclick={() => (ready = true)}>Өткізу</button>{/if}
-    <button bind:this={nextBtn} class="btn big grow {ready || moreFrames ? (won || step.type === 'goal' ? 'primary' : 'go') : 'wait'}" onclick={primary}>
+    <button bind:this={nextBtn} class="btn big grow {ready || moreFrames ? (won || step.type === 'goal' ? 'primary' : 'go') : 'wait'}" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={primary}>
       {primaryLabel}<Icon name="chevron" fill={ready || moreFrames ? 'var(--outline)' : '#d7dcf5'} size={20} />
     </button>
   {/snippet}
@@ -265,7 +276,6 @@
   .q { font-size: 19px; font-weight: 800; }
   .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
   .grow { flex: 1; min-width: 0; }
-  .btn.wait { --c: #5b6699; --e: #3d4670; --t: #d7dcf5; text-shadow: none; }
   /* выкладка на бумаге: подсветка и пропуски — тёмные цвета */
   .card :global(.paper .hl) { color: #7a4d00; background: #ffe38a; border-bottom-color: var(--gold-deep); }
   .card :global(.paper .blank) { color: #b0276f; background: #ffe0f1; }
