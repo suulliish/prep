@@ -335,7 +335,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     camera.aspect = w / h; camera.updateProjectionMatrix(); map.resize(w, h); arena.resize(w, h);
     const narrow = w / h < 0.8;
     const side = isSide(w, h);
-    if (!devLock) CAM.hub.radius = narrow ? 26 : side ? 21 : 22; CAM.portal.radius = narrow ? 17 : 11; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 10.5 : 7.5;   // целиком, со шлемом и оружием (скины)
+    if (!devLock) CAM.hub.radius = narrow ? 26 : side ? 21 : w / h < 1.5 ? 18 : 22;   // почти квадратное окно (телефон лёжа, панель справа) — ближе CAM.portal.radius = narrow ? 17 : 11; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 10.5 : 7.5;   // целиком, со шлемом и оружием (скины)
     applyOffset();
   }
   // Раскладка экрана (та же, что в app.css): на широком экране панель справа — сцена сдвигается влево;
