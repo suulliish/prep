@@ -3,7 +3,7 @@
 // (у документа Firestore предел 1 МБ, а ответов за полтора года больше). Конфликт двух устройств решается
 // по времени последнего изменения (updatedAt); проигравшая копия остаётся в localStorage (…before-replace).
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, type User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, type User } from 'firebase/auth';
 import { getFirestore, doc, getDoc, getDocs, setDoc, collection, writeBatch } from 'firebase/firestore';
 import { game, afterPersist, replaceSave } from './store.svelte';
 import type { Attempt, Save } from '../engine/types';
@@ -100,6 +100,23 @@ export async function signIn() {
     if (e?.code === 'auth/popup-blocked' || e?.code === 'auth/operation-not-supported-in-this-environment') await signInWithRedirect(auth, p);
     else { cloud.status = 'error'; cloud.error = e?.code ?? String(e); }
   }
+}
+/** Вход по почте и паролю — без писем (ссылки на бесплатном тарифе Firebase: не больше 5 писем в день на проект).
+ *  Нет такого аккаунта — создаём; есть, но пароль другой — ошибка «неверный пароль». */
+export async function signInPassword(email: string, password: string) {
+  cloud.error = '';
+  try { await signInWithEmailAndPassword(auth, email, password); return; }
+  catch (e: any) {
+    if (!['auth/invalid-credential', 'auth/user-not-found', 'auth/invalid-login-credentials'].includes(e?.code)) { cloud.status = 'error'; cloud.error = e?.code ?? String(e); return; }
+  }
+  try { await createUserWithEmailAndPassword(auth, email, password); }
+  catch (e: any) { cloud.status = 'error'; cloud.error = e?.code === 'auth/email-already-in-use' ? 'auth/wrong-password' : e?.code ?? String(e); }
+}
+/** Забыли пароль: письмо со сбросом (лимит бесплатного тарифа — 150 писем в день). */
+export async function resetPassword(email: string) {
+  cloud.error = '';
+  try { await sendPasswordResetEmail(auth, email); cloud.linkSent = email; }
+  catch (e: any) { cloud.status = 'error'; cloud.error = e?.code ?? String(e); }
 }
 /** Вход по ссылке на почту (любая почта, в т. ч. iCloud; без пароля). */
 export async function sendLink(email: string) {

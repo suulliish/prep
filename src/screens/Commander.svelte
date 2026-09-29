@@ -6,6 +6,7 @@
   import { ensurePlan, dayRec, replan } from '../lib/session.svelte';
   import { settleDay } from '../engine/planner';
   import { streak } from '../engine/streak';
+  import { parse, iso } from '../engine/dates';
   import { audio } from '../lib/audio';
   // @ts-ignore
   import { LESSONS } from '../../content/lessons.mjs';
@@ -19,6 +20,16 @@
   const hasPin = !!game.save.settings.pin;
   // облако грузится лениво (Firebase — отдельный кусок сайта)
   let email = $state('');
+  let pass = $state('');
+  const ERR: Record<string, string> = {
+    'auth/wrong-password': 'Неверный пароль для этой почты. Нажмите «Забыли пароль?».',
+    'auth/weak-password': 'Пароль слишком короткий — нужно не меньше 6 символов.',
+    'auth/invalid-email': 'Почта написана с ошибкой.',
+    'auth/missing-email': 'Сначала впишите почту.',
+    'auth/too-many-requests': 'Слишком много попыток. Подождите пару минут.',
+    'auth/network-request-failed': 'Нет интернета — попробуйте ещё раз.',
+    'auth/quota-exceeded': 'Лимит писем на сегодня исчерпан. Войдите по паролю.',
+  };
   let C = $state<typeof import('../lib/cloud.svelte') | null>(null);
   onMount(() => { import('../lib/cloud.svelte').then(m => (C = m)).catch(() => {}); });
   const cloudOk = $derived(!!C?.cloud.user && C.cloud.status !== 'error');
@@ -35,6 +46,11 @@
 
   const plan = ensurePlan();
   const rec = $derived(dayRec());
+  // неделя (с понедельника): сколько заработано всего и в копилку выходных — время выдаёте вне игры
+  const monday = (() => { const d = parse(game.day); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return iso(d); })();
+  const week = $derived(Object.values(game.save.days).filter(r => r.date >= monday && r.date <= game.day));
+  const weekMin = $derived(week.reduce((s, r) => s + r.minutesToday, 0));
+  const weekBank = $derived(week.reduce((s, r) => s + r.minutesWeekend, 0));
   const st = $derived(streak(game.save, game.day));
   const todays = $derived(game.save.attempts.filter(a => a.day === game.day));
   const guesses = $derived(todays.filter(a => !a.honest && a.hintLevel < 4).length);
@@ -90,7 +106,7 @@
       <section class="panel card">
         <div class="grid3">
           <div class="kpi"><span class="label">Игра сегодня</span><b>{rec.minutesToday} мин</b><small>заработано, выдаёте вне игры</small></div>
-          <div class="kpi"><span class="label">В копилку выходных</span><b>+{rec.minutesWeekend} мин</b></div>
+          <div class="kpi"><span class="label">За неделю</span><b>{weekMin} мин</b><small>копилка выходных: {weekBank} мин</small></div>
           <div class="kpi"><span class="label">Серия дней</span><b>{st.days}</b><small>заморозок: {st.freezesLeft}</small></div>
         </div>
         <ul class="blocks">
@@ -170,19 +186,19 @@
           {#if !C}<p class="note">Загрузка…</p>
           {:else if !C.cloud.user}
             <p class="note">Войдите один раз на этом устройстве — прогресс будет сам сохраняться в облако и подтянется на другом устройстве после входа.</p>
-            {#if C.cloud.linkSent}
-              <p class="note">✉ Ссылка отправлена на <b>{C.cloud.linkSent}</b>. Откройте письмо <b>на этом устройстве</b> и нажмите ссылку — лучше скопировать её в этот же браузер (если почта откроет её во встроенном браузере, вход останется там). Письма нет — проверьте «Спам».</p>
-            {/if}
-            <form class="row" onsubmit={e => { e.preventDefault(); if (email.includes('@')) C!.sendLink(email.trim()); }}>
-              <input type="email" placeholder="почта (можно iCloud)" bind:value={email} autocomplete="email" required />
-              <button class="btn primary" type="submit">Прислать ссылку для входа</button>
+            <p class="note">Почта и пароль (не меньше 6 символов). Первый раз — аккаунт создастся сам, дальше на любом устройстве входите с теми же почтой и паролем. Писем ждать не нужно.</p>
+            <form class="col" onsubmit={e => { e.preventDefault(); if (email.includes('@') && pass.length >= 6) C!.signInPassword(email.trim(), pass); }}>
+              <input type="email" placeholder="почта" bind:value={email} autocomplete="email" required />
+              <input type="password" placeholder="пароль, от 6 символов" bind:value={pass} autocomplete="current-password" minlength="6" required />
+              <button class="btn primary" type="submit">Войти</button>
             </form>
-            <button class="btn ghost" onclick={() => C!.signIn()}>или войти через Google</button>
+            <button class="btn ghost small" onclick={() => { if (email.includes('@')) C!.resetPassword(email.trim()); else C!.cloud.error = 'auth/missing-email'; }}>Забыли пароль? Прислать письмо для сброса</button>
+            {#if C.cloud.linkSent}<p class="note">✉ Письмо отправлено на <b>{C.cloud.linkSent}</b>. Нет во «Входящих» — проверьте «Спам».</p>{/if}
           {:else}
             <p class="note">Вход: <b>{C.cloud.user.email}</b>. Статус: {C.cloud.status === 'ok' ? '✓ синхронизировано' : C.cloud.status === 'syncing' ? 'синхронизация…' : C.cloud.status === 'error' ? 'ошибка' : '—'} · последняя: {fmtTime(C.cloud.lastSync)}</p>
             <div class="row"><button class="btn" onclick={() => C!.syncNow()}>Синхронизировать сейчас</button><button class="btn ghost" onclick={() => C!.signOutCloud()}>Выйти</button></div>
           {/if}
-          {#if C?.cloud.error}<p class="err">Ошибка: {C.cloud.error}{C.cloud.error.includes('unauthorized-domain') ? ' — добавьте адрес сайта в Firebase → Authentication → Settings → Authorized domains.' : C.cloud.error.includes('permission-denied') ? ' — проверьте правила Firestore (docs/CLOUD.md).' : ''}</p>{/if}
+          {#if C?.cloud.error}<p class="err">{ERR[C.cloud.error] ?? `Ошибка: ${C.cloud.error}`}{#if !ERR[C.cloud.error]}{C.cloud.error.includes('unauthorized-domain') ? ' — добавьте адрес сайта в Firebase → Authentication → Settings → Authorized domains.' : C.cloud.error.includes('permission-denied') ? ' — проверьте правила Firestore (docs/CLOUD.md).' : ''}{/if}</p>{/if}
         </div>
         <p class="note">Прогресс хранится в этом браузере. Раз в неделю скачивайте копию — её можно загрузить на другом устройстве. Последняя копия: {game.save.lastBackup ?? 'не было'}.</p>
         <button class="btn primary" onclick={downloadSave}>Скачать копию прогресса</button>
@@ -197,6 +213,8 @@
 
 <style>
   .wrap { min-height: 100dvh; width: min(720px, 100%); margin: 0 auto; display: grid; align-content: start; gap: 10px; padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 24px; }
+  .col { display: grid; gap: 8px; }
+  .col input { font: 600 16px var(--txt); padding: 12px 14px; min-height: 48px; border-radius: 12px; border: 3px solid var(--outline); background: var(--paper); color: var(--paper-ink); }
   .top { display: flex; gap: 12px; align-items: center; padding: 8px 12px; }
   .t { font-size: 20px; }
   .btn.small { min-height: 36px; padding: 4px 10px; font-size: var(--fs-s); }
