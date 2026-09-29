@@ -108,7 +108,10 @@ export function createArena(d: Deps) {
     if (max > 1 && max <= 12) { c.fillStyle = '#0b0d2a'; for (let i = 1; i < max; i++) c.fillRect(x + (w * i) / max - 2.5, y, 5, h); }
     c.lineWidth = 6; c.strokeStyle = 'rgba(255,255,255,0.55)'; pill(x, w); c.stroke();
     c.font = '900 58px Rubik, system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
-    c.lineWidth = 12; c.strokeStyle = '#0b0d2a'; c.strokeText(String(hp), 256, y + h / 2 + 3); c.fillStyle = '#ffffff'; c.fillText(String(hp), 256, y + h / 2 + 3);
+    // число — в тёмном кружке у левого края: на розовой заливке белая цифра не читалась
+    c.beginPath(); c.arc(x + r, y + h / 2, r + 4, 0, Math.PI * 2); c.fillStyle = '#0b0d2a'; c.fill();
+    c.lineWidth = 5; c.strokeStyle = '#ff9ee0'; c.stroke();
+    c.fillStyle = '#ffffff'; c.fillText(String(hp), x + r, y + h / 2 + 3);
     hpTex.needsUpdate = true;
   }
 
