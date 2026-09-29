@@ -331,8 +331,23 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     if (dragging && mode === 'map' && Math.hypot(e.clientX - downX, e.clientY - downY) < 8) {
       const r = canvas.getBoundingClientRect(); map.click(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     }
+    // касание палубы в главном меню — герой идёт туда (просьба ребёнка 30.09)
+    if (dragging && mode === 'hub' && Math.hypot(e.clientX - downX, e.clientY - downY) < 8) tapWalk(e);
     dragging = false;
   };
+  const tapRay = new THREE.Raycaster(), tapPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), tapHit = new THREE.Vector3();
+  function tapWalk(e: PointerEvent) {
+    const r = canvas.getBoundingClientRect();
+    tapRay.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+    tapPlane.constant = -(ship.position.y + 0.15);
+    if (!tapRay.ray.intersectPlane(tapPlane, tapHit)) return;
+    const p = ship.worldToLocal(tapHit.clone());
+    if (Math.abs(p.x) > 7 || Math.abs(p.z) > 4) return;                   // мимо корабля
+    const x = Math.max(-4.8, Math.min(4.0, p.x)), z = Math.max(-2.4, Math.min(2.4, p.z));
+    nextWander = Infinity;                                               // сам не уходит, пока идёт по касанию
+    burst(ship.localToWorld(new THREE.Vector3(x, 0.3, z)), 0x3ff0ff, 14, 2);
+    walk = { x, z, res: () => { nextWander = clock.elapsedTime + 10; celebrateT = 0.4; } };
+  }
   const onWheel = (e: WheelEvent) => { if (mode === 'map') { e.preventDefault(); map.wheel(e.deltaY); } };
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('pointerdown', onDown); window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
