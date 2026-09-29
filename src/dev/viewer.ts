@@ -16,7 +16,16 @@ const info = document.getElementById('t')!;
 
 (async () => {
   const actors: { a: import('../three/actor').Actor; label: string }[] = [];
-  if (q.get('kit')) {
+  if (q.get('outfits')) {
+    // все 8 костюмов в ряд (проверка внешнего вида)
+    const { LOOKS } = await import('../three/looks');
+    const ids = Object.keys(LOOKS);
+    for (let i = 0; i < ids.length; i++) {
+      const l = LOOKS[ids[i]]; const h = await createHero(l.kind); await dress(h, { weapon: l.weapon, offhand: l.offhand, hide: l.hide });
+      if (l.tint) h.tint(l.tint, l.glow); h.g.position.set((i % 4 - 1.5) * 2.4, 0, Math.floor(i / 4) * 3); h.g.rotation.y = 0.25; scene.add(h.g); h.mixer.update(0.3);
+    }
+    cam.position.set(0, 3.5, 11); cam.lookAt(0, 1.1, 1.5); info.textContent = ids.join(' · ');
+  } else if (q.get('kit')) {
     // предметы набора по именам: ?kit=ship&names=chest,barrel&clip=open&t=0.5
     const kit = await Kit.load(q.get('kit')!); const names = (q.get('names') || '').split(',').filter(Boolean);
     const { Actor } = await import('../three/actor');
@@ -25,7 +34,7 @@ const info = document.getElementById('t')!;
       if (q.get('clip')) { const a = new Actor(o, kit.clips); g.add(a.g); a.play(q.get('clip')!, { hold: true }); a.mixer.update(a.duration(q.get('clip')!) * +(q.get('t') || 0.5)); } else g.add(o);
       renderer.render(scene, cam);
     });
-    cam.position.set(0, 3, 8); cam.lookAt(0, 0.8, 0);
+    const cd = +(q.get('cd') || 8); cam.position.set(cd * 0.5, cd * 0.4, cd); cam.lookAt(0, +(q.get('h') || 1.5) * 0.4, 0);
   } else if (q.get('frames')) {
     // кадры одного клипа по времени: t = 0, 1/8 ... 7/8 — чтобы найти момент удара
     const clip = q.get('frames')!;
@@ -56,6 +65,6 @@ const info = document.getElementById('t')!;
       actors.push({ a: m.a, label: `${q.get('mon')} клипов? низ=${bottomY(m.a.g).toFixed(3)}` }); }
     if (q.get('cam') === 'side') { cam.position.set(0, 1.2, 9); cam.lookAt(0, 1.2, 0); } else { cam.position.set(0, 2.6, 7); cam.lookAt(0, 1.2, 0); }
   }
-  if (!q.get('frames')) info.textContent = actors.map(a => a.label).slice(0, 3).join('\n') + (actors.length > 3 ? `\n… всего ${actors.length}` : '');
+  if (!q.get('frames') && !q.get('outfits')) info.textContent = actors.map(a => a.label).slice(0, 3).join('\n') + (actors.length > 3 ? `\n… всего ${actors.length}` : '');
   renderer.render(scene, cam); (window as any).__ready = true;
 })().catch(e => { info.textContent = 'Ошибка: ' + e; console.error(e); });

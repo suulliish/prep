@@ -37,61 +37,6 @@ export function part(p: THREE.Object3D, w: number, h: number, d: number, x: numb
   p.add(m); return m;
 }
 
-// ---------- Кодер ----------
-export function makeHero() {
-  const g = new THREE.Group();
-  const C = { skin: 0xf2c48d, jacket: 0x22b8cc, jacketDark: 0x137e8f, pants: 0x2b3470, boots: 0x1b1d33, hair: 0x2e1b10, glove: 0xffc94a };
-  const hips = new THREE.Group(); hips.position.y = 0.95; g.add(hips);
-  const body = part(hips, 0.86, 0.8, 0.5, 0, 0.42, 0, C.jacket);
-  part(body, 0.9, 0.16, 0.54, 0, -0.34, 0, 0x1b1f3d, { outline: false });              // пояс
-  part(body, 0.2, 0.14, 0.06, 0, -0.34, 0.27, 0xffc94a, { emissive: 0x6b4a0a, ei: 0.6, outline: false }); // пряжка
-  part(body, 0.06, 0.6, 0.04, 0, 0.02, 0.26, C.jacketDark, { outline: false });           // молния
-  part(body, 0.9, 0.18, 0.54, 0, 0.36, 0, C.jacketDark, { outline: false });              // воротник
-  const pack = part(body, 0.6, 0.62, 0.26, 0, 0.02, -0.38, 0x39407a);
-  const cell = part(pack, 0.22, 0.34, 0.06, 0, 0.02, -0.15, 0x3ff0ff, { emissive: 0x3ff0ff, ei: 2.2, outline: false });
-  part(pack, 0.05, 0.4, 0.05, 0.2, 0.46, 0, 0x7d86b8, { outline: false });
-  part(pack, 0.1, 0.1, 0.1, 0.2, 0.7, 0, 0xff4fb8, { emissive: 0xff4fb8, ei: 2, outline: false });
-
-  // голова: крупная, «чиби»-пропорции
-  const head = new THREE.Group(); head.position.set(0, 1.45, 0); hips.add(head);
-  part(head, 1.05, 0.98, 0.96, 0, 0.1, 0, C.skin, { r: 0.18 });
-  const hair = new THREE.Group(); head.add(hair);
-  part(hair, 1.12, 0.32, 1.02, 0, 0.52, -0.02, C.hair, { r: 0.12 });
-  part(hair, 1.1, 0.5, 0.26, 0, 0.3, -0.42, C.hair, { r: 0.1 });
-  [[-0.3, 0.1], [0.05, 0.2], [0.35, 0.05]].forEach(([x, z], i) => { const s = part(hair, 0.28, 0.34, 0.28, x, 0.74, z, C.hair, { r: 0.08 }); s.rotation.z = (i - 1) * 0.35; });
-  part(hair, 0.36, 0.18, 0.2, -0.28, 0.4, 0.46, C.hair, { r: 0.06 });                     // чёлка
-  // глаза с бликом, брови, рот
-  const eyes: THREE.Object3D[] = [];
-  [-0.23, 0.23].forEach(x => {
-    const e = new THREE.Group(); e.position.set(x, 0.08, 0.49); head.add(e);
-    part(e, 0.22, 0.26, 0.04, 0, 0, 0, 0xffffff, { outline: false, shadow: false });
-    part(e, 0.13, 0.17, 0.04, 0.02, -0.02, 0.02, 0x1a1a2e, { outline: false, shadow: false });
-    part(e, 0.05, 0.05, 0.02, 0.05, 0.04, 0.045, 0xffffff, { emissive: 0xffffff, ei: 1, outline: false, shadow: false });
-    eyes.push(e);
-    const brow = part(head, 0.24, 0.06, 0.04, x, 0.28, 0.5, C.hair, { outline: false, shadow: false }); brow.rotation.z = x < 0 ? 0.12 : -0.12;
-  });
-  part(head, 0.2, 0.05, 0.03, 0.02, -0.2, 0.49, 0x8a3b2a, { outline: false, shadow: false });
-  // очки-визор на лбу
-  const visor = part(head, 0.98, 0.16, 0.12, 0, 0.42, 0.44, 0x3ff0ff, { emissive: 0x3ff0ff, ei: 1.8 });
-
-  const limb = (parent: THREE.Object3D, x: number, y: number, w: number, h: number, c: number, tip: number) => {
-    const p = new THREE.Group(); p.position.set(x, y, 0); parent.add(p);
-    part(p, w, h, w, 0, -h / 2, 0, c);
-    part(p, w * 1.12, w * 0.9, w * 1.12, 0, -h + 0.04, 0.02, tip);
-    return p;
-  };
-  const armL = limb(body, -0.56, 0.3, 0.26, 0.62, C.jacket, C.glove);
-  const armR = limb(body, 0.56, 0.3, 0.26, 0.62, C.jacket, C.glove);
-  const legL = limb(hips, -0.2, 0.05, 0.3, 0.72, C.pants, C.boots);
-  const legR = limb(hips, 0.2, 0.05, 0.3, 0.72, C.pants, C.boots);
-  // меч-клавиша
-  const sword = new THREE.Group(); sword.position.set(0, -0.64, 0.12); armR.add(sword);
-  part(sword, 0.1, 0.1, 0.34, 0, 0, 0.02, 0x5a3519, { outline: false });
-  part(sword, 0.42, 0.1, 0.1, 0, 0, 0.2, 0xffc94a, { emissive: 0x6b4a0a, ei: 0.8 });
-  const blade = part(sword, 0.14, 0.08, 1.15, 0, 0, 0.8, 0x9ffcff, { emissive: 0x3ff0ff, ei: 1.8 });
-  return { g, hips, body, head, eyes, armL, armR, legL, legR, pack, cell, blade, visor };
-}
-
 // ---------- Бит ----------
 export function makeBit(faceTex: THREE.Texture) {
   const g = new THREE.Group();
@@ -114,29 +59,6 @@ export function makeBit(faceTex: THREE.Texture) {
 }
 
 // ---------- Глитч-моб ----------
-export function makeMob(kind: number) {
-  const g = new THREE.Group();
-  const P = [[0xff4fb8, 0x8a3cff, 0x3ff0ff], [0x8a3cff, 0xff4fb8, 0xffc94a], [0xff6a3d, 0xff4fb8, 0x8a3cff]][kind % 3];
-  const core = part(g, 1.2, 1.1, 1.1, 0, 0.8, 0, P[0], { emissive: P[0], ei: 0.35, r: 0.2 });
-  // шипы
-  const spikes: THREE.Mesh[] = [];
-  [[0, 0.62, 0], [0.4, 0.5, 0.3], [-0.35, 0.55, -0.3], [0.3, 0.45, -0.4]].forEach(([x, y, z]) => {
-    const s = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.42, 4), toon(P[1], P[1], 0.6)); s.position.set(x, y, z); core.add(s); spikes.push(s);
-  });
-  // один большой глаз, смотрит на героя (−x)
-  const eye = new THREE.Group(); eye.position.set(-0.58, 0.08, 0); core.add(eye);
-  part(eye, 0.06, 0.52, 0.52, 0, 0, 0, 0xffffff, { emissive: 0xffffff, ei: 0.4, outline: false });
-  const pupil = part(eye, 0.06, 0.24, 0.24, -0.03, 0, 0, 0x14061f, { outline: false });
-  // зубы
-  for (let i = 0; i < 4; i++) { const t = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.16, 3), toon(0xffffff)); t.rotation.z = Math.PI; t.position.set(-0.6, -0.34, -0.24 + i * 0.16); core.add(t); }
-  // осколки на орбите
-  const shards = new THREE.Group(); shards.position.y = 0.8; g.add(shards);
-  const shardList: THREE.Mesh[] = [];
-  for (let i = 0; i < 6; i++) { const s = part(shards, 0.22, 0.22, 0.22, Math.cos(i) * 1.1, Math.sin(i * 2) * 0.35, Math.sin(i) * 1.1, i % 2 ? P[2] : P[1], { emissive: i % 2 ? P[2] : P[1], ei: 1.4, outline: false }); shardList.push(s); }
-  return { g, core, parts: [core, ...shardList], pupil, shards, spikes };
-}
-
-// ---------- Детали корабля ----------
 export function addShipDetails(ship: THREE.Group, quality: string) {
   const anim: { flags: THREE.Mesh[]; wheel: THREE.Group; windows: THREE.Mesh[] } = { flags: [], wheel: new THREE.Group(), windows: [] };
   // золотая полоса по борту

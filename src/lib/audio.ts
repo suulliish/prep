@@ -5,7 +5,9 @@
 
 export type Sfx =
   | 'click' | 'correct' | 'wrong' | 'hit' | 'crit' | 'combo' | 'xp' | 'chest'
-  | 'crystal' | 'levelup' | 'portal' | 'hint' | 'energy' | 'mission';
+  | 'crystal' | 'levelup' | 'portal' | 'hint' | 'energy' | 'mission'
+  // звуки боя в момент действия на сцене (src/three/arena.ts): взмах, попадание, щит, рык, гул появления, приземление, монеты
+  | 'slash' | 'impact' | 'block' | 'growl' | 'boom' | 'land' | 'coins';
 
 export type Mood = 'hub' | 'battle' | 'map' | 'victory' | 'focus' | 'silent';
 
@@ -130,6 +132,13 @@ class AudioEngine {
         noise(c, out, this.noiseBuf, t, 1.2, 500, 0.3, 3000); return sweep(c, out, t, 110, 440, 1.2, 'sine', 0.2);
       case 'hint': return [988, 1319].forEach((f, i) => bell(c, out, t + i * 0.12, f, 0.6, 0.1));
       case 'energy': return sweep(c, out, t, 300, 1200, 0.4, 'triangle', 0.18);
+      case 'slash': noise(c, out, this.noiseBuf, t, 0.16, 2400, 0.35, 700); return sweep(c, out, t, 900, 260, 0.14, 'triangle', 0.08);
+      case 'impact': noise(c, out, this.noiseBuf, t, 0.14, 1100, 0.55); sweep(c, out, t, 180, 45, 0.2, 'sine', 0.35); return tone(c, out, t, 1568, 0.05, 'square', 0.07);
+      case 'block': bell(c, out, t, 1480, 0.35, 0.16); bell(c, out, t + 0.02, 2210, 0.25, 0.1); return noise(c, out, this.noiseBuf, t, 0.06, 3500, 0.3);
+      case 'growl': return sweep(c, out, t, 190, 85, 0.32, 'sawtooth', 0.16);
+      case 'boom': noise(c, out, this.noiseBuf, t, 0.5, 260, 0.5, 90); return sweep(c, out, t, 90, 32, 0.55, 'sine', 0.4);
+      case 'land': noise(c, out, this.noiseBuf, t, 0.09, 500, 0.3); return sweep(c, out, t, 130, 50, 0.12, 'sine', 0.3);
+      case 'coins': return [2093, 2637, 3136, 2637, 3520].forEach((f, i) => bell(c, out, t + i * 0.05, f, 0.35, 0.08));
       case 'mission': return [392, 523, 659, 784].forEach((f, i) => tone(c, out, t + i * 0.1, f, 0.18, 'triangle', 0.18));
     }
   }

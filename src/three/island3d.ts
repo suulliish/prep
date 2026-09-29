@@ -29,6 +29,8 @@ const LAYOUTS: Slot[][] = [
   // 5 Кристалдар: скалы и кристаллы
   [['bd3', -8.4, -8.0, 0.4], ['bd4', 8.6, -8.2, 2.0], ['rockBig', -6.0, -4.4, 0], ['rockBig', 6.0, -4.8, 1], ['rock', 0.4, -7.0, 0, 1.4], ['rock', -9.0, 1.8, 0], ['rock', 9.0, 2.4, 1], ['dead', 4.0, -8.6, 0], ['rock', -3.8, 5.2, 0, 0.7], ['rock', 3.6, 5.6, 1, 0.7]],
 ];
+/** Роли, которые встречаются в каждой раскладке (для проверки палитр). */
+export const LAYOUT_ROLES: Role[][] = LAYOUTS.map(l => [...new Set(l.map(s => s[0]))]);
 /** Клетки-пруды (q, r) для «Көл» — вместо травы вода. */
 const PONDS: [number, number][][] = [[], [], [[-1, -1], [0, -1]], [], [], []];
 
@@ -86,5 +88,33 @@ export function buildIsland(kits: IslandKits, worldK: number, colA: number, v: n
   }
   if (pal.crystals && (layout === 5 || pal.crystalsAlways)) crystals(g, pal.crystals, CRYSTAL_SPOTS);
   pal.extra?.(g, layout, kits);
+  return g;
+}
+
+/** Остров для карты миров: 7 плиток вокруг центра, ориентир и деревья из палитры мира. Верх земли на y = 0.5 (герой стоит там). */
+export function buildMapIsle(kits: IslandKits, worldK: number, colA: number, gray = 0): THREE.Group {
+  const g = new THREE.Group(), pal: Palette = paletteOf(worldK), hex = kits.get('hexcore')!, TSM = 1.3, RM = 1.1547 * TSM;
+  let src: THREE.Material | null = null; hex.get(pal.ground?.tile ?? 'hex_grass').traverse(o => { if (!src && (o as THREE.Mesh).isMesh) src = (o as THREE.Mesh).material as THREE.Material; });
+  const gm = (src as unknown as THREE.MeshToonMaterial).clone(); gm.map = null; gm.color.set(pal.ground?.color ?? colA);
+  const at = (q: number, r: number) => new THREE.Vector3(Math.sqrt(3) * RM * (q + r / 2), 0, 1.5 * RM * r);
+  for (const [q, r] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]] as const) {
+    const t = hex.get(pal.ground?.tile ?? 'hex_grass', { shadows: false }); t.scale.setScalar(TSM); t.position.copy(at(q, r));
+    t.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.material = gm; }); g.add(t);
+  }
+  const put = (role: Role, x: number, z: number, rot: number, h: number, pick = 0) => {
+    const list = pal.roles[role]; if (!list?.length) return;
+    const [kit, name, hh] = list[pick % list.length]; const k = kits.get(kit); if (!k || !k.has(name)) return;
+    const o = k.get(name, { height: hh * h, ground: true, shadows: false }); o.position.set(x, 0, z); o.rotation.y = rot; g.add(o);
+  };
+  put('lm1', -0.7, -0.5, 0.5, 0.7, worldK); put('lm2', 0.8, -0.8, -0.4, 0.65, worldK); put('tree', -1.9, 0.4, 0, 0.6, worldK); put('tree', 1.9, 0.2, 1, 0.5, worldK + 1);
+  put('rock', -1.2, 1.3, 0.5, 0.8); put('bush', -0.3, 1.5, 0, 0.7); put('grass', 2.3, 1.1, 0, 0.7);
+  g.position.y = 0.5;
+  if (gray > 0) {
+    // закрытые миры — серые: тот же остров без красок
+    const cache = new Map<THREE.Material, THREE.MeshToonMaterial>();
+    g.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh) return; const s = m.material as THREE.MeshToonMaterial;
+      if (!cache.has(s)) { const c = s.clone(); const l = (s.color.r * 0.3 + s.color.g * 0.59 + s.color.b * 0.11) * (1 - gray * 0.55) + 0.12; c.color.setRGB(l, l, l * 1.1); c.emissive.setRGB(0, 0, 0); c.map = null; cache.set(s, c); }
+      m.material = cache.get(s)!; });
+  }
   return g;
 }

@@ -5,11 +5,13 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { makeHero, makeBit, makeMob as buildMob, addShipDetails, waveFlag } from './characters';
+import { makeBit, addShipDetails, waveFlag } from './characters';
 import { createMap, type MapIsle, type MapLabel } from './map';
 import { createArena } from './arena';
 import { LOOKS, DEFAULT_LOOK } from './looks';
-import { equip, animateGear, GEAR, type Equipped } from './gear';
+import { HeroFigure } from './figure';
+import { Kit } from './assets';
+import { audio } from '../lib/audio';
 
 export type CamMode = 'hub' | 'battle' | 'portal' | 'map' | 'hero';
 export type BitMood = 'idle' | 'happy' | 'wow' | 'think' | 'sad';
@@ -205,40 +207,18 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   portal.add(new THREE.Points(pGeo, pMat));
   let energy = 0.3, portalOpen = false, flash = 0;
 
-  // ---------- Сундук ----------
-  const chest = new THREE.Group(); chest.position.set(-2.8, 0.15, 2.0); chest.visible = false; ship.add(chest);
-  block(chest, 1.1, 0.7, 0.8, 0, 0.35, 0, 0x8a5a2b); block(chest, 1.14, 0.1, 0.84, 0, 0.55, 0, 0xffc94a, 0xffa000, 0.4);
-  const lid = new THREE.Group(); lid.position.set(0, 0.7, -0.4); chest.add(lid);
-  block(lid, 1.1, 0.35, 0.8, 0, 0.17, 0.4, 0x9c6632); block(lid, 0.2, 0.25, 0.1, 0, 0.05, 0.82, 0xffc94a, 0xffa000, 1);
-  let chestOpen = false;
 
   // ---------- Герой ----------
-  const hero = makeHero();
-  // материалы костюма: по исходным цветам куртки и визора
-  const outfitMats = { jacket: [] as THREE.MeshToonMaterial[], dark: [] as THREE.MeshToonMaterial[], visor: [] as THREE.MeshToonMaterial[] };
-  // материалы из общего кэша — клонируем, чтобы не перекрасить заодно корабль
-  const own = new Map<THREE.Material, THREE.MeshToonMaterial>();
-  let outfitNow: [number, number, number] | null = null;
-  const dressHero = (root: THREE.Object3D) => root.traverse(o => { const mesh = o as THREE.Mesh, m = mesh.material as THREE.MeshToonMaterial | undefined; if (!m?.color || Array.isArray(m)) return;
-    const hx = m.color.getHex(), slot = hx === 0x22b8cc ? 'jacket' : hx === 0x137e8f ? 'dark' : hx === 0x3ff0ff && m.emissive?.getHex() === 0x3ff0ff ? 'visor' : null;
-    if (!slot) return;
-    if (!own.has(m)) { const c = m.clone(); own.set(m, c); outfitMats[slot].push(c); }
-    mesh.material = own.get(m)!; });
-  // скины (src/three/gear.ts): у каждого костюма своя экипировка; одеваются все герои — палуба, карта, бой
-  type Hero = ReturnType<typeof makeHero>;
-  const worn = new Map<Hero, Equipped>();
-  let gearNow = GEAR.cyan, colorsNow = { jacket: 0x22b8cc, dark: 0x137e8f, visor: 0x3ff0ff };
-  let capeNow: { color: number; glow: boolean } | null = null;
-  function wear(h: Hero) { const e = equip(h, capeNow ? { ...gearNow, cape: capeNow.color, capeGlow: capeNow.glow } : gearNow, colorsNow); h.blade = e.blade as typeof h.blade; worn.set(h, e); }
-  const dress = (h: Hero) => { dressHero(h.g); if (outfitNow) paintOutfit(...outfitNow); wear(h); };
-  dressHero(hero.g); wear(hero);
-  function paintOutfit(jacket: number, dark: number, visor: number) {
-    outfitMats.jacket.forEach(m => m.color.setHex(jacket)); outfitMats.dark.forEach(m => m.color.setHex(dark));
-    outfitMats.visor.forEach(m => { m.color.setHex(visor); m.emissive?.setHex(visor); });
-  }
+  const fig = new HeroFigure(DEFAULT_LOOK, 1.15), hero = { g: fig.g };   // настоящий герой (модель с анимациями)
   let themeTo: THREE.Vector3[] | null = null; const fogTo = new THREE.Color(0x17104a);
   hero.g.position.set(-2, 0.15, 0.6); hero.g.rotation.y = Math.PI / 2; ship.add(hero.g);
   const shipAnim = addShipDetails(ship, quality);
+  // реквизит палубы: готовые бочки, ящики, пушка (Kenney Pirate Kit)
+  Kit.load('ship').then(k => {
+    const put = (name: string, x: number, z: number, rot: number, h: number) => { const o = k.get(name, { height: h, ground: true }); o.position.set(x, 0.15, z); o.rotation.y = rot; ship.add(o); };
+    put('barrel', 2.8, -2.65, 0, 1.2); put('barrel', 3.5, -2.55, 0.6, 1.1); put('crate', 0.2, -2.7, 0.3, 1.1); put('crate-bottles', 1.3, -2.7, -0.2, 1.0);
+    put('cannon', -0.4, -2.7, -Math.PI / 2, 1.3); put('barrel', 5.2, -2.4, 0, 1.2); put('crate', 4.2, -2.7, 0.5, 1.0);
+  }).catch(() => {});
 
   // ---------- Бит: экран-лицо на канвасе ----------
   const faceCanvas = document.createElement('canvas'); faceCanvas.width = 64; faceCanvas.height = 48;
@@ -285,14 +265,6 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   const clouds: THREE.Group[] = [];
   for (let i = 0; i < 10; i++) { const c = new THREE.Group(); for (let k = 0; k < 3 + (i % 3); k++) { const b = block(c, 2 + (k % 2), 1, 1.6 + (k % 3) * 0.4, k * 1.3, (k % 2) * 0.4, (k % 3) * 0.5, 0xe8e6ff); b.castShadow = false; } c.position.set(-45 + i * 10, -9 + (i % 4) * 5, -28 + (i * 17) % 56); scene.add(c); clouds.push(c); }
 
-  // ---------- Моб ----------
-  let mob: { g: THREE.Group; parts: THREE.Mesh[]; pupil: THREE.Mesh; shards: THREE.Group; hp: number; max: number; hitT: number; dying: number } | null = null;
-  function makeMob(kind: number) {
-    const m = buildMob(kind);
-    m.g.position.set(2.3, 0.15, 0.6); m.g.scale.setScalar(0.01); ship.add(m.g);
-    return m;
-  }
-
   // ---------- Частицы ----------
   const bursts: { g: THREE.Group; parts: { m: THREE.Mesh; v: THREE.Vector3 }[]; life: number }[] = [];
   function burst(pos: THREE.Vector3, color: number, n = 40, speed = 4) {
@@ -302,8 +274,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   }
 
   // ---------- 3D-карта миров (своя сцена) ----------
-  const map = createMap({ skyMat, starGeo, starMat, km, dressHero: dress });
-  const arena = createArena({ skyMat, starGeo, starMat, km, shadows: quality === 'high' });
+  const map = createMap({ skyMat, starGeo, starMat, km });
+  const arena = createArena({ skyMat, starGeo, starMat, km, shadows: quality === 'high', sfx: n => audio.play(n) });
 
   // ---------- Постобработка ----------
   let composer: EffectComposer | null = null;
@@ -320,7 +292,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     hub: { target: new THREE.Vector3(0, 2.0, 0), radius: 25, phi: 1.02, theta: 0.9 },
     battle: { target: new THREE.Vector3(0.2, 1.2, 0.6), radius: 11, phi: 1.12, theta: 1.62 },
     portal: { target: new THREE.Vector3(4.6, 2.2, 0), radius: 9, phi: 1.25, theta: 0.15 },
-    hero: { target: new THREE.Vector3(-2, 1.9, 0.6), radius: 11, phi: 1.3, theta: 0.55 }, // портрет героя на палубе
+    hero: { target: new THREE.Vector3(-2, 1.5, 0.6), radius: 11, phi: 1.3, theta: 0.55 }, // портрет героя на палубе
   };
   let mode: CamMode = 'hub';
   const cam = { target: CAM.hub.target.clone(), radius: CAM.hub.radius, phi: CAM.hub.phi, theta: CAM.hub.theta };
@@ -357,7 +329,6 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   let walk: { x: number; z: number; res: () => void } | null = null;
   const STATIONS: [number, number][] = [[-4.2, 1.2], [-2, 0.6], [0.4, -1.2], [2.4, 1.4], [-0.6, 1.9], [3.2, -0.8]];
   let nextWander = 4;
-  let attack: { t: number; crit: boolean; res: () => void } | null = null;
   let celebrateT = 0;
 
   function resize() {
@@ -366,7 +337,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     camera.aspect = w / h; camera.updateProjectionMatrix(); map.resize(w, h); arena.resize(w, h);
     const narrow = w / h < 0.8;
     const side = isSide(w, h);
-    CAM.hub.radius = narrow ? 30 : side ? 23 : 25; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 10.5 : 8.5;   // целиком, со шлемом и оружием (скины)
+    CAM.hub.radius = narrow ? 30 : side ? 23 : 25; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 12.5 : 9.5;   // целиком, со шлемом и оружием (скины)
     applyOffset();
   }
   // Раскладка экрана (та же, что в app.css): на широком экране панель справа — сцена сдвигается влево;
@@ -412,7 +383,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     pGeo.attributes.position.needsUpdate = true; pMat.opacity = 0.35 + pw * 0.55;
 
     // живой корабль: герой сам ходит между станциями палубы (штурвал, портал, мачта, консоль)
-    if (mode === 'hub' && !walk && !attack && km === 1 && t > nextWander) {
+    if (mode === 'hub' && !walk && km === 1 && t > nextWander) {
       const st = STATIONS[Math.floor(Math.random() * STATIONS.length)];
       nextWander = t + 5 + Math.random() * 5;
       walk = { x: st[0], z: st[1], res: () => { if (Math.random() < 0.35) celebrateT = 0.5; } };
@@ -424,24 +395,9 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       if (L < 0.05) { const r = walk.res; walk = null; hero.g.rotation.y = Math.PI / 2; r(); }
       else { walking = true; const st = Math.min(L, dt * 3.4); hero.g.position.x += dx / L * st; hero.g.position.z += dz / L * st; hero.g.rotation.y = Math.atan2(dx, dz); }
     }
-    const sw = walking ? Math.sin(t * 11) * 0.75 : 0;
-    const eq = worn.get(hero); if (eq) animateGear(eq, t, walking);
-    hero.legL.rotation.x = sw; hero.legR.rotation.x = -sw; hero.armL.rotation.x = -sw * 0.8;
-    if (attack) {
-      attack.t += dt * (attack.crit ? 2.2 : 2.6);
-      const a = attack.t;
-      hero.armR.rotation.x = -Math.sin(Math.min(a, 1) * Math.PI) * 2.5;
-      hero.g.position.x += a < 0.5 ? dt * 1.5 : -dt * 1.5;
-      if (a >= 1) { const r = attack.res; attack = null; r(); }
-    } else hero.armR.rotation.x = walking ? sw * 0.8 : Math.sin(t * 2) * 0.05;
-    const jump = celebrateT > 0 ? Math.abs(Math.sin(celebrateT * 9)) * 0.6 : 0; celebrateT = Math.max(0, celebrateT - dt);
-    hero.hips.position.y = 0.95 + jump + (walking ? Math.abs(Math.sin(t * 11)) * 0.06 : 0);
-    hero.body.scale.y = 1 + (walking ? 0 : Math.sin(t * 2.2) * 0.015);           // «дыхание»
-    hero.head.rotation.y = walking ? 0 : Math.sin(t * 0.7) * 0.25 * km;
-    hero.head.rotation.x = walking ? 0.05 : Math.sin(t * 0.9) * 0.04;
-    const heroBlink = (t % 4.1) < 0.12 ? 0.1 : 1; hero.eyes.forEach(e => (e.scale.y = heroBlink));
-    (hero.blade.material as THREE.MeshToonMaterial).emissiveIntensity = 1.5 + Math.sin(t * 6) * 0.4;
-    (hero.cell.material as THREE.MeshToonMaterial).emissiveIntensity = 1.8 + Math.sin(t * 3) * 0.6;
+    // анимации героя настоящие: ходьба/стойка меняются сами, радость — разовая
+    fig.walking(walking); fig.update(dt);
+    if (celebrateT > 0) { celebrateT = 0; fig.play('Cheering', 1.1); }
     shipAnim.flags.forEach(f => waveFlag(f, t)); shipAnim.wheel.rotation.x = Math.sin(t * 0.4) * 0.6;
     B.thrusters.forEach((th, i) => th.scale.setScalar(0.9 + Math.sin(t * 18 + i) * 0.15));
     B.flame.scale.set(1, 0.8 + Math.sin(t * 25) * 0.2, 1);
@@ -452,23 +408,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     bitProp.rotation.y += dt * 22; (antenna.material as THREE.MeshToonMaterial).emissiveIntensity = 1.5 + Math.sin(t * 5) * 1;
     blinkT += dt; if (blinkT > 3.2) { drawFace(true); if (blinkT > 3.35) { blinkT = 0; drawFace(); } }
 
-    // моб
-    if (mob) {
-      const g = mob.g;
-      if (mob.dying > 0) { mob.dying -= dt; g.scale.multiplyScalar(0.9); g.rotation.y += dt * 12; if (mob.dying <= 0) { ship.remove(g); mob = null; } }
-      else {
-        const s = Math.min(1, g.scale.x + dt * 2.2); g.scale.setScalar(s);
-        g.position.y = 0.15 + Math.abs(Math.sin(t * 4)) * 0.15; g.rotation.y = Math.sin(t * 3) * 0.2;
-        mob.shards.rotation.y += dt * 1.6; mob.shards.rotation.x = Math.sin(t) * 0.3;
-        if (Math.random() < 0.05) mob.parts[0].position.x = (Math.random() - 0.5) * 0.18; else mob.parts[0].position.x *= 0.8;
-        mob.pupil.position.z = Math.sin(t * 1.3) * 0.08; mob.pupil.position.y = Math.cos(t * 0.9) * 0.05;
-        if (mob.hitT > 0) { mob.hitT -= dt; g.position.x = 2.3 + Math.sin(mob.hitT * 60) * 0.12 + mob.hitT * 1.2; (mob.parts[0].material as THREE.MeshToonMaterial).emissiveIntensity = 0.35 + mob.hitT * 6; }
-        else (mob.parts[0].material as THREE.MeshToonMaterial).emissiveIntensity = 0.35;
-      }
-    }
-
     // сундук
-    if (chest.visible) { chest.scale.setScalar(Math.min(1, chest.scale.x + dt * 2.5)); lid.rotation.x += ((chestOpen ? -1.9 : 0) - lid.rotation.x) * 0.12; }
 
     for (let i = bursts.length - 1; i >= 0; i--) {
       const b = bursts[i]; b.life -= dt;
@@ -523,10 +463,10 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     arrive() { return arena.arrive(); },
     setArena(k, a, b) { arena.theme(k, a, b); },
     setSpot(seed) { return arena.spot(seed); },
-    setStyle(cape, trail) { capeNow = cape; [...worn.keys()].forEach(wear); arena.setTrail(trail); },
+    setStyle(c, trail) { arena.setCape(c); fig.setCape(c); map.setCape(c); arena.setTrail(trail); },
     hitMob() {},
     killMob() { return arena.defeat(); },
-    clearMob() { arena.clear(); if (mob) { ship.remove(mob.g); mob = null; } chest.visible = false; },
+    clearMob() { arena.clear(); },
     openChest() { return arena.victory(); },
     portalWalk() {
       return new Promise<void>(res => {
@@ -543,7 +483,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     openPortal() { portalOpen = true; flash = 1; burst(worldPos(portal, 2), 0x3ff0ff, 90, 7); },
     setTheme(sky, fog) { themeTo = sky.map(c => new THREE.Vector3(c[0], c[1], c[2])); fogTo.setHex(fog); },
     setFrame(top, height) { frameWin.top = top; frameWin.h = height; applyOffset(); },
-    setOutfit(jacket, dark, visor, id = 'cyan') { arena.setLook(LOOKS[id] ?? DEFAULT_LOOK); outfitNow = [jacket, dark, visor]; paintOutfit(jacket, dark, visor); gearNow = GEAR[id] ?? GEAR.cyan; colorsNow = { jacket, dark, visor }; [...worn.keys()].forEach(wear); },
+    setOutfit(_jacket, _dark, _visor, id = 'cyan') { const look = LOOKS[id] ?? DEFAULT_LOOK; arena.setLook(look); fig.setLook(look); map.setLook(look); },
     mapSetup(isles, current) { map.setup(isles, current); },
     mapFocus(i) { map.focus(i); },
     mapTravel(i) { return map.travel(i); },

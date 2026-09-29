@@ -2,7 +2,9 @@
 // Корабль с героем стоит у текущего мира; при перелёте герой садится на корабль, летит по маршруту и сходит на остров.
 // Палец/мышь двигают камеру вдоль маршрута (а не вращают фон), касание острова — выбор мира.
 import * as THREE from 'three';
-import { makeHero } from './characters';
+import { HeroFigure } from './figure';
+import { DEFAULT_LOOK, type HeroLook } from './looks';
+import { buildMapIsle, loadIslandKits } from './island3d';
 
 export type IsleState = 'cleared' | 'current' | 'open' | 'next' | 'locked' | 'fog';
 export interface MapIsle { id: string; a: string; b: string; state: IsleState }
@@ -10,7 +12,7 @@ export interface MapLabel { i: number; x: number; y: number; on: boolean }
 
 interface Deps {
   skyMat: THREE.Material; starGeo: THREE.BufferGeometry; starMat: THREE.Material;
-  km: number; dressHero: (h: ReturnType<typeof makeHero>) => void;
+  km: number;
 }
 
 // ---------- общие строители (карта и боевая локация) ----------
@@ -36,49 +38,6 @@ export function builder(g: THREE.Group, st: IsleState) {
   };
 }
 
-/** Ориентир мира — простая воксельная постройка по номеру мира. */
-export function landmark(b: ReturnType<typeof builder>, k: number, A: number, B: number) {
-  switch (k) {
-    case 0: // пиксель ауылы: домик и дерево
-      b(2.2, 1.4, 1.8, -0.4, 1.2, 0, 0xf0e6d8); b(2.6, 0.5, 2.2, -0.4, 2.1, 0, 0xc0472f); b(1.8, 0.5, 1.6, -0.4, 2.55, 0, 0xd4553a);
-      b(0.5, 0.8, 0.1, -0.4, 0.9, 0.95, 0x7c4a28); b(0.4, 0.4, 0.1, 0.35, 1.3, 0.95, 0x3ff0ff, 0x3ff0ff, 0.8);
-      b(0.5, 1.6, 0.5, 1.8, 1.3, -0.6, 0x6b4428); b(1.6, 1.2, 1.6, 1.8, 2.5, -0.6, 0x3fae5c); break;
-    case 1: // джунгли: руины и большое дерево
-      for (const [x, h] of [[-1.4, 2.2], [-0.4, 1.4], [0.6, 2.6]] as const) b(0.7, h, 0.7, x, 0.5 + h / 2, -0.4, 0x9a9a88);
-      b(2.8, 0.4, 0.8, -0.4, 3.0, -0.4, 0x8a8a78); b(0.6, 2.6, 0.6, 1.9, 1.8, 0.8, 0x5a3a20); b(2.4, 1.2, 2.4, 1.9, 3.4, 0.8, 0x2f8f4a); b(1.4, 0.9, 1.4, 1.9, 4.3, 0.8, 0x3faa5a); break;
-    case 2: // қалқыған аралдар: мини-островки и облако
-      [[-1.5, 1.6, 0.5], [0.4, 2.8, -0.8], [1.8, 2.0, 0.7]].forEach(([x, y, z], i) => { b(1, 0.35, 1, x, y, z, i % 2 ? A : B); b(0.6, 0.35, 0.6, x, y - 0.35, z, 0x8a8aa0); });
-      b(2.2, 0.6, 1.2, 0, 4, 0, 0xffffff); b(1.2, 0.6, 1, 0.8, 4.4, 0, 0xffffff); break;
-    case 3: // кристалл үңгірлері: друза
-      [[0, 2.6, 0, 0.8], [-1.1, 1.8, 0.4, 0.6], [1.0, 2.0, -0.4, 0.6], [0.4, 1.4, 1.1, 0.5]].forEach(([x, h, z, w]) => { const m = b(w, h, w, x, 0.5 + h / 2, z, 0xb58cff, 0x8a5cff, 1.6); m.rotation.z = x * 0.25; m.rotation.y = 0.7; });
-      b(3, 0.8, 2.4, 0, 0.8, -1.2, 0x3a2c55); break;
-    case 4: // неон қаласы: башни с неоном
-      [[-1.4, 3.6, 0xff4fb8], [0, 5, 0x3ff0ff], [1.4, 3, 0xffc94a]].forEach(([x, h, c]) => { b(1, h, 1, x, 0.5 + h / 2, 0, 0x1c1f3a); for (let y = 1; y < h; y += 0.9) b(1.04, 0.14, 1.04, x, 0.5 + y, 0, c, c, 1.8); });
-      break;
-    case 5: // найзағай трассасы: громоотвод и молния
-      b(0.3, 4.2, 0.3, 0, 2.6, 0, 0x8a8aa0); b(1.2, 0.3, 1.2, 0, 0.65, 0, 0x5a5a70);
-      [[0.4, 4.9], [-0.1, 5.5], [0.35, 6.1], [-0.05, 6.7]].forEach(([x, y]) => b(0.5, 0.6, 0.2, x, y, 0, 0xffe066, 0xffc94a, 2.2)); break;
-    case 6: // мұзды әлем: ледяные шипы
-      [[0, 3.4, 0], [-1.3, 2.2, 0.5], [1.2, 2.6, -0.3], [0.5, 1.6, 1.2]].forEach(([x, h, z]) => { b(0.8, h, 0.8, x, 0.5 + h / 2, z, 0xdff6ff, 0x7ae8ff, 0.35); b(0.45, 0.6, 0.45, x, 0.5 + h + 0.3, z, 0xffffff); }); break;
-    case 7: // жанартау: конус с лавой
-      [[3.2, 0.8], [2.4, 1.6], [1.6, 2.4], [1.1, 3.1]].forEach(([w, y]) => b(w, 0.8, w, 0, y, 0, 0x4a2a22));
-      b(0.8, 0.3, 0.8, 0, 3.6, 0, 0xff6a3d, 0xff4000, 2.4); b(0.35, 1.8, 0.35, 0.4, 2.2, 0.62, 0xff8a3d, 0xff5000, 2); break;
-    case 8: // су астындағы ғибадатхана: колонны и купол
-      b(3.2, 0.3, 2.4, 0, 0.7, 0, 0xd8e8e0); [[-1.3, -0.9], [1.3, -0.9], [-1.3, 0.9], [1.3, 0.9]].forEach(([x, z]) => b(0.4, 2.2, 0.4, x, 1.95, z, 0xe8f4ee));
-      b(3.2, 0.4, 2.4, 0, 3.2, 0, 0xd8e8e0); b(1.8, 0.7, 1.4, 0, 3.75, 0, 0x3ff0c0, 0x1fbf9a, 0.8); break;
-    case 9: // алыптар әлемі: огромный гриб и валун
-      b(0.8, 2.6, 0.8, -0.6, 1.8, 0, 0xf0e6d8); b(3.2, 0.9, 3.2, -0.6, 3.4, 0, 0xc0472f); b(0.5, 0.2, 0.5, -1.2, 3.95, 0.6, 0xffffff); b(0.4, 0.2, 0.4, 0.3, 3.95, -0.5, 0xffffff);
-      b(1.4, 1.2, 1.2, 1.7, 1.1, 0.8, 0x8a8078); break;
-    case 10: // глитч мұнарасы: чёрная башня с глазом
-      b(1.6, 6, 1.6, 0, 3.5, 0, 0x1a0a22); b(2.2, 0.5, 2.2, 0, 6.6, 0, 0x2a1030);
-      b(1.0, 1.0, 0.2, 0, 5.2, 0.82, 0xff4fb8, 0xff4fb8, 2.4); b(0.4, 0.4, 0.1, 0, 5.2, 0.95, 0x09001a); break;
-    default: // арена: золотое кольцо-колизей
-      for (let a = 0; a < 12; a++) { const x = Math.cos(a / 12 * 6.283) * 2.2, z = Math.sin(a / 12 * 6.283) * 2.2; b(0.6, 1.2 + (a % 2) * 0.5, 0.6, x, 1.2, z, a % 2 ? 0xffc94a : 0xd9a23a, a % 2 ? 0xffa000 : 0, 0.5); }
-      b(1, 0.2, 1, 0, 0.62, 0, 0xffc94a, 0xffc94a, 1.2);
-  }
-}
-
-
 const P = (i: number) => new THREE.Vector3(Math.sin(i * 1.25) * 8, i * 1.6, -i * 12);
 const box = new THREE.BoxGeometry(1, 1, 1);
 
@@ -103,19 +62,10 @@ export function createMap(d: Deps) {
   function makeIsle(i: number, it: MapIsle) {
     const g = new THREE.Group(); const p = P(i); g.position.copy(p); root.add(g);
     const b = builder(g, it.state);
-    const A = new THREE.Color(it.a).getHex(), B = new THREE.Color(it.b).getHex();
-    // воксельный диск: трава сверху, камень снизу конусом
-    const R = 3.2, top: [number, number][] = [];
-    for (let x = -3; x <= 3; x++) for (let z = -3; z <= 3; z++) if (Math.hypot(x, z) <= R) top.push([x, z]);
-    const cells = top.length;
-    const under: [number, number, number][] = [];
-    for (let k = 1; k <= 3; k++) for (const [x, z] of top) if (Math.hypot(x, z) <= R - k * 0.95) under.push([x, -k, z]);
-    const im = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ roughness: 0.9, flatShading: true }), cells + under.length);
-    const m4 = new THREE.Matrix4(), col = new THREE.Color(); let n = 0;
-    top.forEach(([x, z]) => { m4.makeTranslation(x, 0, z); im.setMatrixAt(n, m4); col.setHex(tone((x + z) % 2 ? A : B, it.state)); im.setColorAt(n++, col); });
-    under.forEach(([x, y, z]) => { m4.makeTranslation(x, y, z); im.setMatrixAt(n, m4); col.setHex(tone(y === -1 ? 0x7a5236 : 0x5d5a70, it.state)); im.setColorAt(n++, col); });
-    g.add(im);
-    landmark(b, Math.min(i, 11), A, B);
+    const A = new THREE.Color(it.a).getHex();
+    // остров из готовых плиток и моделей мира (палитра мира — src/three/worlds3d.ts); закрытые миры серые
+    const gray = it.state === 'fog' ? 1 : it.state === 'locked' ? 0.6 : 0;
+    loadIslandKits(Math.min(i, 11)).then(kits => { if (g.parent) g.add(buildMapIsle(kits, Math.min(i, 11), A, gray)); }).catch(() => {});
     if (it.state === 'cleared') { b(0.12, 2, 0.12, 2.3, 1.5, 1.6, 0xdddddd); b(0.9, 0.55, 0.08, 2.75, 2.2, 1.6, 0x5ce39c, 0x5ce39c, 1.2); }
     if (it.state === 'current') {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(4.1, 0.09, 6, 48), new THREE.MeshBasicMaterial({ color: 0x3ff0ff, transparent: true, opacity: 0.9, fog: false }));
@@ -155,7 +105,7 @@ export function createMap(d: Deps) {
   const shipLight = new THREE.PointLight(0xffb84a, 1.2, 6); shipLight.position.set(0, 1, 0); ship.add(shipLight);
   ship.scale.setScalar(0.85);
 
-  const hero = makeHero(); hero.g.scale.setScalar(0.62); d.dressHero(hero); scene.add(hero.g);
+  const fig = new HeroFigure(DEFAULT_LOOK, 0.62), hero = { g: fig.g }; scene.add(fig.g);   // настоящий герой с анимациями
   const DOCK = new THREE.Vector3(-3.9, 0.9, 3.4);   // где корабль стоит у острова
   const STAND = new THREE.Vector3(1.2, 0.5, 2.0);  // где герой стоит на острове
   let heroOnShip = false;
@@ -235,10 +185,7 @@ export function createMap(d: Deps) {
       ship.position.y += (dockAt(cur).y + Math.sin(t * 1.1) * 0.15 - ship.position.y) * 0.1;
     }
     if (heroOnShip) { hero.g.position.copy(ship.position).add(new THREE.Vector3(0, 0.25, 0)); hero.g.rotation.y = ship.rotation.y + Math.PI / 2; }
-    const sw = walking ? Math.sin(t * 13) * 0.8 : 0;
-    hero.legL.rotation.x = sw; hero.legR.rotation.x = -sw; hero.armL.rotation.x = -sw * 0.8; hero.armR.rotation.x = walking ? sw * 0.8 : Math.sin(t * 2) * 0.05;
-    hero.head.rotation.y = walking ? 0 : Math.sin(t * 0.7) * 0.3 * km;
-    hero.eyes.forEach(e => (e.scale.y = (t % 4.1) < 0.12 ? 0.1 : 1));
+    fig.walking(walking); fig.update(dt);
 
     // камера: плавно к точке маршрута (или за кораблём в полёте)
     const k = 1 - Math.exp(-dt * 7); // сглаживание, не зависящее от частоты кадров
@@ -251,6 +198,8 @@ export function createMap(d: Deps) {
   return {
     scene, camera,
     setup,
+    setLook(l: HeroLook) { fig.setLook(l); },
+    setCape(c: { color: number; glow: boolean } | null) { fig.setCape(c); },
     travel,
     update,
     focus(i: number) { sTo = Math.max(0, Math.min(isles.length - 1, i)); },

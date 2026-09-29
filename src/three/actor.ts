@@ -69,7 +69,22 @@ export class Actor {
   }
   /** Белая вспышка при попадании (0..1). */
   flash(v: number) { for (const m of this.ownMaterials()) { m.emissive.setRGB(v, v, v); } }
-  tint(hex: number) { for (const m of this.ownMaterials()) m.color.setHex(hex); }
+  /** Оттенок брони и одежды: множитель цвета (значения выше 1 — ярче), лицо, волосы и плащ не трогаем. glow — лёгкое свечение. */
+  tint(mul: [number, number, number], glow = 0) {
+    const seen = new Map<THREE.Material, THREE.MeshToonMaterial>();
+    this.model.traverse(n => { const m = n as THREE.Mesh; if (!m.isMesh || m.userData.outline || /Head$|Cape$|Hat$/.test(m.name)) return;
+      const src = m.material as THREE.MeshToonMaterial;
+      if (!seen.has(src)) { const c = src.clone(); c.color.setRGB(src.color.r * mul[0], src.color.g * mul[1], src.color.b * mul[2]); if (glow) { c.emissive.setHex(glow); c.emissiveIntensity = 0.28; } seen.set(src, c); }
+      m.material = seen.get(src)!; });
+  }
+  /** Плащ (награда за звёзды): свой плоский цвет только на плаще; null — как в модели. У героев без плаща (Варвар) ничего не делает. */
+  setCape(c: { color: number; glow: boolean } | null) {
+    this.model.traverse(n => { const m = n as THREE.Mesh; if (!m.isMesh || m.userData.outline || !/Cape$/.test(m.name)) return;
+      if (!m.userData.capeOrig) m.userData.capeOrig = m.material;
+      if (!c) { m.material = m.userData.capeOrig; return; }
+      const mat = (m.userData.capeOrig as THREE.MeshToonMaterial).clone(); mat.map = null; mat.color.setHex(c.color);
+      mat.emissive.setHex(c.glow ? c.color : 0x000000); mat.emissiveIntensity = c.glow ? 0.9 : 1; m.material = mat; });
+  }
   bone(name: string): THREE.Object3D | null {
     const want = name.replace(/\./g, ''); let found: THREE.Object3D | null = null;
     this.model.traverse(o => { if (!found && o.name.replace(/\./g, '') === want) found = o; });
