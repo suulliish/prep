@@ -41,11 +41,21 @@ export class Actor {
   /** Разовая анимация; промис — когда доиграла. marks — колбэки в нужные моменты клипа. */
   play(name: string, o: PlayOpts = {}): Promise<void> {
     const a = this.act(name); if (!a) return Promise.resolve();
-    if (this.shot) { this.shot.a.fadeOut(0.05); const d = this.shot.done; this.shot = null; d?.(); }
+    this.cut();
     a.reset(); a.setLoop(o.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity); a.clampWhenFinished = !!o.hold; a.timeScale = o.speed ?? 1; a.enabled = true;
     if (this.base) this.base.fadeOut(o.fade ?? 0.1); a.fadeIn(o.fade ?? 0.1).play();
-    if (o.loop) { this.base = a; this.shot = null; return Promise.resolve(); }
+    if (o.loop) { this.base = a; return Promise.resolve(); }
     return new Promise(res => { this.shot = { a, marks: (o.marks ?? []).slice().sort((x, y) => x.at - y.at), done: res, hold: !!o.hold }; });
+  }
+  /** Идёт разовая анимация с ещё не сработавшими метками (например, удар до момента касания). */
+  marksPending() { return !!this.shot && this.shot.marks.length > 0; }
+  /** Оборвать текущую разовую анимацию. Несработавшие метки (момент удара) срабатывают сразу, по одному разу, и промис завершается: иначе удар терял бы касание и ждал таймаут. */
+  private cut() {
+    const s = this.shot; if (!s) return;
+    this.shot = null; s.a.fadeOut(0.05);
+    const ms = s.marks; s.marks = [];
+    for (const m of ms) m.fn();
+    s.done?.();
   }
   /** Длительность разовой анимации с учётом скорости, секунды. */
   length(name: string, speed = 1) { return this.duration(name) / speed; }

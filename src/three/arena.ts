@@ -36,7 +36,15 @@ export function createArena(d: Deps) {
     sun.castShadow = true; sun.shadow.mapSize.set(1536, 1536); sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.03;
     Object.assign(sun.shadow.camera, { left: -13, right: 13, top: 13, bottom: -13, near: 1, far: 60 });
   }
-  const mat = (c: number, e = 0, ei = 1) => new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(0.5 + Math.min(ei, 2.4) * 0.4) });
+  // материалы кубиков-осколков общие по цвету и яркости: не плодим по одному на частицу
+  const matCache = new Map<string, THREE.MeshBasicMaterial>();
+  const mat = (c: number, e = 0, ei = 1) => {
+    const k = c + ':' + Math.min(ei, 2.4); let m = matCache.get(k);
+    if (!m) { m = new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(0.5 + Math.min(ei, 2.4) * 0.4) }); matCache.set(k, m); }
+    return m;
+  };
+  /** Убрать разовый объект эффекта вместе с его геометрией и материалом (иначе буферы видеопамяти копятся с каждым эффектом). */
+  const drop = (m: THREE.Mesh) => { scene.remove(m); m.geometry.dispose(); (m.material as THREE.Material).dispose(); };
 
   // ---------- остров ----------
   const ground = new THREE.Group(); scene.add(ground);
@@ -111,7 +119,10 @@ export function createArena(d: Deps) {
     // число — в тёмном кружке у левого края: на розовой заливке белая цифра не читалась
     c.beginPath(); c.arc(x + r, y + h / 2, r + 4, 0, Math.PI * 2); c.fillStyle = '#0b0d2a'; c.fill();
     c.lineWidth = 5; c.strokeStyle = '#ff9ee0'; c.stroke();
-    c.fillStyle = '#ffffff'; c.fillText(String(hp), x + r, y + h / 2 + 3);
+    // число вписываем в кружок: трёхзначное при шрифте 58 px вылезало за рамку
+    const txt = String(hp); let fs = 58; c.font = `900 ${fs}px Rubik, system-ui, sans-serif`;
+    const tw = c.measureText(txt).width; if (tw > 66) { fs = Math.max(20, Math.floor((fs * 66) / tw)); c.font = `900 ${fs}px Rubik, system-ui, sans-serif`; }
+    c.fillStyle = '#ffffff'; c.fillText(txt, x + r, y + h / 2 + 3);
     hpTex.needsUpdate = true;
   }
 
@@ -131,11 +142,12 @@ export function createArena(d: Deps) {
     fx.push({ update: dt => { life -= dt; parts.forEach(p => { p.v.y -= dt * 9; p.m.position.addScaledVector(p.v, dt); p.m.rotation.x += dt * 6; p.m.scale.multiplyScalar(0.975); });
       if (life <= 0) { parts.forEach(p => scene.remove(p.m)); return false; } return true; } });
   }
+  let ringGeo: THREE.TorusGeometry | null = null;   // одна на все кольца (масштабируется), не пересоздаётся
   function ring(pos: THREE.Vector3, color: number, max = 5) {
-    const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.08, 6, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }));
+    const m = new THREE.Mesh(ringGeo ??= new THREE.TorusGeometry(1, 0.08, 6, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }));
     m.rotation.x = Math.PI / 2; m.position.copy(pos); scene.add(m);
     let t = 0;
-    fx.push({ update: dt => { t += dt * 2.2; m.scale.setScalar(0.3 + t * max); (m.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - t); if (t >= 1) { scene.remove(m); return false; } return true; } });
+    fx.push({ update: dt => { t += dt * 2.2; m.scale.setScalar(0.3 + t * max); (m.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - t); if (t >= 1) { scene.remove(m); (m.material as THREE.Material).dispose(); return false; } return true; } });
   }
   /** Всплывающий текст над объектом: цифра урона, «БЛОК!», «КРИТ!». Выскакивает с пружиной, контур двойной, лёгкий наклон и дрейф. */
   function popText(text: string, pos: THREE.Vector3, color = '#ffffff', big = false) {
@@ -349,7 +361,7 @@ export function createArena(d: Deps) {
       await tween(big ? 0.6 : 0.3, u => crack.scale.setScalar(Math.max(0.01, ease(u))));
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.9 * pick.scale, 0.9 * pick.scale, 12, 12, 1, true), new THREE.MeshBasicMaterial({ color: 0xff4fb8, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
       beam.position.set(ENEMY_X, 6, Z0); scene.add(beam);
-      let bt = 0; fx.push({ update: dt => { bt += dt * 1.6; (beam.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - bt); beam.scale.x = beam.scale.z = 1 - bt * 0.7; if (bt >= 1) { scene.remove(beam); return false; } return true; } });
+      let bt = 0; fx.push({ update: dt => { bt += dt * 1.6; (beam.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - bt); beam.scale.x = beam.scale.z = 1 - bt * 0.7; if (bt >= 1) { drop(beam); return false; } return true; } });
       burst(new THREE.Vector3(ENEMY_X, 0.5, Z0), [0xff4fb8, 0x8a3cff], 12, 4); vfx.riftBurst(V.set(ENEMY_X, 0, Z0 + 0.2), 0xff4fb8, pick.scale); sfx('boom');
       const y1 = m.hover;
       await tween(0.45, u => { g.position.y = (-m.height - 1) + (y1 + m.height + 1) * easeBack(u); });
@@ -359,7 +371,7 @@ export function createArena(d: Deps) {
       if (worldBoss) popText('БАС ЖАУ', new THREE.Vector3(ENEMY_X, top + 1.4, Z0), '#ff4fb8', true);   // экраны называют их так же: «бас жау», «күшті жау»
       else if (mini) popText('КҮШТІ ЖАУ', new THREE.Vector3(ENEMY_X, top + 1.4, Z0), '#ff4fb8', true);
       sfx('growl'); await m.a.play(m.attack(), { speed: 1.2 });
-      tween(0.4, u => { (crack.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - u); }).then(() => scene.remove(crack));
+      tween(0.4, u => { (crack.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - u); }).then(() => drop(crack));
       guard = false; stance(); shot(null);
       await wait(0.2);
     },
@@ -372,7 +384,7 @@ export function createArena(d: Deps) {
       let hitDone: () => void = () => {};
       const hit = new Promise<void>(r => (hitDone = r));
       const impact = () => {
-        e.hp = Math.max(0, e.hp - dmg); flashT = 0.09; sfx(opts.sup || opts.crit ? 'crit' : 'impact');
+        e.hp = Math.max(0, e.hp - dmg); flashT = 0.09; sfx('impact'); if (opts.sup) sfx('boom');   // 'crit' здесь не играем: на серию ≥3 его уже сыграл экран задачи при верном ответе (иначе звучало дважды)
         const p = enemyPos();
         burst(p, opts.sup ? [0xffcb2e, 0xffffff, 0x35e6ff] : [0x35e6ff, 0xffffff, 0x3ddc6e], opts.sup ? 24 : opts.crit ? 14 : 8, opts.sup ? 8 : 5);
         // точка удара — на передней (к герою и камере) стороне врага, чтобы искры не тонули в его теле
@@ -507,7 +519,7 @@ export function createArena(d: Deps) {
       let chestAlive = true; fx.push({ update: dt => { chestA.update(dt); return chestAlive; } });
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.42, 7, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xffe07a, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
       beam.position.set(C.x, 4.2, C.z); scene.add(beam);
-      let bt = 0; fx.push({ update: dt => { bt += dt * 0.7; (beam.material as THREE.MeshBasicMaterial).opacity = 0.3 * (1 - bt); if (bt >= 1) { scene.remove(beam); return false; } return true; } });
+      let bt = 0; fx.push({ update: dt => { bt += dt * 0.7; (beam.material as THREE.MeshBasicMaterial).opacity = 0.3 * (1 - bt); if (bt >= 1) { drop(beam); return false; } return true; } });
       burst(C.clone().setY(1.2), [0xffcb2e, 0xffcb2e, 0xffe07a], 30, 6, 0.22);   // золотые кубики = монеты
       vfx.levelUpPillar(C, 0xffe07a); vfx.chestSparkle(C.clone().setY(1.2));
       let sp = 0; fx.push({ update: dt => { sp += dt; if (sp > 0.28) { sp = 0; vfx.sparkleShower(V.set(C.x, 1.4, C.z), [0xffcb2e, 0xffffff, 0xa77bff], 6); } return chestAlive; } });
@@ -522,7 +534,8 @@ export function createArena(d: Deps) {
     },
     setTrail(c: number[] | null) { trail = c; },
     setCape(c: { color: number; glow: boolean } | null) { cape = c; hero?.setCape(c); },
-    celebrate() { hero?.play('Cheering'); burst(new THREE.Vector3(HERO_X, 3, Z0), [0xffcb2e, 0x35e6ff], 12, 5); vfx.sparkleShower(new THREE.Vector3(HERO_X, 2.6, Z0 + 0.5)); },
+    celebrate() { if (hero && !hero.marksPending()) hero.play('Cheering');   // не обрывать удар: иначе его момент касания сработает раньше срока
+      burst(new THREE.Vector3(HERO_X, 3, Z0), [0xffcb2e, 0x35e6ff], 12, 5); vfx.sparkleShower(new THREE.Vector3(HERO_X, 2.6, Z0 + 0.5)); },
     /** Освободить ресурсы частиц (сцену выкидывают целиком). */
     dispose() { vfx.dispose(); },
     clear() { vfx.clear(); if (enemy) { scene.remove(enemy.m.a.g); enemy.m.a.dispose(); enemy = null; } hpBar.visible = false; guard = false; if (hero) { neutral(); hero.g.position.set(HERO_X, 0, Z0); hero.g.rotation.y = Math.PI / 2; } shot(null); },

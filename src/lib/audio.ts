@@ -44,6 +44,8 @@ const sampleUrl = (name: Sfx) => `${import.meta.env.BASE_URL}sfx/${name}.mp3`;
 /** Комбо идёт по мажорной гамме (полутоны над базовой нотой), а не подряд по полутонам: звучит как мелодия. */
 const COMBO_SCALE = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16];
 const RETRY_MS = 20000;
+/** Семпл, который не скачался за это время, считается упавшим (и будет перезапрошен): иначе «вечный» запрос навсегда оставался бы в ожидании. */
+export const FETCH_TIMEOUT_MS = 8000;
 
 function decode(ctx: AudioContext, data: ArrayBuffer): Promise<AudioBuffer> {
   // старый Safari знает только вариант с колбэками
@@ -98,12 +100,18 @@ class AudioEngine {
     for (const name of Object.keys(SAMPLES) as Sfx[]) {
       if (this.samples.has(name) || this.pending.has(name)) continue;
       this.pending.add(name); this.failed.delete(name);
-      fetch(sampleUrl(name))
+      const ac = typeof AbortController === 'function' ? new AbortController() : null;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      // гонка с таймером: сработает и там, где fetch игнорирует abort
+      const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => { ac?.abort(); rej(new Error('timeout')); }, FETCH_TIMEOUT_MS); });
+      const load = fetch(sampleUrl(name), ac ? { signal: ac.signal } : undefined)
         .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.arrayBuffer(); })
-        .then(b => decode(ctx, b))
+        .then(b => decode(ctx, b));
+      load.catch(() => {});   // проигравшая гонку ошибка не должна оставаться необработанной
+      Promise.race([load, timeout])
         .then(buf => { this.samples.set(name, buf); })
         .catch(() => { this.failed.add(name); })
-        .finally(() => { this.pending.delete(name); });
+        .finally(() => { clearTimeout(timer); this.pending.delete(name); });
     }
   }
 

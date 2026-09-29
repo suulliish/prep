@@ -98,6 +98,48 @@ describe('движок', () => {
     expect(new Set(cr.map(x => x.toFixed(3))).size).toBeGreaterThan(5);
   });
 
+  it('зависший fetch: через 8 с семпл считается упавшим, а позже перезапрашивается', async () => {
+    vi.useFakeTimers();
+    try {
+      const hang = vi.fn(() => new Promise(() => {}));   // игнорирует signal и не отвечает никогда
+      const { audio, FETCH_TIMEOUT_MS } = await fresh(hang);
+      audio.unlock();
+      expect(audio.sfxStatus().pending.length).toBeGreaterThan(15);
+      await vi.advanceTimersByTimeAsync(FETCH_TIMEOUT_MS - 100);
+      expect(audio.sfxStatus().failed).toEqual([]);      // ещё ждём
+      await vi.advanceTimersByTimeAsync(200);
+      const st = audio.sfxStatus();
+      expect(st.pending).toEqual([]);
+      expect(st.failed.length).toBeGreaterThan(15);
+      expect(() => audio.play('click')).not.toThrow();   // пока на синтезе
+      expect(audio.sfxStatus().synth).toBe(1);
+      // сеть вернулась: следующий unlock() после паузы перезапрашивает
+      vi.stubGlobal('fetch', okFetch());
+      await vi.advanceTimersByTimeAsync(21000);
+      audio.unlock();
+      await vi.advanceTimersByTimeAsync(50);
+      expect(audio.sfxStatus().failed).toEqual([]);
+      expect(audio.sfxStatus().loaded).toContain('click');
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('fetch передаёт signal и отменяется по таймауту', async () => {
+    vi.useFakeTimers();
+    try {
+      const signals: AbortSignal[] = [];
+      const { audio, FETCH_TIMEOUT_MS } = await fresh(vi.fn((_u: string, o?: { signal?: AbortSignal }) => {
+        signals.push(o!.signal!);
+        return new Promise((_, rej) => o!.signal!.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError'))));
+      }));
+      audio.unlock();
+      expect(signals.length).toBeGreaterThan(15);
+      expect(signals.every(s => !s.aborted)).toBe(true);
+      await vi.advanceTimersByTimeAsync(FETCH_TIMEOUT_MS + 10);
+      expect(signals.every(s => s.aborted)).toBe(true);
+      expect(audio.sfxStatus().pending).toEqual([]);
+    } finally { vi.useRealTimers(); }
+  });
+
   it('без unlock() play ничего не делает', async () => {
     const { audio } = await fresh(okFetch());
     expect(() => audio.play('click')).not.toThrow();
