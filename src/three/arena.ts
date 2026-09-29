@@ -83,7 +83,7 @@ export function createArena(d: Deps) {
   const H = () => hero!;
 
   // ---------- враг ----------
-  type Enemy = { m: Monster; hp: number; max: number; boss: boolean; base: number; top: number; live: boolean; s0: number };
+  type Enemy = { m: Monster; hp: number; max: number; boss: boolean; wb: boolean; base: number; top: number; live: boolean; s0: number };
   let enemy: Enemy | null = null;
   // полоска здоровья: одна плоскость с картинкой (рамка, заливка, деления по числу ударов, число) — перерисовывается только когда здоровье меняется
   const hpCv = document.createElement('canvas'); hpCv.width = 512; hpCv.height = 112;
@@ -338,7 +338,7 @@ export function createArena(d: Deps) {
       const big = mini || worldBoss;
       const m = await createMonster(pick.id, pick.scale); rimLight(m.a);
       const base = 1, top = m.height + m.hover;
-      enemy = { m, hp, max: hp, boss: big, base, top, live: false, s0: m.a.g.scale.x };
+      enemy = { m, hp, max: hp, boss: big, wb: worldBoss, base, top, live: false, s0: m.a.g.scale.x };
       const e = enemy, g = m.a.g;
       g.position.set(ENEMY_X, -m.height - 1, Z0); g.rotation.y = -Math.PI / 2; scene.add(g);
       shot(new THREE.Vector3(ENEMY_X - 0.4, m.height * 0.55, Z0), big ? 0.75 : 0.58, 0.24);
@@ -356,8 +356,8 @@ export function createArena(d: Deps) {
       g.position.y = y1; e.live = true; hpBar.visible = true;
       // рык: враг бьёт по воздуху, герой встаёт в стойку
       guard = true; stance(); shake = Math.max(shake, big ? 0.6 : 0.3);
-      if (worldBoss) popText('БОСС', new THREE.Vector3(ENEMY_X, top + 1.4, Z0), '#ff4fb8', true);
-      else if (mini) popText('МИНИ-БОСС', new THREE.Vector3(ENEMY_X, top + 1.4, Z0), '#ff4fb8', true);
+      if (worldBoss) popText('БАС ЖАУ', new THREE.Vector3(ENEMY_X, top + 1.4, Z0), '#ff4fb8', true);   // экраны называют их так же: «бас жау», «күшті жау»
+      else if (mini) popText('КҮШТІ ЖАУ', new THREE.Vector3(ENEMY_X, top + 1.4, Z0), '#ff4fb8', true);
       sfx('growl'); await m.a.play(m.attack(), { speed: 1.2 });
       tween(0.4, u => { (crack.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - u); }).then(() => scene.remove(crack));
       guard = false; stance(); shot(null);
@@ -434,7 +434,7 @@ export function createArena(d: Deps) {
       await projectile(mouth, new THREE.Vector3(HERO_X + 0.7, 1.4, Z0), 0xff4fb8);
       burst(new THREE.Vector3(HERO_X + 0.8, 1.4, Z0), [0x35e6ff, 0xffffff], 8, 3, 0.14);
       vfx.shieldHit(V.set(HERO_X + 1.0, 1.4, Z0 + 0.8), 0x35e6ff, 0xff4fb8); shieldPulse = 1;
-      popText('БЛОК', new THREE.Vector3(HERO_X, HERO_HEIGHT + 1.2, Z0), '#35e6ff'); sfx('block');
+      popText('ҚАЛҚАН', new THREE.Vector3(HERO_X, HERO_HEIGHT + 1.2, Z0), '#35e6ff'); sfx('block');
       shake = 0.2;
       const back = h.play('Melee_Block_Hit', { speed: 1.1 });
       const x0 = h.g.position.x; tween(0.35, u => { h.g.position.x = x0 - Math.sin(u * Math.PI) * 0.35; });
@@ -446,14 +446,24 @@ export function createArena(d: Deps) {
       await whenReady();
       if (!enemy) return;
       const e = enemy, p = enemyPos(); hpBar.visible = false;   // пустая полоска во время смерти не нужна
-      shot(new THREE.Vector3(ENEMY_X - 0.4, e.top * 0.5, Z0), 0.6, 0.24);
+      shot(new THREE.Vector3(ENEMY_X - 0.4, e.top * 0.5, Z0), e.wb ? 0.8 : 0.6, 0.24);
       flashT = 0.2;
+      if (e.wb) { slow = 0.4; slowT = 1.4; shake = 0.7; }                  // бас жау падает в замедлении
       await e.m.a.play('Death', { speed: 1.2, hold: true });
       await wait(0.15);
       await tween(0.25, u => { e.m.a.g.scale.setScalar(Math.max(0.01, 1 - u)); flashT = 0.2; });
       scene.remove(e.m.a.g); e.m.a.dispose(); hpBar.visible = false; enemy = null;
       burst(p, [0xff4fb8, 0x8a3cff, 0x35e6ff], 26, 7, 0.22); burst(p, [0xffcb2e], 16, 4, 0.2); sfx('boom'); sfx('coins');
       vfx.poof(V.set(p.x, p.y, p.z + 0.4), 0xff4fb8, Math.min(1.8, Math.max(0.8, e.top / 2.4))); shake = 0.5;
+      if (e.wb) {
+        // победа над бас жау мира: три волны, большой распад на кристаллы, «ЖЕҢІС!»
+        for (let k = 0; k < 3; k++) setTimeout(() => ring(new THREE.Vector3(ENEMY_X, 0.15, Z0), [0xffcb2e, 0x35e6ff, 0xff4fb8][k], 7 + k * 2), k * 220);
+        vfx.critBurst(V.set(p.x, p.y + 0.4, p.z + 0.6), 0xffcb2e, 0x35e6ff, 2.2);
+        burst(p, [0x35e6ff, 0xa77bff, 0xffffff], 40, 9, 0.26); vfx.levelUpPillar(V.set(ENEMY_X, 0, Z0), 0xffcb2e);
+        popText('ЖЕҢІС!', new THREE.Vector3(ENEMY_X - 1.2, e.top + 1.6, Z0), '#ffcb2e', true);
+        shake = 1; flashT = 0.35; sfx('crit');
+        await wait(1.1);
+      }
       await wait(0.45);
       shot(null);
     },
