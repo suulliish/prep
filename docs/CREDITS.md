@@ -16,6 +16,7 @@
 | Nature Kit 2.1 | Kenney | https://kenney.nl/assets/nature-kit | `jw-nature`, `ozh-nature-kit`, `nature-*` | миры 1, 2, 3, 7, 8, 9 |
 | Modular Cave Kit 1.0 | Kenney | https://kenney.nl/assets/modular-cave-kit | `jw-cave`, `cave-purple` | мир 3 |
 | Tower Defense Kit 2.1 | Kenney | https://kenney.nl/assets/tower-defense-kit | `tower-defense-kit` | мир 10 |
+| Particle Pack 1.1 / Smoke Particles | Kenney | https://kenney.nl/assets/particle-pack , https://kenney.nl/assets/smoke-particles | `kenney-particle-pack`, `kenney-smoke-particles` | искры, вспышки, серпы удара, дым гибели монстра (`public/fx/fx-atlas.png`, `src/three/vfx.ts`) |
 | Mini Arena 1.1 | Kenney, Tony Schär | https://kenney.nl/assets/mini-arena | `mini-arena` | мир 11 |
 | Castle Kit 2.0 | Kenney | https://kenney.nl/assets/castle-kit | `castle-kit` | мир 11 |
 | City Kit (Commercial) | Kenney | https://kenney.nl/assets/city-kit-commercial | `kenney-city-kit-commercial` | мир 4 |

@@ -508,7 +508,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     dispose() {
       cancelAnimationFrame(raf); removeEventListener('resize', resize);
       canvas.removeEventListener('pointerdown', onDown); window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp);
-      renderer.dispose(); composer?.dispose();
+      arena.dispose(); renderer.dispose(); composer?.dispose();
     },
   };
 }
