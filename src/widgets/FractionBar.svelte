@@ -1,3 +1,11 @@
+<script module lang="ts">
+  /** Режим 'equal': когда задание выполнено. С target — знаменатель стал target.d. Без target — после 2+ операций
+   *  и только если знаменатель ОТЛИЧАЕТСЯ от исходного: «×2, потом :2» возвращает ту же дробь, это не новая равная дробь. */
+  export function equalDone(o: { target?: { d: number }; startD: number; nd: number; ops: number }): boolean {
+    return o.target ? o.nd === o.target.d : o.ops >= 2 && o.nd !== o.startD;
+  }
+</script>
+
 <script lang="ts">
   // «Жолақтар»: бөлшекті жолақ ретінде көр.
   //  'cut'     — жолақты тең бөліктерге кес (−/+), керек бөліктерін боя; мақсат target.
@@ -56,7 +64,8 @@
     const nd = kind === '×' ? r.d * k : r.d / k, nn = kind === '×' ? r.n * k : r.n / k;
     ops++; audio.play('click'); msg = '';
     recut(last, nd, nn);
-    if (target ? nd === target.d : ops >= 2) finish('Дұрыс! Ұзындық сол қалпы, бөлшек тең.');
+    if (equalDone({ target, startD: rows[last].d, nd, ops })) finish('Дұрыс! Ұзындық сол қалпы, бөлшек тең.');
+    else if (!target && ops >= 2 && nd === rows[last].d) msg = 'Бастапқы бөлшекке қайта келдің. Басқа тең бөлшек тап.';
   }
 
   // ---- cut ----

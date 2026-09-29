@@ -205,8 +205,8 @@ const findAvoid = (text: string) =>
 const ASCII_MINUS = /(^|[^\wа-яәіңғүұқөһ])-\d/i;
 // эквивалентные по значению варианты допустимы только там, где вопрос про сокращение
 const EQUIV_OK = new Set(['frac.reduce_lowest', 'frac.reduce_context', 'frac.equal_which']);
-// подсказка 3 у этих шаблонов разбирает «первый вариант» (любой, не обязательно верный), поэтому цитирует вариант
-const QUOTES_FIRST_CHOICE = new Set(['frac.magnitude_half', 'frac.magnitude_near', 'frac.magnitude_estimate', 'frac.reduce_lowest']);
+// у этих шаблонов подсказки называют опорные числа (0, 1/2, 1), среди которых бывает и ответ
+const QUOTES_FIRST_CHOICE = new Set(['frac.magnitude_estimate']);   // подсказки перечисляют опорные числа 0, 1/2, 1; остальные шаблоны разбирают заведомо неверный вариант
 
 describe('дроби 5 класса: шаблоны', () => {
   it('заявлено 22 шаблона, у каждого проверка ответа', () => {
@@ -300,5 +300,101 @@ describe('дроби 5 класса: граф навыков', () => {
   it('все восемь дробных навыков теперь имеют генераторы', () => {
     for (const id of ['frac.concept', 'frac.magnitude', 'frac.basic_property', 'frac.reduce', 'frac.common_denominator', 'frac.compare', 'frac.add_sub', 'frac.mixed'])
       expect(S.find(s => s.id === id).templates.length, id).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ---------- Красный отряд: смысл условий, подсказки не выдают ответ, «детские» числа ----------
+const SEM_SEEDS = 5000;
+const items = (id: string, n = SEM_SEEDS): any[] => { const t = T.find(x => x.id === id)!; return Array.from({ length: n }, (_, i) => t.gen(rng(i * 104729 + 7))); };
+const tokenRe = (a: string) => new RegExp('(^|[^\\d/])' + a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\d/])');
+
+describe('дроби 5 класса: части ОДНОГО целого не дают больше целого', () => {
+  for (const id of ['frac.add_same', 'frac.add_diff']) {
+    it(`${id}: помеченные oneWhole условия (пицца, путь, батончик): ответ ≤ 1 на ${SEM_SEEDS} зёрнах`, () => {
+      let flagged = 0, over1 = 0;
+      for (const it of items(id)) {
+        expect(typeof it.oneWhole, it.kz).toBe('boolean');
+        if (!it.oneWhole) continue;
+        flagged++;
+        if (val(P(ans(it))) > 1) over1++;
+        expect(val(P(ans(it))), it.kz + ' → ' + ans(it)).toBeLessThanOrEqual(1);
+      }
+      expect(flagged).toBeGreaterThan(SEM_SEEDS / 10);
+      expect(over1).toBe(0);
+    });
+    it(`${id}: условие про пиццу, путь или батончик всегда помечено oneWhole; сумма больше 1 бывает только у раздельных величин (литры)`, () => {
+      let mixedAns = 0;
+      for (const it of items(id)) {
+        const oneWholeStory = /пицца|жолдың|батончик/i.test(it.kz);
+        if (oneWholeStory) expect(it.oneWhole, it.kz).toBe(true);
+        if (!it.oneWhole && val(P(ans(it))) > 1) { mixedAns++; expect(it.kz, 'сумма > 1 без литров или выражения').toMatch(/литр|^Есептеңіз/); }
+      }
+      expect(mixedAns, 'смешанные числа в ответах остались (литры)').toBeGreaterThan(0);
+    });
+  }
+  it('вычитание в историях: результат не отрицателен (frac.add_same, frac.add_diff)', () => {
+    for (const id of ['frac.add_same', 'frac.add_diff']) for (const it of items(id, 2000)) {
+      expect(val(P(ans(it))), it.kz).toBeGreaterThan(0);
+      expect(ans(it), it.kz).not.toMatch(/[−-]/);
+    }
+  });
+});
+
+describe('дроби 5 класса: подсказки не называют ответ', () => {
+  // ответ как отдельный токен: не часть более длинного числа/дроби. Числа, уже стоящие в условии, не «выдача».
+  const leaks = (it: Item, lang: 'kz' | 'ru') => {
+    const a = ans(it), re = tokenRe(a);
+    if (re.test(it[lang])) return [];
+    if (/^\d+$/.test(a) && ints(it[lang]).includes(+a)) return [];
+    return it.hints.map((h, i) => ({ i, h: h[lang] })).filter(({ h }) => {
+      if (!re.test(h)) return false;
+      const listed = texts(it).filter(t => t !== a && tokenRe(t).test(h)); // подсказка перечисляет варианты списком, а не называет один
+      return listed.length < 2;
+    });
+  };
+  for (const t of T) {
+    it(`${t.id}: ни одна из подсказок (kz и ru) не содержит ответ отдельным токеном (${SEM_SEEDS} зёрен)`, () => {
+      // frac.magnitude_estimate: подсказки называют опорные 0, 1/2, 1 и «≈ опору» слагаемого, а не сумму
+      if (t.id === 'frac.magnitude_estimate') {
+        for (const it of items(t.id, 1500)) for (const lang of ['kz', 'ru'] as const)
+          for (const h of it.hints) expect(h[lang], it.kz).not.toMatch(new RegExp('[=≈]\\s*' + ans(it).replace('/', '\\/') + '(?![\\d/])'));
+        return;
+      }
+      for (const it of items(t.id)) for (const lang of ['kz', 'ru'] as const)
+        expect(leaks(it, lang), `${it[lang]} | ответ ${ans(it)}`).toEqual([]);
+    });
+  }
+  it('magnitude_half / magnitude_near / reduce_lowest: разбираемый в подсказке вариант всегда неверный', () => {
+    for (const id of ['frac.magnitude_half', 'frac.magnitude_near', 'frac.reduce_lowest'])
+      for (const it of items(id, 1500)) {
+        const quoted = it.hints[2].kz.match(/(\d+\/\d+)/);
+        if (!quoted) continue;
+        if (id === 'frac.reduce_lowest' && !/болмайды/.test(it.kz)) continue;
+        expect(quoted[1], `${id}: ${it.hints[2].kz}`).not.toBe(ans(it));
+        expect(texts(it), it.hints[2].kz).toContain(quoted[1]);
+      }
+  });
+});
+
+describe('дроби 5 класса: «детские» числа', () => {
+  const maxNum = (s: string) => Math.max(...(s.match(/\d+/g) || ['0']).map(Number));
+  it('frac.lcd_numerators: во всех вариантах числа не больше 100', () => {
+    for (const it of items('frac.lcd_numerators')) for (const c of it.choices) expect(maxNum(c.text), it.kz + ' | ' + c.text).toBeLessThanOrEqual(100);
+  });
+  it('frac.reduce_context: числа не больше 100, кроме «сырой» дроби x/1000, которая стоит в самом условии', () => {
+    let raw = 0;
+    for (const it of items('frac.reduce_context')) {
+      const x = ints(it.kz)[0];
+      for (const c of it.choices) {
+        if (/^\d+\/1000$/.test(c.text) && c.text === `${x}/1000`) { raw++; continue; }
+        expect(maxNum(c.text), it.kz + ' | ' + c.text).toBeLessThanOrEqual(100);
+      }
+    }
+    expect(raw).toBeGreaterThan(0);
+  });
+  it('frac.reduce_context: частично сокращённый вариант остаётся и он не «400/500»', () => {
+    let partial = 0;
+    for (const it of items('frac.reduce_context')) for (const c of it.choices) if (c.tag === 'partial_reduce') { partial++; expect(maxNum(c.text)).toBeLessThanOrEqual(100); }
+    expect(partial).toBeGreaterThan(500);
   });
 });

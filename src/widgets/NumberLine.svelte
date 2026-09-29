@@ -1,12 +1,44 @@
+<script module lang="ts">
+  import { stars, type Fr } from './fracdraw';
+
+  /** Пауза после смены состояния (выстрел, «Келесі»): двойной тап не проскакивает результат и не стреляет вслепую. */
+  export const TAP_LOCK_MS = 450;
+
+  /** Цель лежит на делении 1/den? */
+  export function onGridOf(f: Fr, den?: number): boolean { return !!den && (f.n * den) % f.d === 0; }
+
+  /** Допуск при постановке. Всегда строго меньше полуделения: соседнее деление не может засчитаться за цель.
+   *  Цель на делении: ровно она. Цель между делениями (1/3 при den=4): свободная постановка с допуском 0.2 деления. */
+  export function placeTol(o: { den?: number; onGrid: boolean; archer: boolean; tolerance?: number; target?: number }): number {
+    const { den, onGrid, archer, tolerance, target } = o;
+    let tol = tolerance ?? (archer ? 0.04 : den ? (onGrid ? 1e-6 : 0.2 / den) : 0.04);
+    if (den && !archer) {
+      tol = Math.min(tol, 0.5 / den - 1e-6);
+      // цель между делениями, но близко к одному из них: допуск меньше расстояния до ближайшего деления
+      if (!onGrid && target !== undefined) tol = Math.min(tol, 0.7 * Math.abs(target - Math.round(target * den) / den));
+    }
+    return tol;
+  }
+
+  /** Верно ли поставлено: сравниваем с ИСТИННЫМ значением цели, а не с ближайшим делением. */
+  export function placedOK(mv: number, target: number, tol: number): boolean { return Math.abs(mv - target) <= tol + 1e-9; }
+
+  /** Итог выстрела; null, если выстрел не разрешён: маркер не сдвигали («Ату!» с нуля ничего не даёт). */
+  export function shotStars(aimed: boolean, mv: number, target: number, tol: number): 0 | 1 | 2 | 3 | null {
+    return aimed ? stars(Math.abs(mv - target), tol) : null;
+  }
+</script>
+
 <script lang="ts">
   // «Сан сызығы»: белгіні сүйреп, бөлшек тұратын орынға қой.
   //  mode 'line'   — den берілсе, бөлінулерге жабысады; ориентирлер 0, 1/2, 1; «Үлкейту» (zoom) батырмасы.
   //  mode 'archer' — «Дәл ату»: бөлінулер жоқ, «Ату!» батырмасынан кейін дәлдігіне қарай 0–3 жұлдыз.
   //  showBar — бөлшектің жолағы сызыққа жатады (жолақ пен сызықты байланыстыру).
+  import { onDestroy } from 'svelte';
   import { audio } from '../lib/audio';
   import Frac from '../ui/Frac.svelte';
   import Icon from '../ui/Icon.svelte';
-  import { val, snap, stars, tween, type Fr } from './fracdraw';
+  import { val, snap, tween } from './fracdraw';
   const BAR = 'var(--code)';
 
   let { max = 1, den, place, landmarks, tolerance, mode = 'line', showBar = false, ondone }:
@@ -21,6 +53,11 @@
   let vlo = $state(0), vhi = $state(max);
   let zoomed = $state(false);
   let drag = $state(false), moved = false;
+  let aimed = $state(false);        // archer: маркер сдвинут в этом раунде
+  let busy = $state(false);         // пауза после выстрела / «Келесі»
+  let lockTimer: ReturnType<typeof setTimeout> | undefined;
+  function lockTaps() { busy = true; clearTimeout(lockTimer); lockTimer = setTimeout(() => (busy = false), TAP_LOCK_MS); }
+  onDestroy(() => clearTimeout(lockTimer));
   let bad = $state(false);
   let msg = $state('');
   let finished = $state(false);
@@ -33,8 +70,9 @@
 
   const cur = $derived(place[Math.min(idx, place.length - 1)]);
   const tv = $derived(val(cur));
-  const onGrid = $derived(!!den && (cur.n * den) % cur.d === 0);
-  const tol = $derived(tolerance ?? (archer ? 0.04 : den ? (onGrid ? 1e-6 : 0.5 / den + 1e-6) : 0.04));
+  const onGrid = $derived(onGridOf(cur, den));
+  const tol = $derived(placeTol({ den, onGrid, archer, tolerance, target: tv }));
+  const snapDen = $derived(archer || !onGrid ? 0 : (den ?? 0));   // цель между делениями: маркер свободный, иначе цель недостижима
   const xOf = (v: number) => X0 + ((v - vlo) / (vhi - vlo)) * (X1 - X0);
   const pct = (x: number) => `${(x / W) * 100}%`;
   const inWin = (v: number) => v >= vlo - 1e-9 && v <= vhi + 1e-9;
@@ -59,13 +97,13 @@
     const r = svg.getBoundingClientRect();
     const x = ((clientX - r.left) / r.width) * W;
     const raw = vlo + ((x - X0) / (X1 - X0)) * (vhi - vlo);
-    return archer ? Math.min(vhi, Math.max(vlo, raw)) : snap(raw, den ?? 0, vlo, vhi);
+    return snapDen ? snap(raw, snapDen, vlo, vhi) : Math.min(vhi, Math.max(vlo, raw));
   }
   function down(e: PointerEvent) {
     if (finished || shot) return;
-    drag = true; moved = false; svg.setPointerCapture(e.pointerId); mv = toValue(e.clientX); msg = ''; moved = true;
+    drag = true; moved = false; svg.setPointerCapture(e.pointerId); mv = toValue(e.clientX); msg = ''; moved = true; aimed = true;
   }
-  function move(e: PointerEvent) { if (!drag) return; const v = toValue(e.clientX); if (v !== mv) { mv = v; moved = true; } }
+  function move(e: PointerEvent) { if (!drag) return; const v = toValue(e.clientX); if (v !== mv) { mv = v; moved = true; aimed = true; } }
   function up() {
     if (!drag) return; drag = false;
     if (!archer && moved) check();
@@ -78,21 +116,23 @@
     else { audio.play('xp'); mv = 0; }
   }
   function check() {
-    const err = Math.abs(mv - tv);
-    if (err <= tol) { msg = ''; next(cur); }
+    if (placedOK(mv, tv, tol)) { msg = ''; next(cur); }
     else {
       bad = true; audio.play('wrong'); setTimeout(() => (bad = false), 450);
       msg = mv < tv ? 'Сәл оңға жылжыт.' : 'Сәл солға жылжыт.';
     }
   }
   function fire() {
-    if (finished || shot) return;
-    const err = Math.abs(mv - tv), n = stars(err, tol);
-    shot = { n, err }; total += n; audio.play(n >= 2 ? 'crit' : n === 1 ? 'hit' : 'click');
+    if (finished || shot || busy) return;
+    const n = shotStars(aimed, mv, tv, tol);
+    if (n === null) return;          // маркер не двигали: выстрела нет
+    const err = Math.abs(mv - tv);
+    shot = { n, err }; total += n; lockTaps(); audio.play(n >= 2 ? 'crit' : n === 1 ? 'hit' : 'click');
     msg = ['Алыс кетті. Келесіде дәлірек ата!', 'Жаман емес!', 'Жақсы атылды!', 'Дәл тидің!'][n];
   }
   function nextShot() {
-    if (!shot) return;
+    if (!shot || busy) return;
+    lockTaps(); aimed = false;
     done = [...done, { v: mv, f: cur }]; shot = null; msg = '';
     if (idx + 1 >= place.length) { idx++; finished = true; audio.play('correct'); setTimeout(() => ondone?.(total), 900); }
     else { idx++; mv = 0; barKey++; resetZoom(); }
@@ -126,7 +166,7 @@
   <div class="box" class:bad>
     <svg bind:this={svg} viewBox="0 0 {W} {H}" class="sv" role="slider" aria-label="Сан сызығы" aria-valuemin={0} aria-valuemax={max} aria-valuenow={mv} tabindex="0"
       onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={cancel}
-      onkeydown={(e) => { if (finished || shot) return; const st = den ? 1 / den : 0.02; if (e.key === 'ArrowRight') { mv = Math.min(vhi, mv + st); moved = true; } else if (e.key === 'ArrowLeft') { mv = Math.max(vlo, mv - st); moved = true; } else if (e.key === 'Enter') { archer ? fire() : check(); } }}>
+      onkeydown={(e) => { if (finished || shot) return; const st = snapDen ? 1 / snapDen : 0.02; if (e.key === 'ArrowRight') { mv = Math.min(vhi, mv + st); moved = true; aimed = true; } else if (e.key === 'ArrowLeft') { mv = Math.max(vlo, mv - st); moved = true; aimed = true; } else if (e.key === 'Enter') { archer ? fire() : check(); } }}>
       <line x1={X0 - 6} x2={X1 + 6} y1={AXIS} y2={AXIS} class="axis" />
       {#each ticks as t}<line x1={xOf(t.v)} x2={xOf(t.v)} y1={AXIS - (t.k === 'tick' ? 6 : 10)} y2={AXIS + (t.k === 'tick' ? 6 : 10)} class="tk" class:big={t.k !== 'tick'} />{/each}
       {#each marks as t}<line x1={xOf(t.v)} x2={xOf(t.v)} y1={AXIS - 10} y2={AXIS + 10} class="tk big" />{/each}
@@ -166,8 +206,8 @@
   <div class="btns">
     {#if !archer && max > 1}<button class="btn small" onclick={toggleZoom} disabled={finished} aria-pressed={zoomed}>{zoomed ? 'Кішірейту' : 'Үлкейту'}</button>{/if}
     {#if archer}
-      {#if shot}<button class="btn go big" onclick={nextShot}>{idx + 1 >= place.length ? 'Дайын' : 'Келесі'}</button>
-      {:else}<button class="btn primary big" onclick={fire} disabled={finished}>Ату!</button>{/if}
+      {#if shot}<button class="btn go big" onclick={nextShot} disabled={busy}>{idx + 1 >= place.length ? 'Дайын' : 'Келесі'}</button>
+      {:else}<button class="btn primary big" onclick={fire} disabled={finished || busy || !aimed}>Ату!</button>{/if}
     {/if}
   </div>
 </div>
