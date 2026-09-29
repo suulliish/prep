@@ -105,6 +105,7 @@
         <button class="suit" class:got class:on disabled={!got || on} onclick={ev => wear(o.id, ev)} style="--j:{hex(o.jacket)}; --d:{hex(o.dark)}; --v:{hex(o.visor)}" aria-label="{o.kz}{on ? ', киіліп тұр' : got ? ', кию' : `, ${o.need} кристалл керек`}">
           <span class="fig" aria-hidden="true"><i class="hd"><i class="hair"></i><i class="vs"></i></i><i class="bd"><i class="belt"></i></i><i class="al"></i><i class="ar"></i><i class="lg"></i></span>
           <b>{o.kz}</b>
+          {#if o.gear}<small class="gear">{o.gear}</small>{/if}
           <small>{on ? 'Киіліп тұр' : got ? 'Кию' : ''}{#if !got}<i class="gem sm"></i><span class="num">{o.need}</span>{/if}</small>
         </button>
       {/each}
@@ -169,6 +170,7 @@
   .suit.on { border-color: var(--gold); box-shadow: 0 0 18px #ffc94a44, inset 0 0 0 1px #ffc94a55; }
   .suit:disabled { cursor: default; }
   .suit b { font-size: 13px; }
+  .suit .gear { display: block; font: 700 10px/1.25 var(--txt); color: var(--dim); text-align: center; padding: 0 2px; }
   .suit small { display: inline-flex; align-items: center; font: 800 11px var(--txt); color: var(--code); }
   .suit.on small { color: var(--gold); }
   .suit:not(.got) small { color: var(--faint); }

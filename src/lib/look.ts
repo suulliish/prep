@@ -5,7 +5,7 @@ import { W } from './world.svelte';
 import { WORLDS as WS, OUTFITS as OS, codeEnergy } from '../../content/worlds.mjs';
 
 export interface WorldDef { id: string; kz: string; ru: string; need: number; sky: number[][]; fog: number; mob: number; isle: string[]; arena?: boolean }
-export interface Outfit { id: string; kz: string; need: number; jacket: number; dark: number; visor: number }
+export interface Outfit { id: string; kz: string; need: number; jacket: number; dark: number; visor: number; gear?: string }  // gear — экипировка скина (src/three/gear.ts)
 export const WORLDS = WS as WorldDef[];
 export const OUTFITS = OS as Outfit[];
 
@@ -26,7 +26,7 @@ export function applyLook() {
   W.world?.setTheme(w.sky, w.fog);
   W.world?.setArena(Math.max(0, WORLDS.indexOf(w)), w.isle[0], w.isle[1]); // бой идёт на острове текущего мира
   const o = OUTFITS.find(x => x.id === game.save.outfit) ?? OUTFITS[0];
-  W.world?.setOutfit(o.jacket, o.dark, o.visor);
+  W.world?.setOutfit(o.jacket, o.dark, o.visor, o.id);
 }
 
 export function travel(id: string) { game.save.world = id; persist(); applyLook(); }
