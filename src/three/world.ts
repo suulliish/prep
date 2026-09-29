@@ -54,6 +54,8 @@ export interface World {
   mapSetup(isles: MapIsle[], current: number): void;
   mapFocus(i: number): void;
   mapTravel(i: number): Promise<void>;
+  /** Катсцена на карте: мир i только что открылся (серый остров расцветает). */
+  mapUnveil(i: number): Promise<void>;
   onMapPick(cb: (i: number) => void): void;
   mapLabels(): MapLabel[];
   /** Мир, к которому сейчас пролистана карта. */
@@ -496,6 +498,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     mapSetup(isles, current) { map.setup(isles, current); },
     mapFocus(i) { map.focus(i); },
     mapTravel(i) { return map.travel(i); },
+    mapUnveil(i) { audio.play('portal'); return map.unveil(i); },
     onMapPick(cb) { map.onPick(cb); },
     mapLabels() { return map.labels(); },
     mapFocused() { return map.focusIndex; },

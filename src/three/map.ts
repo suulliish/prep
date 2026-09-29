@@ -7,6 +7,7 @@ import { DEFAULT_LOOK, type HeroLook } from './looks';
 import { buildMapIsle, loadIslandKits } from './island3d';
 import { Kit } from './assets';
 import { dressAirship, type Airship } from './airship';
+import { glowTexture } from './portal';
 
 export type IsleState = 'cleared' | 'current' | 'open' | 'next' | 'locked' | 'fog';
 export interface MapIsle { id: string; a: string; b: string; state: IsleState }
@@ -59,10 +60,13 @@ export function createMap(d: Deps) {
   const bob: { g: THREE.Group; y: number; ph: number }[] = [];
   const rings: THREE.Mesh[] = [];
   const beacons: THREE.Mesh[] = [];
+  const isleG: THREE.Group[] = [];
+  // покадровые эффекты карты (открытие мира): шаг возвращает false, когда закончился
+  const fx: ((dt: number) => boolean)[] = [];
   let curve: THREE.CatmullRomCurve3 | null = null;
 
   function makeIsle(i: number, it: MapIsle) {
-    const g = new THREE.Group(); const p = P(i); g.position.copy(p); root.add(g);
+    const g = new THREE.Group(); const p = P(i); g.position.copy(p); root.add(g); isleG[i] = g;
     const b = builder(g, it.state);
     const A = new THREE.Color(it.a).getHex();
     // остров из готовых плиток и моделей мира (палитра мира — src/three/worlds3d.ts); закрытые миры серые
@@ -145,7 +149,7 @@ export function createMap(d: Deps) {
 
   function setup(list: MapIsle[], current: number) {
     while (root.children.length) root.remove(root.children[0]);
-    hits.length = 0; bob.length = 0; rings.length = 0; beacons.length = 0;
+    hits.length = 0; bob.length = 0; rings.length = 0; beacons.length = 0; isleG.length = 0;
     isles = list; cur = current;
     list.forEach((it, i) => makeIsle(i, it));
     makeRoute();
@@ -170,6 +174,7 @@ export function createMap(d: Deps) {
     rings.forEach(r => { const k = 1 + Math.sin(t * 2.4) * 0.04; r.scale.set(k, k, k); (r.material as THREE.MeshBasicMaterial).opacity = 0.6 + Math.sin(t * 2.4) * 0.3; r.rotation.z += dt * 0.4; });
     beacons.forEach(b => ((b.material as THREE.MeshBasicMaterial).opacity = 0.16 + Math.abs(Math.sin(t * 1.6)) * 0.18));
     air?.update(dt, t, km);
+    for (let i = fx.length - 1; i >= 0; i--) if (!fx[i](dt)) fx.splice(i, 1);
 
     // герой / корабль
     let walking = false;
@@ -203,9 +208,48 @@ export function createMap(d: Deps) {
     sky.position.copy(camera.position); stars.position.copy(camera.position);
   }
 
+  /** Катсцена «мир открыт»: камера к острову, вспышка и волна, серый остров расцветает и подпрыгивает, над ним луч «следующая цель». */
+  function unveil(i: number): Promise<void> {
+    return new Promise(res => {
+      const g = isleG[i], it = isles[i]; if (!g || !it) { res(); return; }
+      sTo = i; let t = 0, swapped = false;
+      const center = P(i).add(new THREE.Vector3(0, 2, 0));
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffe9a8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0 }));
+      glow.position.copy(center); glow.scale.setScalar(1); scene.add(glow);
+      const wave = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 64), new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      wave.rotation.x = -Math.PI / 2; wave.position.copy(center); wave.visible = false; scene.add(wave);
+      const N = 70, pos = new Float32Array(N * 3), vel = Array.from({ length: N }, () => new THREE.Vector3((Math.random() - 0.5) * 9, 3 + Math.random() * 7, (Math.random() - 0.5) * 9));
+      const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const pts = new THREE.Points(pg, new THREE.PointsMaterial({ map: glowTexture(), color: 0xffe08a, size: 0.9, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); pts.visible = false; scene.add(pts);
+      for (let k = 0; k < N; k++) pos.set([center.x, center.y, center.z], k * 3);
+      fx.push(dt => {
+        t += dt;
+        if (t < 0.9) { glow.material.opacity = t / 0.9 * 0.9; glow.scale.setScalar(2 + t * 8); }                 // камера подлетает, остров наливается светом
+        else if (!swapped) {
+          swapped = true; glow.scale.setScalar(16);
+          // пересобрать остров в цвете: убрать серую сборку, поставить цветную
+          g.children.filter(c => c.type === 'Group').forEach(c => g.remove(c));
+          loadIslandKits(Math.min(i, 11)).then(kits => g.add(buildMapIsle(kits, Math.min(i, 11), new THREE.Color(it.a).getHex(), 0))).catch(() => {});
+          it.state = 'next'; wave.visible = pts.visible = true;
+          const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 14, 12, 1, true), new THREE.MeshBasicMaterial({ color: 0xffc94a, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+          beam.position.y = 7; g.add(beam); beacons.push(beam);
+        } else {
+          const u = Math.min(1, (t - 0.9) / 1.4);
+          glow.material.opacity = 0.9 * (1 - u); wave.scale.setScalar(1 + u * 14); (wave.material as THREE.MeshBasicMaterial).opacity = 1 - u;
+          g.scale.setScalar(1 + Math.sin(Math.min(1, u * 2.5) * Math.PI) * 0.12 * (1 - u));                    // подпрыгивает
+          for (let k = 0; k < N; k++) { const v = vel[k]; v.y -= dt * 9; pos[k * 3] += v.x * dt; pos[k * 3 + 1] += v.y * dt; pos[k * 3 + 2] += v.z * dt; }
+          pg.attributes.position.needsUpdate = true; (pts.material as THREE.PointsMaterial).opacity = 1 - u;
+          if (u >= 1) { [glow, wave, pts].forEach(o => scene.remove(o)); glow.material.dispose(); wave.geometry.dispose(); (wave.material as THREE.Material).dispose(); pg.dispose(); (pts.material as THREE.Material).dispose(); g.scale.setScalar(1); res(); return false; }
+        }
+        return true;
+      });
+    });
+  }
+
   return {
     scene, camera,
     setup,
+    unveil,
     setLook(l: HeroLook) { fig.setLook(l); },
     setCape(c: { color: number; glow: boolean } | null) { fig.setCape(c); },
     travel,
