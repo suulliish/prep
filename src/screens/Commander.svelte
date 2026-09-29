@@ -89,7 +89,7 @@
       {/if}
       <section class="panel card">
         <div class="grid3">
-          <div class="kpi"><span class="label">Игра сегодня</span><b>{rec.minutesToday} мин</b><small>потрачено {rec.spent ?? 0}</small></div>
+          <div class="kpi"><span class="label">Игра сегодня</span><b>{rec.minutesToday} мин</b><small>заработано, выдаёте вне игры</small></div>
           <div class="kpi"><span class="label">В копилку выходных</span><b>+{rec.minutesWeekend} мин</b></div>
           <div class="kpi"><span class="label">Серия дней</span><b>{st.days}</b><small>заморозок: {st.freezesLeft}</small></div>
         </div>

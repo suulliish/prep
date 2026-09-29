@@ -26,6 +26,8 @@ export interface World {
   arrive(): Promise<void>;
   /** Тема боевой локации: номер мира, цвета острова. */
   setArena(k: number, a: string, b: string): void;
+  /** Уголок мира для темы боя (src/three/spots.ts), возвращает номер варианта. */
+  setSpot(seed: string): number;
   /** Катсцена на корабле: герой идёт в портал. */
   portalWalk(): Promise<void>;
   hitMob(crit?: boolean): void;
@@ -39,6 +41,8 @@ export interface World {
   setTheme(sky: number[][], fog: number): void;
   /** Костюм героя (путь наград). */
   setOutfit(jacket: number, dark: number, visor: number, id?: string): void;
+  /** Награды за звёзды: цвет плаща поверх костюма и цвета следа от оружия. null — нет. */
+  setStyle(cape: { color: number; glow: boolean } | null, trail: number[] | null): void;
   /** 3D-карта миров (режим 'map'): острова, текущий мир, выбор касанием, перелёт корабля с героем. */
   mapSetup(isles: MapIsle[], current: number): void;
   mapFocus(i: number): void;
@@ -223,7 +227,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   type Hero = ReturnType<typeof makeHero>;
   const worn = new Map<Hero, Equipped>();
   let gearNow = GEAR.cyan, colorsNow = { jacket: 0x22b8cc, dark: 0x137e8f, visor: 0x3ff0ff };
-  function wear(h: Hero) { const e = equip(h, gearNow, colorsNow); h.blade = e.blade as typeof h.blade; worn.set(h, e); }
+  let capeNow: { color: number; glow: boolean } | null = null;
+  function wear(h: Hero) { const e = equip(h, capeNow ? { ...gearNow, cape: capeNow.color, capeGlow: capeNow.glow } : gearNow, colorsNow); h.blade = e.blade as typeof h.blade; worn.set(h, e); }
   const dress = (h: Hero) => { dressHero(h.g); if (outfitNow) paintOutfit(...outfitNow); wear(h); };
   dressHero(hero.g); wear(hero);
   function paintOutfit(jacket: number, dark: number, visor: number) {
@@ -501,6 +506,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     enemyAttack() { return arena.enemyAttack(); },
     arrive() { return arena.arrive(); },
     setArena(k, a, b) { arena.theme(k, a, b); },
+    setSpot(seed) { return arena.spot(seed); },
+    setStyle(cape, trail) { capeNow = cape; [...worn.keys()].forEach(wear); arena.setTrail(trail); },
     hitMob() {},
     killMob() { return arena.defeat(); },
     clearMob() { arena.clear(); if (mob) { ship.remove(mob.g); mob = null; } chest.visible = false; },

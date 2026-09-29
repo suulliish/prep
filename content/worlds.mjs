@@ -34,3 +34,16 @@ export const OUTFITS = [
   { id: 'void', kz: 'Бос кеңістік', need: 30, jacket: 0x2a1f4d, dark: 0x120a26, visor: 0xb58cff, gear: 'капюшон · орақ · плащ · жарқыл' },
   { id: 'crystal', kz: 'Кристалл', need: 45, jacket: 0xb58cff, dark: 0x5a3bb0, visor: 0xffffff, gear: 'кристалл тәж · қылыш · қалқан · жарқыл' },
 ];
+
+// Награды за звёзды уровней (docs/GAME_LOOP.md 5): мелкая косметика между большими скинами (те — за кристаллы).
+// trail — след от оружия при ударе, cape — цвет плаща (поверх костюма; Кодеру добавляет плащ).
+export const STAR_REWARDS = [
+  { id: 'trail_cyan', kind: 'trail', need: 3, kz: 'Көк із', color: 0x35e6ff },
+  { id: 'cape_red', kind: 'cape', need: 6, kz: 'Қызыл плащ', color: 0xc2303a },
+  { id: 'trail_gold', kind: 'trail', need: 10, kz: 'Алтын із', color: 0xffcb2e },
+  { id: 'cape_blue', kind: 'cape', need: 15, kz: 'Көк плащ', color: 0x2a5bd7 },
+  { id: 'trail_pink', kind: 'trail', need: 21, kz: 'Неон із', color: 0xff4fb8 },
+  { id: 'cape_night', kind: 'cape', need: 28, kz: 'Түнгі плащ', color: 0x1a1030, glow: true },
+  { id: 'trail_rainbow', kind: 'trail', need: 36, kz: 'Кемпірқосақ із', color: 0xffffff, rainbow: true },
+  { id: 'cape_gold', kind: 'cape', need: 45, kz: 'Алтын плащ', color: 0xf2b632, glow: true },
+];

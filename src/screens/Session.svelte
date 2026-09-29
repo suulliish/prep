@@ -5,6 +5,8 @@
   import Icon from '../ui/Icon.svelte';
   import { toast } from '../ui/notify.svelte';
   import { ReadGate, readMs } from '../lib/readgate.svelte';
+  import { solGap, type SolGap } from '../engine/solgap';
+  import { SPOT_KZ } from '../three/spots';
   import { game, go, persist, skillDefs } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { ensurePlan, completeBlock, dayRec } from '../lib/session.svelte';
@@ -13,7 +15,7 @@
   import { recordAttempt, isDone } from '../engine/progress';
   import { isHonest, addMasteryBonus, settleDay, taught } from '../engine/planner';
   import { audio } from '../lib/audio';
-  import { currentWorld } from '../lib/look';
+  import { currentWorld, totalStars, STAR_REWARDS } from '../lib/look';
   import { react } from '../lib/voice';
   import { askBit, HELPER_ERR, MAX_QUESTIONS, type Turn, type HelperError } from '../lib/helper';
   // @ts-ignore
@@ -98,6 +100,27 @@
     document.querySelector('.sol')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
   const showSolution = () => tick().then(() => document.querySelector('.sol')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  // пропуск в решении: реванш открывается, когда ребёнок вписал закрытое число (читал решение). Нет чисел — зарядка кнопки
+  let gap = $state<SolGap | null>(null), gapDone = $state(false), gapWrong = $state<string[]>([]);
+  function explain() {
+    gap = item ? solGap(item.sol.kz, item.choices[item.answer].text) : null; gapDone = false; gapWrong = [];
+    if (!gap) gate.start(readMs(bitText, item?.sol.kz));
+    showSolution();
+  }
+  function fillGap(o: string, ev: MouseEvent) {
+    if (!gap || gapDone || gapWrong.includes(o)) return;
+    const at = centerOf(ev.currentTarget as HTMLElement);
+    if (o === gap.answer) {
+      gapDone = true; audio.play('correct'); sparksAt(at.x, at.y, ['#5ce39c', '#3ff0ff', '#ffc94a'], 30);
+      game.save.xp += 2; floatText('+2 XP', at.x, at.y - 20, '#ffc94a'); persist();
+      bitText = 'Дұрыс! Шешуді түсіндің. Енді реванш — дәл осындай есеп.'; bitMood = 'happy';
+    } else {
+      gapWrong = [...gapWrong, o]; audio.play('wrong');
+      bitText = 'Жоқ. Шешуді басынан оқы да, осы қадамды өзің есептеп көр.'; bitMood = 'think';
+    }
+    showBit();
+  }
+  const gapOpen = $derived(!!gap && !gapDone);
   let result = $state<{ stars: number; right: number; of: number; xp: number; minutes: number; counted: boolean; note: string } | null>(null);
   const xpStart = game.save.xp;
   function say(text: string) { banner = text; bannerId++; }
@@ -133,7 +156,7 @@
     const sk = block === 'new' ? skills[0] : skills[idx % Math.max(1, skills.length)];
     const fromBank = !twin && BANK_SLOTS[block]?.includes(idx) && bankQueue.length ? bankQueue.shift() : null;
     item = fromBank ? bankToItem(fromBank) : makeItem(sk);
-    picked = null; phase = 'answer'; hintLevel = 0; showSol = false; tries = 0; struck = []; gate.stop();
+    picked = null; phase = 'answer'; hintLevel = 0; showSol = false; tries = 0; struck = []; gate.stop(); gap = null; gapDone = false;
     aiTurns = []; aiErr = ''; aiQ = ''; aiBusy = false;
     bitText = twin ? 'Реванш! Дәл осындай есеп — енді өзің шығарып көр.' : ''; bitMood = twin ? 'think' : 'idle';
     startAt = performance.now();
@@ -144,6 +167,9 @@
     W.dim = false;
     W.world?.setMode('battle');
     busy = true;
+    // тема = свой уголок мира; разминка и смешанный бой — уголок дня
+    const v = W.world?.setSpot(block === 'new' || block === 'repair' ? skills[0] : `${block}:${game.day}`);
+    if (v !== undefined) say(`${currentWorld().kz} · ${SPOT_KZ[v]}`);
     (W.world?.arrive() ?? Promise.resolve())
       .then(() => W.world?.spawnMob(mobHp, currentWorld().mob, waves.length === 1))
       .then(() => { cine = false; say(waves.length > 1 ? '1-толқын' : 'Шайқас!'); busy = false; });
@@ -215,8 +241,7 @@
       bitText = (confidence === 'sure' ? 'Сенімді едің, бірақ қателік бар. ' : 'Әзірге қате. ') + m.kz + (phase === 'retry' ? ' Тағы бір рет көр!' : '');
       if (!honest && hintLevel < 4) bitText = 'Тым жылдам! Асықпа — алдымен шартты оқы. ' + bitText;
       bitMood = 'think';
-      gate.start(readMs(bitText, phase === 'feedback' ? item.sol.kz : ''));
-      if (phase === 'feedback') showSolution();
+      if (phase === 'feedback') explain(); else gate.start(readMs(bitText));
       if (battle) enemyTurn();
       if (block !== 'repair') game.save.repairShop.push({ source: item.source, skill: item.skill, tag: item.choices[picked].tag, addedDay: game.day });
     }
@@ -250,7 +275,7 @@
     } else {
       struck = [...struck, picked!]; audio.play('wrong'); flash('#ff9a6b'); if (battle) enemyTurn();
       bitText = 'Дұрыс жауабы жасылмен белгіленді. Шешуін оқы — сосын дәл осындай есепте реванш аласың.'; bitMood = 'think';
-      twin = true; gate.start(readMs(bitText, item!.sol.kz)); showSolution();
+      twin = true; explain();
     }
     persist(); showBit();
   }
@@ -258,6 +283,7 @@
   async function next() {
     if (busy) return;
     if (gate.on) return nudge();
+    if (gapOpen) { audio.play('click'); toast('Алдымен шешудегі бос орынды толтыр'); showSolution(); return; }
     if (!twin) idx++;
     const learnedNow = block === 'new' && game.save.skills[skills[0]]?.status === 'learned' && idx >= 6;
     if (idx >= total || learnedNow) return finish();
@@ -349,6 +375,14 @@
         <div><b class="num">+{result.xp}</b><small>XP</small></div>
         {#if result.minutes}<div class="gold"><b class="num">+{result.minutes}</b><small>мин ойын</small></div>{/if}
       </div>
+      {#if result.counted && result.stars}
+        {@const all = totalStars()}
+        {@const nx = STAR_REWARDS.find(r => r.need > all)}
+        {@const earned = result.stars}
+        {@const got = STAR_REWARDS.filter(r => r.need > all - earned && r.need <= all)}
+        {#if got.length}<p class="unlock">Жаңа сыйлық ашылды: <b>{got.map(r => r.kz).join(', ')}</b> · Кейіпкер бетінде ки!</p>
+        {:else if nx}<p class="next">★ {all} · келесі сыйлық «{nx.kz}» — тағы {nx.need - all} ★</p>{/if}
+      {/if}
       {#if result.note}<p class="paper note">{result.note}</p>{/if}
     </div>
   {:else if item}
@@ -382,7 +416,13 @@
     {#if showSol || (phase === 'feedback' && !lastCorrect)}
       <details class="paper sol" open>
         <summary>Шешуі</summary>
-        <p>{item.sol.kz}</p>
+        {#if gap}
+          <p>{gap.before}<b class="gap" class:done={gapDone}>{gapDone ? gap.answer : '?'}</b>{gap.after}</p>
+          {#if !gapDone}
+            <p class="gq">Шешудегі <b>?</b> орнына қай сан тұрады?</p>
+            <div class="gopts">{#each gap.options as o}<button class="ans" class:wrong={gapWrong.includes(o)} disabled={gapWrong.includes(o)} onclick={ev => fillGap(o, ev)}>{o}</button>{/each}</div>
+          {/if}
+        {:else}<p>{item.sol.kz}</p>{/if}
       </details>
       {@const rule = ruleOf(item.skill)}
       {#if rule}
@@ -428,12 +468,19 @@
       <button class="btn primary big grow" class:wait={busy && !gate.on} class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms"
         onclick={() => busy ? null : gate.on ? nudge() : retry()}>{gate.on ? 'Оқы…' : 'Тағы көр'}</button>
     {:else if item && phase === 'feedback'}
-      <button class="btn big grow {busy && !gate.on ? 'wait' : lastCorrect ? 'go' : 'primary'}" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={next}>{idx + (twin ? 0 : 1) >= total ? 'Аяқтау' : twin ? 'Реванш' : 'Келесі'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
+      <button class="btn big grow {(busy && !gate.on) || gapOpen ? 'wait' : lastCorrect ? 'go' : 'primary'}" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={next}>{idx + (twin ? 0 : 1) >= total ? 'Аяқтау' : twin ? 'Реванш' : 'Келесі'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
     {/if}
   {/snippet}
 </Screen>
 
 <style>
+  .gap { display: inline-block; min-width: 2.2em; padding: 0 6px; text-align: center; border-radius: 8px; background: #ffe9a8; border: 2px dashed #b88a1a; color: #6b4a0a; }
+  .gap.done { background: #c8f5d8; border-style: solid; border-color: var(--ok); color: #135c32; animation: flipIn .35s; }
+  .gq { font-weight: 800; margin-top: 8px; }
+  .unlock { margin: 0; padding: 10px 12px; border-radius: 14px; background: linear-gradient(180deg, #ffe07a, #f2b632); color: #3a2400; border: 3px solid var(--outline); font-weight: 800; text-align: center; animation: flipIn .5s; }
+  .next { margin: 0; color: var(--gold); font: 800 15px var(--disp); text-align: center; }
+  .gopts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+  .gopts .ans { justify-content: center; font: 900 18px var(--disp); }
   .wv { display: flex; gap: 3px; }
   .wv i { width: 10px; height: 10px; border-radius: 3px; background: #0b1030; border: 2px solid var(--outline); }
   .wv i.done { background: var(--ok); } .wv i.on { background: var(--glitch); }

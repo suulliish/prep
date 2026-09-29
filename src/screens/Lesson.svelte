@@ -15,6 +15,7 @@
   import { blankSkill } from '../engine/progress';
   import { audio } from '../lib/audio';
   import { currentWorld } from '../lib/look';
+  import { SPOT_KZ } from '../three/spots';
   import { react } from '../lib/voice';
   import { sparksAt, centerOf, floatText, flash, sceneCenter } from '../ui/fx.svelte';
   // @ts-ignore
@@ -91,6 +92,8 @@
   }
   onMount(() => {
     W.dim = false; W.world?.setMode('battle'); W.world?.bitMood('idle');
+    const v = W.world?.setSpot(skill);   // урок и практика темы — в одном уголке мира
+    if (v !== undefined) setTimeout(() => { const c = sceneCenter(0.3); floatText(`${currentWorld().kz} · ${SPOT_KZ[v]}`, c.x, c.y, '#ffc94a', true); }, 400);
     (W.world?.arrive() ?? Promise.resolve()).then(() => W.world?.spawnMob(maxHp, currentWorld().mob)).then(() => (cine = false));
     audio.setMood('focus'); enter();
     return () => { clearTimeout(skipTimer); W.world?.clearMob(); };
