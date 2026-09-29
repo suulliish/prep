@@ -5,7 +5,8 @@
 // Катсцены (вход, появление врага, победа с сундуком) ведёт «режиссёр»: план камеры shot() + постановка движений героя.
 import * as THREE from 'three';
 import { makeHero, makeMob } from './characters';
-import { builder, landmark, mat } from './map';
+import { builder, mat } from './map';
+import { buildSpot, spotLight, spotIndex } from './spots';
 
 type Hero = ReturnType<typeof makeHero>;
 interface Deps { skyMat: THREE.Material; starGeo: THREE.BufferGeometry; starMat: THREE.Material; km: number;
@@ -20,28 +21,22 @@ export function createArena(d: Deps) {
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 400);
   const sky = new THREE.Mesh(new THREE.SphereGeometry(150, 32, 16), d.skyMat); scene.add(sky);
   scene.add(new THREE.Points(d.starGeo, d.starMat));
-  scene.add(new THREE.HemisphereLight(0xb4c4ff, 0x40214a, 1.05));
+  const hemi = new THREE.HemisphereLight(0xb4c4ff, 0x40214a, 1.05); scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffe6c8, 1.7); sun.position.set(-8, 16, 10); scene.add(sun);
 
   // ---------- остров ----------
   const ground = new THREE.Group(); scene.add(ground);
-  function buildGround(k: number, A: number, B: number) {
+  // уголок мира для темы (src/three/spots.ts): композиция острова + свет (день / закат / ночь с фонарями)
+  let worldK = 0, colA = 0x5ce39c, colB = 0x2f8f5b, spotV = 0;
+  const lanterns = [new THREE.PointLight(0xffb84a, 0, 9), new THREE.PointLight(0xffb84a, 0, 9)];
+  lanterns[0].position.set(-5, 2, 1.5); lanterns[1].position.set(5, 2, 1.5); lanterns.forEach(l => scene.add(l));
+  function buildGround() {
     while (ground.children.length) ground.remove(ground.children[0]);
-    const top: [number, number][] = [];
-    for (let x = -8; x <= 8; x++) for (let z = -5; z <= 5; z++) if ((x * x) / 72 + (z * z) / 30 <= 1) top.push([x, z]);
-    const under: [number, number, number][] = [];
-    for (let k2 = 1; k2 <= 4; k2++) for (const [x, z] of top) if ((x * x) / (72 - k2 * 14) + (z * z) / (30 - k2 * 6) <= 1) under.push([x, -k2, z]);
-    const im = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ roughness: 0.9, flatShading: true }), top.length + under.length);
-    const m4 = new THREE.Matrix4(), col = new THREE.Color(); let n = 0;
-    top.forEach(([x, z]) => { m4.makeTranslation(x, -0.5, z); im.setMatrixAt(n, m4); col.setHex((x + z) % 2 ? A : B); im.setColorAt(n++, col); });
-    under.forEach(([x, y, z]) => { m4.makeTranslation(x, y - 0.5, z); im.setMatrixAt(n, m4); col.setHex(y === -1 ? 0x7a5236 : 0x5d5a70); im.setColorAt(n++, col); });
-    ground.add(im);
-    // ориентир мира на заднем плане
-    const lm = new THREE.Group(); lm.position.set(0.4, 0, -3.4); lm.scale.setScalar(0.9); ground.add(lm);
-    landmark(builder(lm, 'open'), k, A, B);
-    // камни и кусты по краям
-    const b = builder(ground, 'open');
-    [[-6.5, -2], [6.4, -1.6], [-5.6, 2.8], [5.8, 3]].forEach(([x, z], i) => { b(0.9, 0.7, 0.9, x, 0.35, z, i % 2 ? 0x8a8aa0 : 0x3faa5a); b(0.6, 0.5, 0.6, x + 0.5, 0.25, z + 0.4, 0x2f8f4a); });
+    buildSpot(ground, worldK, colA, colB, spotV);
+    const L = spotLight(spotV);
+    hemi.color.setHex(L.hemiSky); hemi.groundColor.setHex(L.hemiGround); hemi.intensity = L.hemi;
+    sun.color.setHex(L.sunColor); sun.intensity = L.sun; sun.position.set(...L.sunPos);
+    lanterns.forEach(l => (l.intensity = L.lanterns ? 6 : 0));
   }
 
   // ---------- герой ----------
@@ -110,6 +105,16 @@ export function createArena(d: Deps) {
   let shake = 0, slow = 1, slowT = 0, flashT = 0;
   // acting — идёт постановка: покой (дыхание, руки, ноги) не перебивает позы из твинов
   let walking = false, guard = false, cheer = 0, acting = false;
+  // след от оружия (награда за звёзды): светящиеся кубики с кончика клинка, пока идёт удар
+  let trail: number[] | null = null, trailOn = false, trailK = 0;
+  const tip = new THREE.Vector3();
+  function trailStep() {
+    if (!trail || !trailOn) return;
+    hero.blade.getWorldPosition(tip);
+    const m = new THREE.Mesh(box, mat(trail[trailK++ % trail.length], trail[trailK % trail.length], 2.2)); m.scale.setScalar(0.22); m.position.copy(tip); scene.add(m);
+    let life = 0.35;
+    fx.push({ update: dt => { life -= dt; m.scale.multiplyScalar(0.9); if (life <= 0) { scene.remove(m); return false; } return true; } });
+  }
 
   // ---------- режиссёр: план камеры ----------
   type Shot = { focus: THREE.Vector3; zoom: number; lift: number };
@@ -152,11 +157,11 @@ export function createArena(d: Deps) {
     neutral();
   }
   async function swing(power: number, spin = false) {
-    acting = true; const r0 = hero.g.rotation.y;
+    acting = true; trailOn = true; const r0 = hero.g.rotation.y;
     await tween(0.12, u => { hero.armR.rotation.x = -u * 2.6; hero.body.rotation.y = -u * 0.3; });
     await tween(spin ? 0.3 : 0.1, u => { hero.armR.rotation.x = -2.6 + u * 3.4; hero.body.rotation.y = -0.3 + u * 0.6; if (spin) hero.g.rotation.y = r0 + u * Math.PI * 2; });
     await tween(0.18 * power, u => { hero.armR.rotation.x = 0.8 * (1 - u); hero.body.rotation.y = 0.3 * (1 - u); });
-    hero.g.rotation.y = r0; neutral();
+    hero.g.rotation.y = r0; trailOn = false; neutral();
   }
   const enemyPos = () => new THREE.Vector3(ENEMY_X, 1.3, 0.4);
   const glow = (v: number) => ((hero.blade.material as THREE.MeshToonMaterial).emissiveIntensity = v);
@@ -183,6 +188,7 @@ export function createArena(d: Deps) {
     }
     hero.eyes.forEach(e => (e.scale.y = (t % 3.7) < 0.12 ? 0.1 : 1));
     d.animHero(hero, t, walking);
+    trailStep();
     const sm = shield.material as THREE.MeshBasicMaterial; sm.opacity += ((guard ? 0.35 : 0) - sm.opacity) * 0.25;
 
     // враг: покачивание, взгляд, осколки, вспышка при ударе
@@ -212,7 +218,9 @@ export function createArena(d: Deps) {
 
   return {
     scene, camera, update,
-    theme(k: number, a: string, b: string) { buildGround(k, new THREE.Color(a).getHex(), new THREE.Color(b).getHex()); ready = true; },
+    theme(k: number, a: string, b: string) { worldK = k; colA = new THREE.Color(a).getHex(); colB = new THREE.Color(b).getHex(); buildGround(); ready = true; },
+    /** Уголок мира по теме: одна тема — всегда один и тот же уголок. Возвращает номер варианта. */
+    spot(seed: string) { const v = spotIndex(seed); if (v !== spotV || !ground.children.length) { spotV = v; buildGround(); } return v; },
     isReady: () => ready,
     setFog(c: THREE.Color) { (scene.fog as THREE.Fog).color.copy(c); },
     resize(w: number, h: number) { aspect = w / h; camera.aspect = aspect; camera.updateProjectionMatrix(); },
@@ -222,6 +230,10 @@ export function createArena(d: Deps) {
     async arrive() {
       neutral(); guard = false;
       const P = new THREE.Vector3(HERO_X - 2.2, 2.3, 0.4);
+      // облёт: общий план уголка сверху, камера опускается к порталу
+      hero.g.scale.setScalar(0.01);
+      camFocus.set(0.4, 0.8, -1.5); camZoom = 1.5; camLift = 0.75; shot(new THREE.Vector3(0.2, 1, -1), 1.2, 0.5);
+      await wait(0.9);
       shot(new THREE.Vector3(HERO_X - 0.8, 1.8, 0.4), 0.62, 0.3);
       const portal = new THREE.Group(); portal.position.copy(P); portal.scale.setScalar(0.01); scene.add(portal);
       portal.add(new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.14, 8, 32), mat(0x35e6ff, 0x35e6ff, 2.2)));
@@ -274,7 +286,7 @@ export function createArena(d: Deps) {
         await tween(0.3, u => { hero.armR.rotation.x = -u * 3; glow(2 + u * 6); hero.hips.position.y = 0.95 - Math.sin(u * Math.PI / 2) * 0.2; });
         acting = false; hero.hips.position.y = 0.95;
         shot(new THREE.Vector3(ENEMY_X - 1.2, 1.8, 0.4), 0.75, 0.3);
-        acting = true; await jumpTo(ENEMY_X - 1.4, 0.4, 2.6, 0.45); hero.armR.rotation.x = 0.8;
+        acting = true; trailOn = true; await jumpTo(ENEMY_X - 1.4, 0.4, 2.6, 0.45); hero.armR.rotation.x = 0.8; trailOn = false;
         acting = false;
       } else {
         if (last) shot(new THREE.Vector3(ENEMY_X - 0.8, 1.4, 0.4), 0.6, 0.22);
@@ -329,7 +341,9 @@ export function createArena(d: Deps) {
       shot(heroAt(1.5), 0.48, 0.2);
       acting = true;
       const r0 = hero.g.rotation.y;
+      trailOn = true;
       await tween(0.6, u => { hero.g.position.y = Math.sin(u * Math.PI) * 1.4; hero.g.rotation.y = r0 + u * (Math.PI * 1.5); hero.armR.rotation.x = -u * 3.1; glow(2 + u * 5); });
+      trailOn = false;
       hero.g.position.y = 0; hero.g.rotation.y = 0;
       await land();
       burst(heroAt(3.4), [0xffcb2e, 0x35e6ff, 0xffffff], 40, 5);
@@ -374,6 +388,7 @@ export function createArena(d: Deps) {
       neutral(); hero.armL.rotation.x = hero.armR.rotation.x = 0;
       setTimeout(() => scene.remove(chest), 6000);
     },
+    setTrail(c: number[] | null) { trail = c; },
     celebrate() { cheer = 1.2; burst(new THREE.Vector3(HERO_X, 3, 0.4), [0xffcb2e, 0x35e6ff], 30, 5); },
     clear() { if (enemy) { scene.remove(enemy.g); enemy = null; } hpBar.visible = false; guard = false; neutral(); hero.g.position.set(HERO_X, 0, 0.4); hero.g.rotation.y = Math.PI / 2; shot(null); },
     hasEnemy: () => !!enemy,

@@ -6,7 +6,7 @@
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
   import { streak } from '../engine/streak';
-  import { OUTFITS, crystals, wearOutfit } from '../lib/look';
+  import { OUTFITS, crystals, wearOutfit, STAR_REWARDS, totalStars, wearStyle } from '../lib/look';
   import { sparksAt, centerOf } from '../ui/fx.svelte';
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -50,6 +50,17 @@
 
   const worn = $derived(game.save.outfit ?? 'cyan');
   const nextOutfit = $derived(OUTFITS.find(o => o.need > cr));
+  // награды за звёзды уровней: след оружия и цвет плаща (GAME_LOOP.md 5)
+  const stars = $derived(totalStars());
+  const nextReward = $derived(STAR_REWARDS.find(r => r.need > stars));
+  const style = $derived(game.save.style ?? {});
+  function toggleStyle(r: (typeof STAR_REWARDS)[number], ev: MouseEvent) {
+    if (stars < r.need) { audio.play('click'); return; }
+    const on = style[r.kind] === r.id;
+    wearStyle(r.kind, on ? undefined : r.id);
+    audio.play(on ? 'click' : 'levelup');
+    if (!on) { const b = (ev.currentTarget as HTMLElement).getBoundingClientRect(); sparksAt(b.left + b.width / 2, b.top + b.height / 2, [hex(r.color), '#ffc94a'], 24); W.world?.celebrate(r.color); }
+  }
   function wear(id: string, ev: MouseEvent) {
     wearOutfit(id); audio.play('levelup'); W.world?.celebrate(OUTFITS.find(o => o.id === id)!.jacket);
     const c = centerOf(ev.currentTarget as HTMLElement); sparksAt(c.x, c.y, ['#ffc94a', '#3ff0ff'], 30);
@@ -107,6 +118,28 @@
           <b>{o.kz}</b>
           {#if o.gear}<small class="gear">{o.gear}</small>{/if}
           <small>{on ? 'Киіліп тұр' : got ? 'Кию' : ''}{#if !got}<i class="gem sm"></i><span class="num">{o.need}</span>{/if}</small>
+        </button>
+      {/each}
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="h"><h2>Жұлдыз сыйлықтары</h2><small class="cr"><Icon name="star" fill="var(--gold)" size={16} /><span class="num">{stars}</span> жұлдыз</small></div>
+    {#if nextReward}
+      <div class="goal">
+        <span>Келесі сыйлық — <b>{nextReward.kz}</b>: тағы <b class="num">{nextReward.need - stars}</b> жұлдыз</span>
+        <span class="gbar"><i style="width:{Math.min(100, (stars / nextReward.need) * 100)}%"></i></span>
+        <small>Жұлдыз = деңгейдегі дәлдік: 1-ден 3-ке дейін әр жеңіс сайын.</small>
+      </div>
+    {/if}
+    <div class="rewards">
+      {#each STAR_REWARDS as r}
+        {@const got = stars >= r.need}
+        {@const on = style[r.kind] === r.id}
+        <button class="rw" class:got class:on onclick={ev => toggleStyle(r, ev)} aria-label="{r.kz}{on ? ', киіліп тұр' : got ? ', кию' : `, ${r.need} жұлдыз керек`}">
+          <span class="sw {r.kind}" class:rainbow={r.rainbow} style="--c:{hex(r.color)}"></span>
+          <b>{r.kz}</b>
+          <small>{on ? 'Киіліп тұр' : got ? 'Кию' : `★ ${r.need}`}</small>
         </button>
       {/each}
     </div>
@@ -170,6 +203,18 @@
   .suit.on { border-color: var(--gold); box-shadow: 0 0 18px #ffc94a44, inset 0 0 0 1px #ffc94a55; }
   .suit:disabled { cursor: default; }
   .suit b { font-size: 13px; }
+  .rewards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .rw { display: grid; justify-items: center; gap: 4px; padding: 8px 2px; font: inherit; color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-radius: 12px; cursor: pointer; }
+  .rw.on { border-color: var(--gold); box-shadow: 0 0 14px #ffc94a44; }
+  .rw:not(.got) { opacity: .5; }
+  .rw b { font-size: 11px; text-align: center; line-height: 1.15; }
+  .rw small { font: 800 11px var(--txt); color: var(--code); }
+  .rw.on small { color: var(--gold); }
+  .rw:not(.got) small { color: var(--faint); }
+  .sw { width: 34px; height: 34px; border-radius: 8px; border: 3px solid var(--outline); background: var(--c); }
+  .sw.trail { border-radius: 50%; background: radial-gradient(circle, #fff 0 18%, var(--c) 40%, transparent 72%); }
+  .sw.cape { clip-path: polygon(20% 0, 80% 0, 100% 100%, 0 100%); }
+  .sw.rainbow { background: conic-gradient(#ff4fb8, #ffcb2e, #3ddc6e, #35e6ff, #a77bff, #ff4fb8); }
   .suit .gear { display: block; font: 700 10px/1.25 var(--txt); color: var(--dim); text-align: center; padding: 0 2px; }
   .suit small { display: inline-flex; align-items: center; font: 800 11px var(--txt); color: var(--code); }
   .suit.on small { color: var(--gold); }
