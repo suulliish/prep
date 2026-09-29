@@ -3,6 +3,7 @@
   import Bit from '../ui/Bit.svelte';
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
+  import GlitchTurn from '../ui/GlitchTurn.svelte';
   import { toast } from '../ui/notify.svelte';
   import { ReadGate, readMs } from '../lib/readgate.svelte';
   import { solGap, type SolGap } from '../engine/solgap';
@@ -15,6 +16,8 @@
   import { recordAttempt, isDone } from '../engine/progress';
   import { isHonest, addMasteryBonus, settleDay, taught, sequenceSlots } from '../engine/planner';
   import { RUSH, RUSH_SAY, stemChars, isTooFast, rushAction, nextStreak, twinSlot, changedMarkup, varyAnswerPos, miniCheck, type Seg, type MiniCheck } from '../engine/rush';
+  import { GLITCH_SAY, buildGlitch, glitchAllowed, firstGlitchAt, nextGlitchAt, shortMistake, type GlitchTurn as GlitchData } from '../engine/glitchturn';
+  import type { Attempt } from '../engine/types';
   import { showReward, queueReward } from '../lib/reward.svelte';
   import { audio } from '../lib/audio';
   import { currentWorld, totalStars, STAR_REWARDS } from '../lib/look';
@@ -129,10 +132,10 @@
   function say(text: string) { banner = text; bannerId++; }
   let cine = $state(true);   // катсцена: вход в локацию, мини-босс, победа — панель задачи скрыта
   const isLastWave = () => wave >= waves.length - 1;
-  async function hit(sup: boolean) {
+  async function hit(sup: boolean, crit = combo >= 2) {
     busy = true;
     mobHp = Math.max(0, mobHp - (sup ? 2 : 1));   // суперудар в 3D бьёт на 2 (world.ts: dmg), полоска на экране — на столько же
-    const killed = await W.world?.heroAttack(combo >= 2, sup);
+    const killed = await W.world?.heroAttack(crit, sup);
     if (killed && !isLastWave()) {
       await W.world?.killMob(); audio.play('chest');
       wave++; mobHp = waves[wave];
@@ -188,10 +191,25 @@
     // после 3 быстрых подряд в этом вопросе — пауза и мини-проверка «Сұрақ не туралы?»; ответ на него лесенку обнуляет
     wasCheck = checkNext; checkNext = false; clearTimeout(chkTimer);
     chk = wasCheck && fresh ? { mc: miniCheck(fresh.kz), phase: 'calm', wrong: [] } : null;
+    glitch = null; glPick = null;
+    if (fresh && !chk && (forceGlitch ? !twin && !due && !fresh.real : glitchAllowed({
+      idx, total, at: glAt, attempts: game.save.attempts.filter(a => a.skill === fresh.skill).length, block, lastWave: isLastWave(), mobHp,
+      revenge: twin, rushTwin: !!due, check: !!chk, real: !!fresh.real,
+    }))) {
+      glitch = buildGlitch(fresh);
+      if (glitch) glAt = nextGlitchAt(idx);
+      if (forceGlitch) (window as any).__glitch = glitch;   // dev: скрипту проверки нужно знать, какая строка неверная
+    }
     bitText = due ? RUSH_SAY.twinArrive : twin ? 'Реванш! Дәл осындай есеп — енді өзің шығарып көр.' : ''; bitMood = twin || due ? 'think' : 'idle';
     startAt = performance.now();
   }
   let isRushTwin = $state(false);
+  // «Глитчтің қатесі» (D8, docs/GAME_LOOP.md 16): вместо вопроса Глитч «решил» задачу, ребёнок нажимает первую неверную строку
+  let glitch = $state<GlitchData | null>(null);
+  let glPick = $state<number | null>(null);
+  let glAt = firstGlitchAt();   // с какого вопроса ход «созрел»
+  // только в разработке: ?glitch=1 — ход на каждом вопросе, где его можно собрать (для скриншотов и проверки)
+  const forceGlitch = import.meta.env.DEV && new URLSearchParams(location.search).get('glitch') === '1';
   // спокойная пауза 3 с, потом вопрос «что спрашивается?» (нет уверенного вида вопроса — «оқыдым»); варианты ответа открываются после него
   function beginCheck() {
     if (!chk) return;
@@ -220,6 +238,11 @@
     audio.setMood(block === 'new' ? 'focus' : 'battle');
     nextItem();
     const onKey = (e: KeyboardEvent) => {
+      if (glitch) {
+        if (phase === 'answer' && /^[1-5]$/.test(e.key) && +e.key <= glitch.lines.length) glitchTap(+e.key - 1);
+        else if (phase === 'feedback' && e.key === 'Enter') next();
+        return;
+      }
       if (phase === 'answer' && /^[1-5]$/.test(e.key)) pick(+e.key - 1);
       else if (phase === 'answer' && e.key === 'Enter' && picked !== null) confirm('sure');
       else if (phase === 'retry' && e.key === 'Enter') retry();
@@ -229,7 +252,7 @@
     return () => { removeEventListener('keydown', onKey); clearTimeout(chkTimer); W.world?.clearMob(); };
   });
 
-  function pick(i: number) { if (phase !== 'answer' || locked || busy || struck.includes(i)) return; picked = i; audio.play('click'); }
+  function pick(i: number) { if (glitch || phase !== 'answer' || locked || busy || struck.includes(i)) return; picked = i; audio.play('click'); }
   function needPick() { toast('Алдымен жауапты таңда'); audio.play('click'); }
   function retry() { picked = null; phase = 'answer'; bitMood = 'think'; startAt = performance.now(); }
 
@@ -242,8 +265,27 @@
     showBit();
   }
 
+  // события модели знаний после попытки: «үйренді», кристалл, провал повторения
+  function applyEvents(events: string[], skill: string) {
+    for (const ev of events) {
+      if (ev === 'learned') { react('learned'); audio.play('levelup'); floatText('ҮЙРЕНДІ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#3ff0ff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#3ff0ff', '#b58cff'], 70, 10); W.world?.celebrate(); bitText = `«${skillTitle(skill).kz}» — үйрендің! Ертең тексереміз: өтсең, кристалға айналады.`; bitMood = 'wow'; }
+      if (ev === 'crystal') { react('crystal'); audio.play('crystal'); floatText('КРИСТАЛЛ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#b58cff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#b58cff', '#ffffff', '#3ff0ff'], 90, 11); bitText = `«${skillTitle(skill).kz}» кристалға айналды — енді бұл тақырып сенікі!`; bitMood = 'wow'; }
+      if (ev === 'learned' || ev === 'crystal') {
+        const rec = dayRec(), add = addMasteryBonus(rec, `${ev === 'crystal' ? 'Проверка через день пройдена' : 'Тема освоена'}: ${skillTitle(skill).ru}`);
+        if (add) {
+          settleDay(rec, plan, game.save.settings.extraTo);
+          bitText += ` Сыйлық: +${add} минут ойын!`;
+          // без отдельного окна: бонус войдёт в единую сцену награды в конце шага (src/lib/reward.svelte.ts)
+          queueReward({ minutes: add, title: 'Сыйлық!', why: `${ev === 'crystal' ? 'Ертеңгі тексеру өтті' : 'Тақырып үйренілді'}: ${skillTitle(skill).kz}`, today: rec.minutesToday, weekend: rec.minutesWeekend });
+        }
+      }
+      if (ev === 'review_failed') { bitText = 'Бұл тақырып сәл ұмытылған екен — қайта жаттығамыз, қорқынышты емес.'; bitMood = 'think'; }
+    }
+  }
+
+  const MODE: Attempt['mode'] = block === 'new' ? 'practice' : block === 'extra' ? 'extra' : block === 'boss' ? 'boss' : block === 'warmup' ? 'warmup' : block === 'repair' ? 'practice' : 'mixed';
   async function confirm(confidence: 'sure' | 'maybe' | 'unsure') {
-    if (!item || picked === null) return;
+    if (!item || picked === null || glitch) return;
     const timeMs = performance.now() - startAt;
     const correct = picked === item.answer;
     tries++;
@@ -258,7 +300,7 @@
     if (!honest && hintLevel < 4) { honestAll = false; guessed++; }
     const events = recordAttempt(game.save, {
       at: Date.now(), day: game.day, skill: item.skill, source: item.source, correct, confidence,
-      hintLevel, honest, timeMs: Math.round(timeMs), ...(fast ? { fast: true } : {}), tag: item.choices[picked].tag, mode: block === 'new' ? 'practice' : block === 'extra' ? 'extra' : block === 'boss' ? 'boss' : block === 'warmup' ? 'warmup' : block === 'repair' ? 'practice' : 'mixed',
+      hintLevel, honest, timeMs: Math.round(timeMs), ...(fast ? { fast: true } : {}), tag: item.choices[picked].tag, mode: MODE,
     });
     lastCorrect = correct; phase = correct || hintLevel >= 4 ? 'feedback' : 'retry';
     if (!correct) struck = [...struck, picked];
@@ -292,22 +334,63 @@
       if (battle) enemyTurn();
       if (block !== 'repair') game.save.repairShop.push({ source: item.source, skill: item.skill, tag: item.choices[picked].tag, addedDay: game.day });
     }
-    for (const ev of events) {
-      if (ev === 'learned') { react('learned'); audio.play('levelup'); floatText('ҮЙРЕНДІ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#3ff0ff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#3ff0ff', '#b58cff'], 70, 10); W.world?.celebrate(); bitText = `«${skillTitle(item.skill).kz}» — үйрендің! Ертең тексереміз: өтсең, кристалға айналады.`; bitMood = 'wow'; }
-      if (ev === 'crystal') { react('crystal'); audio.play('crystal'); floatText('КРИСТАЛЛ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#b58cff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#b58cff', '#ffffff', '#3ff0ff'], 90, 11); bitText = `«${skillTitle(item.skill).kz}» кристалға айналды — енді бұл тақырып сенікі!`; bitMood = 'wow'; }
-      if (ev === 'learned' || ev === 'crystal') {
-        const rec = dayRec(), add = addMasteryBonus(rec, `${ev === 'crystal' ? 'Проверка через день пройдена' : 'Тема освоена'}: ${skillTitle(item.skill).ru}`);
-        if (add) {
-          settleDay(rec, plan, game.save.settings.extraTo);
-          bitText += ` Сыйлық: +${add} минут ойын!`;
-          // без отдельного окна: бонус войдёт в единую сцену награды в конце шага (src/lib/reward.svelte.ts)
-          queueReward({ minutes: add, title: 'Сыйлық!', why: `${ev === 'crystal' ? 'Ертеңгі тексеру өтті' : 'Тақырып үйренілді'}: ${skillTitle(item.skill).kz}`, today: rec.minutesToday, weekend: rec.minutesWeekend });
-        }
-      }
-      if (ev === 'review_failed') { bitText = 'Бұл тақырып сәл ұмытылған екен — қайта жаттығамыз, қорқынышты емес.'; bitMood = 'think'; }
-    }
+    applyEvents(events, item.skill);
     if (act !== 'none' && !events.some(e => e === 'learned' || e === 'crystal')) rushSay(act, correct);
     twin = hintLevel >= 4;
+    persist(); showBit();
+  }
+
+  // Ход «Глитчтің қатесі»: одно касание решает ход. Верно — контрудар; неверно — атака врага, неверная строка открыта.
+  // Идёт в модель знаний как обычная попытка навыка (флаг kind: 'glitch'); в мастерскую не попадает: это разбор чужой ошибки, а не своё решение.
+  async function glitchTap(k: number, ev?: MouseEvent) {
+    if (!glitch || !item || glPick !== null || locked || busy || phase !== 'answer') return;
+    const g = glitch, sk = item.skill;
+    const timeMs = performance.now() - startAt;
+    const correct = k === g.bad;
+    const follow = g.follows.includes(k);
+    glPick = k; phase = 'feedback'; lastCorrect = correct;
+    const honest = isHonest(timeMs, 0);
+    // читать нужно и условие, и все строки: порог «слишком быстро» растёт с их длиной
+    const fast = isTooFast(timeMs, stemChars(item.kz) + g.lines.join('').length, 0);
+    streak = nextStreak(streak, fast);
+    const act = fast ? rushAction(streak) : 'none';
+    answered++; firstTries++; if (correct) firstRight++;
+    if (!honest) { honestAll = false; guessed++; }
+    const rec: Attempt & { kind: 'glitch' } = {
+      at: Date.now(), day: game.day, skill: sk, source: item.source, correct, hintLevel: 0, honest, timeMs: Math.round(timeMs),
+      ...(fast ? { fast: true } : {}), tag: correct ? 'correct' : follow ? g.tag : 'glitch_miss', mode: MODE, kind: 'glitch',
+    };
+    const events = recordAttempt(game.save, rec);
+    await tick();
+    const at = ev?.currentTarget ? centerOf(ev.currentTarget as HTMLElement) : sceneCenter(0.5);
+    if (correct) {
+      combo++;
+      const xp = 10 + Math.min(combo - 1, 5) * 2;
+      game.save.xp += xp;
+      audio.play('crit'); if (combo > 1) audio.play('combo', { combo });
+      if (combo === 3 || combo === 6) react('combo'); else react('correct', 0.4);
+      sparksAt(at.x, at.y, ['#ff6fc6', '#3ff0ff', '#ffc94a'], 50);
+      floatText(`+${xp} XP`, at.x, at.y - 20, '#ffc94a', true);
+      if (combo >= 3) floatText(`КОМБО ×${combo}`, sceneCenter(0.25).x, sceneCenter(0.25).y, '#3ff0ff', true);
+      bitText = (!honest && !fast ? 'Дұрыс, бірақ тым жылдам! Асықпа. ' : '') + `${GLITCH_SAY.right} ${shortMistake(g.tag)}`;
+      bitMood = combo >= 3 ? 'wow' : 'happy';
+      const sup = combo % 3 === 0;
+      say(sup ? 'СУПЕР СОҚҚЫ!' : 'Қарсы соққы!');
+      hit(sup, true);   // контрудар всегда с «критом»: ребёнок поймал Глитча
+      twin = false;
+    } else {
+      combo = 0;
+      game.save.xp += 2;
+      audio.play('wrong'); flash('#ff9a6b'); react('wrong', 0.6);
+      cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake');
+      bitText = (!honest && !fast ? 'Тым жылдам! Асықпа. ' : '') + `${follow ? GLITCH_SAY.followLine : GLITCH_SAY.wrongLine} ${GLITCH_SAY.mistake} ${mistakeText(g.tag).kz}`;
+      bitMood = 'think';
+      explain();
+      enemyTurn();
+      twin = true;   // реванш: обычная задача того же шаблона с новыми числами
+    }
+    applyEvents(events, sk);
+    if (act !== 'none' && !events.some(e => e === 'learned' || e === 'crystal')) rushSay(act, correct);
     persist(); showBit();
   }
 
@@ -351,7 +434,7 @@
     if (idx >= total || learnedNow) return finish();
     nextItem();
     // новый вопрос виден сразу: перелистывание, номер, ввод закрыт 0.7 с
-    locked = true; say(twin ? 'Реванш!' : isRushTwin ? 'Егіз есеп!' : `Сұрақ ${idx + 1}/${total}`); audio.play('click');
+    locked = true; say(twin ? 'Реванш!' : isRushTwin ? 'Егіз есеп!' : glitch ? GLITCH_SAY.title : `Сұрақ ${idx + 1}/${total}`); audio.play('click');
     cardEl?.closest('.body')?.scrollTo({ top: 0 });
     setTimeout(() => { startAt = performance.now(); if (chk) beginCheck(); else locked = false; }, 700);
   }
@@ -478,6 +561,8 @@
           <button class="btn go" onclick={endCheck}>Оқыдым</button>
         {/if}
       </div>
+    {:else if glitch}
+      <GlitchTurn turn={glitch} {locked} picked={glPick} onpick={glitchTap} />
     {:else}
     <div class="choices" class:long={maxLen > 5} class:xlong={maxLen > 24 || chunk > 11} class:wide={chunk >= 10} class:xxlong={maxLen > 60} class:locked>
       {#each item.choices as c, i}
@@ -538,6 +623,8 @@
   {#snippet footer()}
     {#if result}
       <button class="btn primary big grow" onclick={() => go({ name: block === 'boss' ? 'map' : 'hub' })}>{block === 'boss' ? 'Картаға' : 'Кемеге'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
+    {:else if item && glitch && phase === 'answer'}
+      <button class="btn big grow wait" onclick={() => { toast(GLITCH_SAY.ask); audio.play('click'); }}>{GLITCH_SAY.wait}</button>
     {:else if item && phase === 'answer'}
       <button class="ibtn lamp" onclick={hint} disabled={hintLevel >= 4 || locked} aria-label="Бит сканері — кеңес {hintLevel}/4">
         <Icon name="bulb" fill="var(--gold)" /><b class="hl num">{hintLevel}/4</b>
