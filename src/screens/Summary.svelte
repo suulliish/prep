@@ -7,6 +7,7 @@
   import { game, go, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { completeBlock, dayRec } from '../lib/session.svelte';
+  import { showReward } from '../lib/reward.svelte';
   import { skillTitle } from '../engine/items';
   import { audio } from '../lib/audio';
   import { sparksAt } from '../ui/fx.svelte';
@@ -32,8 +33,10 @@
 
   function finish() {
     dayRec().hard = note ?? undefined;
+    const before = dayRec().minutesToday;
     completeBlock('summary');
     const rec = dayRec();
+    void showReward({ minutes: rec.minutesToday - before, title: 'Күн қорытындысы!', why: 'Бүгінгі жұмыс есептелді', today: rec.minutesToday, weekend: rec.minutesWeekend });
     finished = true; audio.play('chest'); react('day');
     count(rec.minutesToday, v => (shownToday = v)); count(rec.minutesWeekend, v => (shownWeekend = v));
     sparksAt(innerWidth / 2, innerHeight / 2, ['#ffc94a', '#3ff0ff', '#ff4fb8'], 90, 11);
@@ -88,12 +91,12 @@
 
 <style>
   .say { padding: 0 4px 6px; width: min(460px, 100%); }
-  .rewards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .rewards { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
   .rw { display: grid; justify-items: center; gap: 2px; padding: 12px 6px; border-radius: 16px; background: var(--deep); border: 3px solid var(--outline); animation: pop-in .4s var(--ease-out) both; }
   .rw b { font-size: 40px; line-height: 1; text-shadow: 0 3px 0 var(--outline); }
   .rw.gold b { color: var(--gold); }
   .rw small { color: var(--dim); font-size: 13px; }
-  .stats3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stats3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .stats3 div { display: grid; justify-items: center; gap: 2px; padding: 10px 4px; background: var(--deep); border: 3px solid var(--outline); border-radius: 14px; }
   .stats3 b { font-size: 26px; color: var(--code); text-shadow: 0 2px 0 var(--outline); }
   .stats3 small { color: var(--dim); font-size: 12px; }

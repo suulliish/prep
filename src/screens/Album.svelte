@@ -110,7 +110,7 @@
 {/if}
 
 <style>
-  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 5px; border-radius: 16px; background: var(--deep); border: 3px solid var(--outline); }
+  .seg { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; padding: 5px; border-radius: 16px; background: var(--deep); border: 3px solid var(--outline); }
   .seg button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; font: 800 15px var(--disp); color: var(--dim); background: none; border: 0; border-radius: 11px; cursor: pointer; }
   .seg button.on { color: var(--ink); background: var(--panel); box-shadow: inset 0 -3px 0 var(--panel-2), 0 0 0 2px var(--outline); }
   .cnt { min-width: 20px; height: 20px; padding: 0 5px; display: grid; place-items: center; font: 900 12px var(--disp); color: var(--outline); background: var(--gold); border-radius: 10px; border: 2px solid var(--outline); }

@@ -14,6 +14,7 @@
   import { bankFor, bankToItem } from '../engine/bank';
   import { recordAttempt, isDone } from '../engine/progress';
   import { isHonest, addMasteryBonus, settleDay, taught } from '../engine/planner';
+  import { showReward } from '../lib/reward.svelte';
   import { audio } from '../lib/audio';
   import { currentWorld, totalStars, STAR_REWARDS } from '../lib/look';
   import { react } from '../lib/voice';
@@ -252,8 +253,9 @@
         const rec = dayRec(), add = addMasteryBonus(rec, `${ev === 'crystal' ? 'Проверка через день пройдена' : 'Тема освоена'}: ${skillTitle(item.skill).ru}`);
         if (add) {
           settleDay(rec, plan, game.save.settings.extraTo);
-          setTimeout(() => { audio.play('chest'); floatText(`СЫЙЛЫҚ +${add} мин`, sceneCenter(0.42).x, sceneCenter(0.42).y, '#ffc94a', true); }, 1200);
           bitText += ` Сыйлық: +${add} минут ойын!`;
+          // большая плашка «Қабылдау»: награду нельзя не заметить
+          void showReward({ minutes: add, title: 'Сыйлық!', why: `${ev === 'crystal' ? 'Ертеңгі тексеру өтті' : 'Тақырып үйренілді'}: ${skillTitle(item.skill).kz}`, today: rec.minutesToday, weekend: rec.minutesWeekend });
         }
       }
       if (ev === 'review_failed') { bitText = 'Бұл тақырып сәл ұмытылған екен — қайта жаттығамыз, қорқынышты емес.'; bitMood = 'think'; }
@@ -335,6 +337,7 @@
     }
     busy = false; cine = false;
     const got = dayRec().minutesToday - before, stars = counted ? starsOf() : 0;
+    if (got > 0) await showReward({ minutes: got, title: b === 'extra' ? 'Қосымша миссия!' : 'Қадам аяқталды!', why: TITLE[b], today: dayRec().minutesToday, weekend: dayRec().minutesWeekend });
     if (stars) {
       const r = dayRec(); (r.stars ??= {})[b] = Math.max(r.stars[b] ?? 0, stars);
       if (b === 'new' && skills[0]) (game.save.levelStars ??= {})[skills[0]] = Math.max(game.save.levelStars[skills[0]] ?? 0, stars);
@@ -386,6 +389,8 @@
       {#if result.note}<p class="paper note">{result.note}</p>{/if}
     </div>
   {:else if item}
+    {@const maxLen = Math.max(...item.choices.map(c => c.text.length))}
+    <div class="qa" class:fit={phase !== 'feedback' && !gapOpen}>
     <div class="q-sticky">
       {#key idx + (twin ? 1000 : 0)}
         <div class="paper q" class:locked bind:this={cardEl}>
@@ -397,8 +402,7 @@
       {/key}
     </div>
 
-    {@const maxLen = Math.max(...item.choices.map(c => c.text.length))}
-    <div class="choices" class:long={maxLen > 5} class:xlong={maxLen > 10} class:locked>
+    <div class="choices" class:long={maxLen > 5} class:xlong={maxLen > 24} class:locked>
       {#each item.choices as c, i}
         <button bind:this={choiceEls[i]} class="ans" style="animation-delay:{locked ? i * 70 : 0}ms"
           class:sel={picked === i && phase === 'answer'}
@@ -411,6 +415,7 @@
           <span class="ct">{c.text}</span>
         </button>
       {/each}
+    </div>
     </div>
 
     {#if showSol || (phase === 'feedback' && !lastCorrect)}
@@ -479,7 +484,7 @@
   .gq { font-weight: 800; margin-top: 8px; }
   .unlock { margin: 0; padding: 10px 12px; border-radius: 14px; background: linear-gradient(180deg, #ffe07a, #f2b632); color: #3a2400; border: 3px solid var(--outline); font-weight: 800; text-align: center; animation: flipIn .5s; }
   .next { margin: 0; color: var(--gold); font: 800 15px var(--disp); text-align: center; }
-  .gopts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+  .gopts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
   .gopts .ans { justify-content: center; font: 900 18px var(--disp); }
   .wv { display: flex; gap: 3px; }
   .wv i { width: 10px; height: 10px; border-radius: 3px; background: #0b1030; border: 2px solid var(--outline); }
@@ -490,7 +495,12 @@
   @keyframes bannerIn { 0% { opacity: 0; transform: scale(.4) translateY(10px); } 18% { opacity: 1; transform: scale(1.15); } 30% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-8px); } }
   .say { padding: 0 4px 4px; width: min(480px, 100%); animation: pop-in .25s var(--ease-out) both; }
   .say :global(.bubble) { font-size: 14px !important; line-height: 1.35; padding: 7px 10px !important; max-height: 5.2em; overflow: hidden; }
-  .q-sticky { position: sticky; top: -14px; z-index: 3; margin: -14px -14px 0; padding: 12px 14px 8px; background: linear-gradient(180deg, var(--panel) 85%, transparent); }
+  /* вопрос и ВСЕ варианты видны вместе: вопрос прокручивается внутри своей рамки, варианты закреплены внизу панели */
+  .qa { display: flex; flex-direction: column; gap: 10px; }
+  .qa.fit { flex: 1 1 auto; min-height: 0; }
+  .qa.fit .q-sticky { flex: 0 1 auto; min-height: min(96px, 34%); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+  .qa .choices { flex: none; }
+  .q-sticky { min-width: 0; }
   .q { animation: flipIn .45s var(--ease-out) both; }
   @keyframes flipIn { from { transform: perspective(700px) rotateX(-70deg) translateY(-10px); opacity: 0; } to { transform: none; opacity: 1; } }
   .choices.locked .ans { animation: pop-in .3s var(--ease-out) both; }
@@ -524,14 +534,15 @@
   .fig :global(svg) { width: min(100%, 420px); height: auto; max-height: 260px; }
   .fig img { max-width: 100%; max-height: 260px; display: block; }
 
-  .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: 8px; }
-  .choices:not(.xlong) .ct { white-space: nowrap; }
-  .choices.long { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
-  .choices.xlong { grid-template-columns: 1fr; }
-  .ct { overflow-wrap: anywhere; line-height: 1.2; }
-  .choices.long .ans { font-size: 16px; gap: 8px; padding: 8px 10px; }
-  .choices.long:not(.xlong) .ct { white-space: nowrap; }
-
+  .choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .choices .ans { min-width: 0; min-height: 48px; padding: 6px 10px; gap: 8px; font-size: clamp(15px, 4.4vw, 19px); }
+  .choices .ans .l { width: 26px; height: 26px; font-size: 14px; }
+  .choices .ans:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  @media (max-height: 720px) { .choices .ans { min-height: 42px; padding: 4px 8px; } .choices .ans .l { width: 24px; height: 24px; } .choices { gap: 6px; } .qa { gap: 8px; } }
+  .choices.long .ans { font-size: clamp(14px, 4vw, 17px); }
+  .choices.xlong { grid-template-columns: minmax(0, 1fr); }
+  .choices.xlong .ans { font-size: clamp(14px, 3.9vw, 16px); }
+  .ct { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
   .sol summary { cursor: pointer; font: 900 15px var(--disp); color: var(--code-deep); }
   .sol p { margin-top: 8px; }
   .sol.rule summary { color: var(--gold-deep); }

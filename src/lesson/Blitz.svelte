@@ -83,7 +83,7 @@
   .bar i.prog { background: var(--ok); transition: width .3s var(--ease-out); }
   .combo { color: var(--paper-dim); } .combo.on { color: var(--code-deep); }
   .q { font-size: 26px; font-weight: 800; text-align: center; }
-  .ch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ch { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
   .ch .ans { justify-content: center; }
   .ch .ans.wrong { animation: shake .35s; }
   .stars { display: flex; gap: 8px; font-size: 48px; }

@@ -9,6 +9,7 @@
   import Intro from './screens/Intro.svelte';
   import FxLayer from './ui/FxLayer.svelte';
   import Toast from './ui/Toast.svelte';
+  import RewardCard from './ui/RewardCard.svelte';
   import Hub from './screens/Hub.svelte';
   import Session from './screens/Session.svelte';
   import Lesson from './screens/Lesson.svelte';
@@ -50,6 +51,7 @@
 </div>
 <FxLayer />
 <Toast />
+<RewardCard />
 
 <style>
   .world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; transition: filter .5s, opacity .5s; touch-action: none; }

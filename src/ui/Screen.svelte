@@ -65,6 +65,7 @@
   .tall .window { height: clamp(190px, 33dvh, 400px); }
   .short .window { height: clamp(150px, 27dvh, 300px); }
   .strip .window { height: clamp(130px, 21dvh, 230px); }
+  @media (max-height: 700px) { .strip .window { height: clamp(96px, 17dvh, 130px); } }
 
   /* катсцена */
   .cinema .top, .cinema .sheet { display: none; }
@@ -74,7 +75,7 @@
   @keyframes bars { from { transform: scaleY(0); } }
 
   .sheet { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0; width: min(640px, 100%); margin: 0 auto; overflow: hidden; }
-  .body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; touch-action: pan-y; padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 12px; }
   .foot { flex: none; padding: 10px 14px 12px; border-top: 3px solid var(--outline); background: linear-gradient(180deg, #1a2f96, var(--panel-2)); display: flex; gap: 8px; align-items: stretch; }
   .foot :global(.btn) { margin-bottom: 4px; }
 

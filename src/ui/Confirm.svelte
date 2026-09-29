@@ -21,7 +21,7 @@
   .sheet { position: fixed; z-index: calc(var(--z-modal) + 1); left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); transform: translateX(-50%);
     width: min(460px, calc(100% - 20px)); display: grid; gap: 12px; text-align: center; animation: up .25s var(--ease-out) both; }
   h2 { font-size: 22px; }
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
   @keyframes f { from { opacity: 0; } }
   @keyframes up { from { transform: translate(-50%, 30px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 </style>

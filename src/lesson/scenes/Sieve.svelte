@@ -20,7 +20,7 @@
 </div>
 
 <style>
-  .sv { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; max-width: 420px; margin: 0 auto; padding: 6px 0; }
+  .sv { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; max-width: 420px; margin: 0 auto; padding: 6px 0; }
   .c { position: relative; aspect-ratio: 1; display: grid; place-items: center; font-size: clamp(13px, 3.6vw, 17px); background: var(--deep); border: 2px solid var(--line); border-radius: 6px; transition: all .35s; }
   .c.out { opacity: .3; }
   .c.out::after, .c.hit::after { content: ''; position: absolute; left: 12%; right: 12%; top: 50%; height: 2px; background: var(--glitch); transform: rotate(-35deg); }

@@ -210,7 +210,7 @@
 
   .stack { flex: 1; display: grid; gap: 8px; }
   .stack .btn { gap: 10px; }
-  .menu { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .mi { position: relative; display: grid; justify-items: center; gap: 2px; padding: 6px 2px 5px; min-height: 56px; font: 800 12px var(--disp); color: var(--ink);
     background: transparent; border: 0; border-radius: 12px; cursor: pointer; }
   .mi:active { transform: translateY(2px); }
