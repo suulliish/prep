@@ -311,7 +311,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   if (quality === 'high') {
     composer = new EffectComposer(renderer);
     renderPass = new RenderPass(scene, camera); composer.addPass(renderPass);
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 0.75, 0.45, 0.55));
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 0.6, 0.4, 0.95));
     composer.addPass(new OutputPass());
   }
 

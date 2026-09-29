@@ -7,7 +7,12 @@ import { dedup, prune, quantize, meshopt, reorder, resample, flatten, join, merg
 import { MeshoptEncoder, MeshoptDecoder } from 'meshoptimizer';
 import fs from 'node:fs';
 import path from 'node:path';
-import { SETS } from './manifest.mjs';
+import { SETS as BASE_SETS } from './manifest.mjs';
+
+// наборы миров лежат в sets/*.mjs (каждый файл экспортирует SETS)
+const extra = [];
+for (const f of fs.readdirSync(new URL('./sets/', import.meta.url)).filter(x => x.endsWith('.mjs')).sort()) extra.push(...(await import(`./sets/${f}`)).SETS);
+const SETS = [...BASE_SETS, ...extra];
 
 const SRC = process.env.ASSET_SRC;
 if (!SRC) { console.error('Задайте ASSET_SRC — папку с исходниками (см. manifest.mjs).'); process.exit(1); }

@@ -1,6 +1,7 @@
-// Проверка боя без входа и экранов (только для разработки): battle.html?world=0&spot=0&outfit=cyan&mob=0&boss=0
+// Проверка боя без входа и экранов (только для разработки): battle.html?world=0&layout=0&outfit=cyan&mob=0&boss=0 (layout — уголок 0..5)
 // В консоли: __w.heroAttack(), __w.heroAttack(true), __w.heroAttack(false,true), __w.enemyAttack(), __w.killMob(), __w.openChest()
 import { createWorld } from '../three/world';
+import { spotIndex } from '../three/spots';
 // @ts-ignore — модуль .mjs без типов
 import { WORLDS, OUTFITS } from '../../content/worlds.mjs';
 
@@ -12,7 +13,11 @@ const k = +(q.get('world') || 0), W = WORLDS[k];
 w.setMode('battle'); w.setTheme(W.sky, W.fog); w.setArena(k, W.isle[0], W.isle[1]);
 const o = OUTFITS.find((x: any) => x.id === (q.get('outfit') || 'cyan')) ?? OUTFITS[0];
 w.setOutfit(o.jacket, o.dark, o.visor, o.id);
-w.setSpot(q.get('spotSeed') || 'seed' + (q.get('spot') || 0));
+// layout=0..5 — нужный уголок (подбираем строку, которая даёт этот номер)
+const want = q.get('layout') ?? q.get('spot');
+let seed = q.get('spotSeed') || 'seed';
+if (want != null) for (let i = 0; i < 500; i++) { const c = 'k' + i; if (spotIndex(c) === +want) { seed = c; break; } }
+w.setSpot(seed);
 addEventListener('resize', () => w.resize());
 (async () => {
   document.getElementById('t')!.textContent = `${W.ru} · ${o.id}`;

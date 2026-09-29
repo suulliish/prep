@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { Actor, createHero, createMonster, dress, type Monster, HERO_HEIGHT } from './actor';
 import { Kit } from './assets';
-import { buildIsland, loadIslandKits, type IslandKits } from './island3d';
+import { buildIsland, loadIslandKits } from './island3d';
 import { DEFAULT_LOOK, type HeroLook } from './looks';
 import { pickEnemy } from './roster';
 import { spotLight, spotIndex } from './spots';
@@ -35,17 +35,17 @@ export function createArena(d: Deps) {
 
   // ---------- остров ----------
   const ground = new THREE.Group(); scene.add(ground);
-  let worldK = 0, colA = 0x5ce39c, colB = 0x2f8f5b, spotV = 0, kits: IslandKits | null = null;
+  let worldK = 0, colA = 0x5ce39c, colB = 0x2f8f5b, spotV = 0;
   const lanterns = [new THREE.PointLight(0xffb84a, 0, 9), new THREE.PointLight(0xffb84a, 0, 9)];
   lanterns[0].position.set(-5, 2, 1.5); lanterns[1].position.set(5, 2, 1.5); lanterns.forEach(l => scene.add(l));
-  const kitsP = loadIslandKits().then(k => (kits = k));
   let groundP: Promise<void> = Promise.resolve(), groundToken = 0;
   function buildGround() {
     const my = ++groundToken;
-    groundP = kitsP.then(k => {
+    const wk = worldK, a = colA, v = spotV;
+    groundP = loadIslandKits(wk).then(k => {
       if (my !== groundToken) return;
       while (ground.children.length) ground.remove(ground.children[0]);
-      ground.add(buildIsland(k, worldK, colA, colB, spotV));
+      ground.add(buildIsland(k, wk, a, v));
       const L = spotLight(spotV);
       hemi.color.setHex(L.hemiSky); hemi.groundColor.setHex(L.hemiGround); hemi.intensity = L.hemi * 1.5;
       sun.color.setHex(L.sunColor); sun.intensity = L.sun * 1.35; sun.position.set(...L.sunPos);
@@ -385,7 +385,7 @@ export function createArena(d: Deps) {
       neutral();
       // 2. сундук падает с неба
       const C = new THREE.Vector3(0.9, 0, 1.3);
-      const shipKit = (kits ?? await kitsP).ship as Kit;
+      const shipKit = await Kit.load('ship');
       const chest = new THREE.Group(); chest.position.set(C.x, 9, C.z); scene.add(chest);
       const cm = shipKit.get('chest', { height: 1.2, ground: true }); cm.rotation.y = -0.5;
       const chestA = new Actor(cm, shipKit.clips); chest.add(chestA.g);
