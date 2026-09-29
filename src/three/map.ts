@@ -10,7 +10,7 @@ export interface MapLabel { i: number; x: number; y: number; on: boolean }
 
 interface Deps {
   skyMat: THREE.Material; starGeo: THREE.BufferGeometry; starMat: THREE.Material;
-  km: number; dressHero: (g: THREE.Object3D) => void;
+  km: number; dressHero: (h: ReturnType<typeof makeHero>) => void;
 }
 
 // ---------- общие строители (карта и боевая локация) ----------
@@ -155,7 +155,7 @@ export function createMap(d: Deps) {
   const shipLight = new THREE.PointLight(0xffb84a, 1.2, 6); shipLight.position.set(0, 1, 0); ship.add(shipLight);
   ship.scale.setScalar(0.85);
 
-  const hero = makeHero(); hero.g.scale.setScalar(0.62); d.dressHero(hero.g); scene.add(hero.g);
+  const hero = makeHero(); hero.g.scale.setScalar(0.62); d.dressHero(hero); scene.add(hero.g);
   const DOCK = new THREE.Vector3(-3.9, 0.9, 3.4);   // где корабль стоит у острова
   const STAND = new THREE.Vector3(1.2, 0.5, 2.0);  // где герой стоит на острове
   let heroOnShip = false;

@@ -25,12 +25,12 @@ export function codeEnergy(skills) {
 
 // Путь наград (как путь трофеев): вехи по числу кристаллов (меңгерілген тем). Костюм — только внешний вид.
 export const OUTFITS = [
-  { id: 'cyan', kz: 'Кодер', need: 0, jacket: 0x22b8cc, dark: 0x137e8f, visor: 0x3ff0ff },
-  { id: 'gold', kz: 'Алтын', need: 3, jacket: 0xf2b632, dark: 0xa8741a, visor: 0xfff2a0 },
-  { id: 'pink', kz: 'Неон', need: 6, jacket: 0xff4fb8, dark: 0xa0226f, visor: 0x3ff0ff },
-  { id: 'forest', kz: 'Орман', need: 10, jacket: 0x3fae5c, dark: 0x1f6b33, visor: 0xc6ff7a },
-  { id: 'lava', kz: 'Жалын', need: 15, jacket: 0xe8492a, dark: 0x8a2412, visor: 0xffc94a },
-  { id: 'frost', kz: 'Аяз', need: 20, jacket: 0xdff4ff, dark: 0x7fb8d9, visor: 0x7ae8ff },
-  { id: 'void', kz: 'Бос кеңістік', need: 30, jacket: 0x2a1f4d, dark: 0x120a26, visor: 0xb58cff },
-  { id: 'crystal', kz: 'Кристалл', need: 45, jacket: 0xb58cff, dark: 0x5a3bb0, visor: 0xffffff },
+  { id: 'cyan', kz: 'Кодер', need: 0, jacket: 0x22b8cc, dark: 0x137e8f, visor: 0x3ff0ff, gear: 'визор · кілт-қылыш' },
+  { id: 'gold', kz: 'Алтын', need: 3, jacket: 0xf2b632, dark: 0xa8741a, visor: 0xfff2a0, gear: 'тәж · үлкен қылыш · қалқан · плащ' },
+  { id: 'pink', kz: 'Неон', need: 6, jacket: 0xff4fb8, dark: 0xa0226f, visor: 0x3ff0ff, gear: 'құлаққап · катана · плащ' },
+  { id: 'forest', kz: 'Орман', need: 10, jacket: 0x3fae5c, dark: 0x1f6b33, visor: 0xc6ff7a, gear: 'капюшон · балта · қалқан · плащ' },
+  { id: 'lava', kz: 'Жалын', need: 15, jacket: 0xe8492a, dark: 0x8a2412, visor: 0xffc94a, gear: 'мүйізді дулыға · от қылыш · плащ' },
+  { id: 'frost', kz: 'Аяз', need: 20, jacket: 0xdff4ff, dark: 0x7fb8d9, visor: 0x7ae8ff, gear: 'мұз тәж · найза · қалқан · плащ' },
+  { id: 'void', kz: 'Бос кеңістік', need: 30, jacket: 0x2a1f4d, dark: 0x120a26, visor: 0xb58cff, gear: 'капюшон · орақ · плащ · жарқыл' },
+  { id: 'crystal', kz: 'Кристалл', need: 45, jacket: 0xb58cff, dark: 0x5a3bb0, visor: 0xffffff, gear: 'кристалл тәж · қылыш · қалқан · жарқыл' },
 ];

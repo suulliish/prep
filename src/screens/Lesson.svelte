@@ -71,6 +71,7 @@
   const step = $derived(steps[i]);
   // объяснения нельзя пролистать вслепую: «дальше» заряжается на время чтения (GAME_LOOP.md 10)
   const gate = new ReadGate();
+  let cine = $state(true);   // катсцена входа и победы — панель урока скрыта
   const frameText = (s: any, k: number) => [s.frames[k]?.math, s.frames[k]?.kz].join(' ');
   const fr = $derived(step.type === 'example' ? step.frames[frame] : null);
 
@@ -90,7 +91,7 @@
   }
   onMount(() => {
     W.dim = false; W.world?.setMode('battle'); W.world?.bitMood('idle');
-    (W.world?.arrive() ?? Promise.resolve()).then(() => W.world?.spawnMob(maxHp, currentWorld().mob));
+    (W.world?.arrive() ?? Promise.resolve()).then(() => W.world?.spawnMob(maxHp, currentWorld().mob)).then(() => (cine = false));
     audio.setMood('focus'); enter();
     return () => { clearTimeout(skipTimer); W.world?.clearMob(); };
   });
@@ -119,9 +120,11 @@
     if (step.type === 'final') {
       if (!ok) { audio.play('wrong'); flash('#ff9a6b'); W.world?.enemyAttack(); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake'); return; }
       won = true; hp = 0; audio.play('crit'); react('win');
-      W.world?.heroAttack(true);
+      await W.world?.heroAttack(true);
+      cine = true;
       await W.world?.killMob();
-      audio.play('chest'); W.world?.openChest(); W.world?.celebrate(0xffc94a); W.world?.bitMood('happy');
+      audio.play('chest'); await W.world?.openChest(); W.world?.bitMood('happy');
+      cine = false;
       audio.play('levelup'); floatText('ЖЕҢІС!', sceneCenter(0.28).x, sceneCenter(0.28).y, '#ffc94a', true);
       sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#ffc94a', '#3ff0ff', '#b58cff'], 90, 10);
       reward(20, true); return;
@@ -160,7 +163,7 @@
   });
 </script>
 
-<Screen scene="short" back={() => (askExit = true)}>
+<Screen scene="short" cinema={cine} back={() => (askExit = true)}>
   {#snippet head()}
     <div class="hd">
       <div class="t1"><b>{target}</b>{#if earned}<span class="xp num">+{earned} XP</span>{/if}</div>

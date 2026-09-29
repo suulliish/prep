@@ -8,6 +8,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { makeHero, makeBit, makeMob as buildMob, addShipDetails, waveFlag } from './characters';
 import { createMap, type MapIsle, type MapLabel } from './map';
 import { createArena } from './arena';
+import { equip, animateGear, GEAR, type Equipped } from './gear';
 
 export type CamMode = 'hub' | 'battle' | 'portal' | 'map' | 'hero';
 export type BitMood = 'idle' | 'happy' | 'wow' | 'think' | 'sad';
@@ -18,7 +19,7 @@ export interface World {
   heroWalk(x: number, z: number): Promise<void>;
   /** Удар героя в бою; sup — суперудар. Возвращает, повержен ли враг. */
   heroAttack(crit?: boolean, sup?: boolean): Promise<boolean>;
-  spawnMob(hp: number, kind?: number, boss?: boolean): void;
+  spawnMob(hp: number, kind?: number, boss?: boolean): Promise<void>;
   /** Ход врага при ошибке: снаряд и щит героя (урона нет). */
   enemyAttack(): Promise<void>;
   /** Герой выходит из портала в локацию. */
@@ -37,7 +38,7 @@ export interface World {
   /** Мир: цвета неба [верх, середина, низ, сияние] (RGB 0..1) и тумана — плавный переход. */
   setTheme(sky: number[][], fog: number): void;
   /** Костюм героя (путь наград). */
-  setOutfit(jacket: number, dark: number, visor: number): void;
+  setOutfit(jacket: number, dark: number, visor: number, id?: string): void;
   /** 3D-карта миров (режим 'map'): острова, текущий мир, выбор касанием, перелёт корабля с героем. */
   mapSetup(isles: MapIsle[], current: number): void;
   mapFocus(i: number): void;
@@ -218,7 +219,13 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     if (!slot) return;
     if (!own.has(m)) { const c = m.clone(); own.set(m, c); outfitMats[slot].push(c); }
     mesh.material = own.get(m)!; });
-  dressHero(hero.g);
+  // скины (src/three/gear.ts): у каждого костюма своя экипировка; одеваются все герои — палуба, карта, бой
+  type Hero = ReturnType<typeof makeHero>;
+  const worn = new Map<Hero, Equipped>();
+  let gearNow = GEAR.cyan, colorsNow = { jacket: 0x22b8cc, dark: 0x137e8f, visor: 0x3ff0ff };
+  function wear(h: Hero) { const e = equip(h, gearNow, colorsNow); h.blade = e.blade as typeof h.blade; worn.set(h, e); }
+  const dress = (h: Hero) => { dressHero(h.g); if (outfitNow) paintOutfit(...outfitNow); wear(h); };
+  dressHero(hero.g); wear(hero);
   function paintOutfit(jacket: number, dark: number, visor: number) {
     outfitMats.jacket.forEach(m => m.color.setHex(jacket)); outfitMats.dark.forEach(m => m.color.setHex(dark));
     outfitMats.visor.forEach(m => { m.color.setHex(visor); m.emissive?.setHex(visor); });
@@ -289,8 +296,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   }
 
   // ---------- 3D-карта миров (своя сцена) ----------
-  const map = createMap({ skyMat, starGeo, starMat, km, dressHero: g => { dressHero(g); if (outfitNow) paintOutfit(...outfitNow); } });
-  const arena = createArena({ skyMat, starGeo, starMat, km, dressHero: g => { dressHero(g); if (outfitNow) paintOutfit(...outfitNow); } });
+  const map = createMap({ skyMat, starGeo, starMat, km, dressHero: dress });
+  const arena = createArena({ skyMat, starGeo, starMat, km, dressHero: dress, animHero: (h, t, w) => { const e = worn.get(h); if (e) animateGear(e, t, w); } });
 
   // ---------- Постобработка ----------
   let composer: EffectComposer | null = null;
@@ -307,7 +314,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     hub: { target: new THREE.Vector3(0, 2.0, 0), radius: 25, phi: 1.02, theta: 0.9 },
     battle: { target: new THREE.Vector3(0.2, 1.2, 0.6), radius: 11, phi: 1.12, theta: 1.62 },
     portal: { target: new THREE.Vector3(4.6, 2.2, 0), radius: 9, phi: 1.25, theta: 0.15 },
-    hero: { target: new THREE.Vector3(-2, 1.3, 0.6), radius: 9, phi: 1.3, theta: 0.55 }, // портрет героя на палубе
+    hero: { target: new THREE.Vector3(-2, 1.9, 0.6), radius: 11, phi: 1.3, theta: 0.55 }, // портрет героя на палубе
   };
   let mode: CamMode = 'hub';
   const cam = { target: CAM.hub.target.clone(), radius: CAM.hub.radius, phi: CAM.hub.phi, theta: CAM.hub.theta };
@@ -338,7 +345,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     camera.aspect = w / h; camera.updateProjectionMatrix(); map.resize(w, h); arena.resize(w, h);
     const narrow = w / h < 0.8;
     const side = isSide(w, h);
-    CAM.hub.radius = narrow ? 30 : side ? 23 : 25; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 9.5 : 8;
+    CAM.hub.radius = narrow ? 30 : side ? 23 : 25; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 10.5 : 8.5;   // целиком, со шлемом и оружием (скины)
     applyOffset();
   }
   // Раскладка экрана (та же, что в app.css): на широком экране панель справа — сцена сдвигается влево;
@@ -397,6 +404,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       else { walking = true; const st = Math.min(L, dt * 3.4); hero.g.position.x += dx / L * st; hero.g.position.z += dz / L * st; hero.g.rotation.y = Math.atan2(dx, dz); }
     }
     const sw = walking ? Math.sin(t * 11) * 0.75 : 0;
+    const eq = worn.get(hero); if (eq) animateGear(eq, t, walking);
     hero.legL.rotation.x = sw; hero.legR.rotation.x = -sw; hero.armL.rotation.x = -sw * 0.8;
     if (attack) {
       attack.t += dt * (attack.crit ? 2.2 : 2.6);
@@ -479,10 +487,17 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     setEnergy(v, max) { energy = Math.max(0, Math.min(1, v / max)); },
     setMode(m) {
       if ((m === 'hub' || m === 'hero') && mode !== m) { walk = null; hero.g.scale.setScalar(1); if (m === 'hero' || hero.g.position.x > 3.5) hero.g.position.set(-2, 0.15, 0.6); hero.g.rotation.y = Math.PI / 2; portalOpen = false; }
+      // из боя — герой возвращается через портал на палубу
+      if (m === 'hub' && mode === 'battle') {
+        hero.g.position.set(3.9, 0.15, 0); hero.g.scale.setScalar(0.01); portalOpen = true; flash = 1;
+        const t0 = performance.now();
+        const grow = () => { const u = Math.min(1, (performance.now() - t0) / 400); hero.g.scale.setScalar(Math.max(0.01, u)); if (u < 1) requestAnimationFrame(grow); else { burst(worldPos(portal, 2), 0x3ff0ff, 50, 5); walk = { x: 1.2, z: 0.6, res: () => { portalOpen = false; celebrateT = 0.6; } }; } };
+        setTimeout(grow, 250);
+      }
       mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? (narrow ? 0.2 : 0.08) : narrow ? 0.24 : 0.12; applyOffset(); },
     heroWalk(x, z) { return new Promise(res => (walk = { x, z, res })); },
     heroAttack(crit = false, sup = false) { return arena.attack({ crit, sup, dmg: sup ? 2 : 1 }); },
-    spawnMob(hp, kind = 0, boss = false) { arena.spawn(hp, kind, boss); },
+    spawnMob(hp, kind = 0, boss = false) { return arena.spawn(hp, kind, boss); },
     enemyAttack() { return arena.enemyAttack(); },
     arrive() { return arena.arrive(); },
     setArena(k, a, b) { arena.theme(k, a, b); },
@@ -505,7 +520,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     openPortal() { portalOpen = true; flash = 1; burst(worldPos(portal, 2), 0x3ff0ff, 90, 7); },
     setTheme(sky, fog) { themeTo = sky.map(c => new THREE.Vector3(c[0], c[1], c[2])); fogTo.setHex(fog); },
     setFrame(top, height) { frameWin.top = top; frameWin.h = height; applyOffset(); },
-    setOutfit(jacket, dark, visor) { outfitNow = [jacket, dark, visor]; paintOutfit(jacket, dark, visor); },
+    setOutfit(jacket, dark, visor, id = 'cyan') { outfitNow = [jacket, dark, visor]; paintOutfit(jacket, dark, visor); gearNow = GEAR[id] ?? GEAR.cyan; colorsNow = { jacket, dark, visor }; [...worn.keys()].forEach(wear); },
     mapSetup(isles, current) { map.setup(isles, current); },
     mapFocus(i) { map.focus(i); },
     mapTravel(i) { return map.travel(i); },

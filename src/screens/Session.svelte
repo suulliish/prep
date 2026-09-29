@@ -101,6 +101,7 @@
   let result = $state<{ stars: number; right: number; of: number; xp: number; minutes: number; counted: boolean; note: string } | null>(null);
   const xpStart = game.save.xp;
   function say(text: string) { banner = text; bannerId++; }
+  let cine = $state(true);   // катсцена: вход в локацию, мини-босс, победа — панель задачи скрыта
   const isLastWave = () => wave >= waves.length - 1;
   async function hit(sup: boolean) {
     busy = true;
@@ -108,8 +109,10 @@
     if (killed && !isLastWave()) {
       await W.world?.killMob(); audio.play('chest');
       wave++; mobHp = waves[wave];
-      say(isLastWave() ? 'Мини-босс!' : `${wave + 1}-толқын`);
-      W.world?.spawnMob(mobHp, currentWorld().mob, isLastWave());
+      const boss = isLastWave(); if (boss) cine = true;
+      say(boss ? 'Мини-босс!' : `${wave + 1}-толқын`);
+      await W.world?.spawnMob(mobHp, currentWorld().mob, boss);
+      cine = false;
     }
     busy = false;
   }
@@ -141,7 +144,9 @@
     W.dim = false;
     W.world?.setMode('battle');
     busy = true;
-    W.world?.arrive().then(() => { W.world?.spawnMob(mobHp, currentWorld().mob, waves.length === 1); say(waves.length > 1 ? '1-толқын' : 'Шайқас!'); busy = false; });
+    (W.world?.arrive() ?? Promise.resolve())
+      .then(() => W.world?.spawnMob(mobHp, currentWorld().mob, waves.length === 1))
+      .then(() => { cine = false; say(waves.length > 1 ? '1-толқын' : 'Шайқас!'); busy = false; });
     if (block === 'boss') setTimeout(() => react('boss'), 600);
     audio.setMood(block === 'new' ? 'focus' : 'battle');
     nextItem();
@@ -267,6 +272,7 @@
   // Босс не даёт минут (они — за план), зато открывает путь в следующий мир
   async function finishBoss() {
     const won = mobHp <= 0, w = currentWorld();
+    cine = true;
     if (won && W.world) {
       await W.world.killMob(); audio.play('chest'); await W.world.openChest(); W.world.celebrate(0xffc94a); audio.play('levelup');
       if (!game.save.worldsCleared?.includes(w.id)) (game.save.worldsCleared ??= []).push(w.id);
@@ -277,7 +283,7 @@
       await W.world?.killMob();
       bitText = 'Босс шегінді, бірақ жеңілген жоқ. Қателерді шеберханада жөнде де, ертең қайта кел!'; bitMood = 'think';
     }
-    phase = 'feedback'; item = null; persist();
+    phase = 'feedback'; item = null; persist(); cine = false;
     result = { stars: won ? starsOf() : 0, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: 0, counted: won, note: bitText };
   }
 
@@ -297,10 +303,11 @@
     item = null; phase = 'feedback'; busy = true;
     if (counted && block !== 'repair') completeBlock(b as any); else persist();
     if (battle && W.world) {
+      cine = true;
       await W.world.killMob();
       if (counted) { audio.play('chest'); await W.world.openChest(); audio.play('levelup'); }
     }
-    busy = false;
+    busy = false; cine = false;
     const got = dayRec().minutesToday - before, stars = counted ? starsOf() : 0;
     if (stars) {
       const r = dayRec(); (r.stars ??= {})[b] = Math.max(r.stars[b] ?? 0, stars);
@@ -314,7 +321,7 @@
   const letters = 'ABCDE';
 </script>
 
-<Screen scene="strip" back={() => go({ name: result && block === 'boss' ? 'map' : 'hub' })}>
+<Screen scene="strip" cinema={cine} back={() => go({ name: result && block === 'boss' ? 'map' : 'hub' })}>
   {#snippet head()}
     <div class="hd">
       <div class="t1"><b>{TITLE[block]}</b>{#if combo >= 2}<span class="combo num">×{combo}</span>{/if}</div>

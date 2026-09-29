@@ -1,13 +1,15 @@
 <script lang="ts">
   // Каркас экрана (docs/DESIGN_SYSTEM.md 6). Телефон: шапка → окно 3D-сцены → панель (прокрутка внутри) → главная кнопка
   // внизу под пальцем. Широкий экран: сцена слева, колонка справа. Страница целиком не прокручивается.
+  // cinema — идёт катсцена (docs/GAME_LOOP.md 3): шапка и панель уходят, сцена на весь экран, чёрные полосы как в кино.
   import { onMount, type Snippet } from 'svelte';
   import { W } from '../lib/world.svelte';
   import Icon from './Icon.svelte';
 
   let {
-    title = '', sub = '', back, scene = 'short', right, head, children, footer, overlay,
+    title = '', sub = '', back, scene = 'short', right, head, children, footer, overlay, cinema = false,
   }: {
+    cinema?: boolean;
     title?: string; sub?: string; back?: () => void;
     scene?: 'tall' | 'short' | 'strip' | 'none';
     right?: Snippet; head?: Snippet; children?: Snippet; footer?: Snippet; overlay?: Snippet;
@@ -19,6 +21,7 @@
     const r = win.getBoundingClientRect(), h = innerHeight || 1;
     W.world?.setFrame?.(r.top / h, r.height / h);
   }
+  $effect(() => { void cinema; requestAnimationFrame(frame); });
   onMount(() => {
     frame();
     const ro = new ResizeObserver(frame); if (win) ro.observe(win);
@@ -27,7 +30,7 @@
   });
 </script>
 
-<div class="frame {scene}">
+<div class="frame {scene}" class:cinema>
   {#if title || back || right || head}
     <header class="top panel">
       {#if back}<button class="ibtn" onclick={back} aria-label="Артқа"><Icon name="back" fill="#fff" /></button>{/if}
@@ -62,6 +65,13 @@
   .tall .window { height: clamp(190px, 33dvh, 400px); }
   .short .window { height: clamp(150px, 27dvh, 300px); }
   .strip .window { height: clamp(130px, 21dvh, 230px); }
+
+  /* катсцена */
+  .cinema .top, .cinema .sheet { display: none; }
+  .cinema .window { flex: 1; height: auto; }
+  .cinema::before, .cinema::after { content: ''; position: fixed; left: 0; right: 0; height: 8dvh; background: #05061a; z-index: 1; animation: bars .35s ease-out both; }
+  .cinema::before { top: 0; } .cinema::after { bottom: 0; }
+  @keyframes bars { from { transform: scaleY(0); } }
 
   .sheet { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0; width: min(640px, 100%); margin: 0 auto; overflow: hidden; }
   .body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 12px; }
