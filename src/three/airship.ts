@@ -17,7 +17,16 @@ const SPARK_FS = `uniform vec3 color; varying float vL;
   void main(){ float d = length(gl_PointCoord - .5); if (d > .5) discard; gl_FragColor = vec4(color, smoothstep(.5, 0., d) * (1. - vL) * .8); }`;
 
 /** hull — габариты корпуса в системе родителя (без парусов); model — сама модель корабля (паруса перекрашиваем). */
-export function dressAirship(hull: THREE.Box3, model: THREE.Object3D, o: { quality?: 'high' | 'low'; sailColors?: [number, number]; deckY?: number } = {}): Airship {
+/** Свернуть парус к рею (на стоянке корабль идёт на двигателях, паруса не закрывают палубу): сжать по высоте к верхней кромке. */
+function furl(m: THREE.Mesh) {
+  m.geometry.computeBoundingBox(); const bb = m.geometry.boundingBox!, top = bb.max.y;
+  const g = m.geometry.clone(), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setY(i, top - (top - p.getY(i)) * 0.14);
+  g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere(); m.geometry = g;
+  m.parent?.children.forEach(c => { if (c.userData.outline && c.name === m.name + '_outline') (c as THREE.Mesh).geometry = g; });
+}
+
+export function dressAirship(hull: THREE.Box3, model: THREE.Object3D, o: { quality?: 'high' | 'low'; sailColors?: [number, number]; deckY?: number; furled?: boolean } = {}): Airship {
   const g = new THREE.Group();
   const L = hull.max.x - hull.min.x, Wd = hull.max.z - hull.min.z, cx = (hull.max.x + hull.min.x) / 2, cz = (hull.max.z + hull.min.z) / 2;
   const s = L / 14;                                            // масштаб оснастки: под большой корабль (~14 м) s = 1
@@ -27,7 +36,8 @@ export function dressAirship(hull: THREE.Box3, model: THREE.Object3D, o: { quali
   const [sail1, sail2] = o.sailColors ?? [0xfff2d6, 0x9fe9ff];
   let k = 0;
   model.traverse(n => { const m = n as THREE.Mesh; if (!m.isMesh || m.userData.outline) return;
-    if (/sail/.test(m.name)) { const mt = (m.material as THREE.MeshToonMaterial).clone(); mt.transparent = false; mt.opacity = 1; mt.depthWrite = true; mt.side = THREE.DoubleSide; mt.color.setHex(k++ % 2 ? sail2 : sail1); m.material = mt; }
+    if (/sail/.test(m.name)) { const mt = (m.material as THREE.MeshToonMaterial).clone(); mt.transparent = false; mt.opacity = 1; mt.depthWrite = true; mt.side = THREE.DoubleSide; mt.color.setHex(k++ % 2 ? sail2 : sail1); m.material = mt;
+      if (o.furled) furl(m); }
     if (/flag/.test(m.name)) { const mt = (m.material as THREE.MeshToonMaterial).clone(); mt.color.setHex(0xff5fc8); m.material = mt; } });
 
   const M = (color: number, emissive = 0, ei = 0) => new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: ei, flatShading: true });

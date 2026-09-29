@@ -147,9 +147,13 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   // ---------- Портал ---------- (src/three/portal.ts) на носу; лицом к корме и правому борту — к обычному ракурсу камеры,
   // чтобы с главного экрана был виден вихрь, а не ребро кольца. Герой подходит к нему спереди.
-  const PORTAL_FACE = -0.35;                                   // поворот вокруг вертикали: 0 — лицом к правому борту (+z), −π/2 — к корме
+  // Главное меню строится вокруг портала: камера смотрит с носа и правого борта (HUB_THETA), портал повёрнут к ней лицом,
+  // герой гуляет по площадке перед порталом и в покое стоит лицом к зрителю.
+  const HUB_THETA = Math.PI - 0.55;                           // с кормы, чуть с правого борта: вся палуба вдоль, портал в глубине кадра
+  const PORTAL_FACE = Math.PI / 2 - HUB_THETA;                 // нормаль портала (sin F, cos F) смотрит ровно на камеру
   const portalFx = createPortal({ radius: 1.35 }), portal = portalFx.g;
   portal.rotation.y = PORTAL_FACE; portal.scale.setScalar(0.85); portal.position.set(4.6, 0, 0); ship.add(portal);
+  let home: [number, number][] = [];
   let energy = 0.3, portalOpen = false, pulling = false, cutscene = false, focusPortal = false, cutToken = 0, portalP: Promise<void> | null = null, portalStand: [number, number] = [3.5, 0];
   const portalCenter = () => portal.localToWorld(new THREE.Vector3(0, portalFx.center, 0));
   /** Покадровая анимация по времени (для катсцен на палубе). Если катсцену отменили (смена режима — cutToken), шаги прекращаются. */
@@ -162,10 +166,10 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   hero.g.position.set(0, 0, 0); hero.g.rotation.y = Math.PI / 2; ship.add(hero.g);
   createDeck(quality).then(async d => {
     deck = d; ship.add(d.g);
-    air = dressAirship(d.hull, d.model, { quality }); ship.add(air.g);
+    air = dressAirship(d.hull, d.model, { quality, furled: true }); ship.add(air.g);
     const [mx, mz] = d.stations.mid; hero.g.position.set(mx, 0, mz);
     // портал — на открытой носовой палубе (перед фок-мачтой, чтобы парус не закрывал), герой встаёт перед ним
-    const [px, pz] = d.nearest(d.bounds.maxX - 2.2, 0); portal.position.set(px, d.height(px, pz) ?? 0, pz);
+    const [px, pz] = d.nearest(d.bounds.maxX - 0.9, 0);             // у самого носа: перегораживает только кончик палубы portal.position.set(px, d.height(px, pz) ?? 0, pz);
     for (const k of [-1.3, -0.65, 0, 0.65, 1.3]) d.reserve(px + Math.cos(PORTAL_FACE) * k, pz - Math.sin(PORTAL_FACE) * k, 0.75);   // кольцо поперёк: сквозь камни не ходим
     // место героя перед входом: прямо напротив центра кольца (с любой стороны — вихрь двусторонний), куда можно дойти с середины палубы
     { const nx = Math.sin(PORTAL_FACE), nz = Math.cos(PORTAL_FACE), cand: [number, number, number][] = [];
@@ -178,10 +182,20 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       const ok = cand.find(c => d.path(d.stations.mid, [c[1], c[2]]).length > 0);
       if (ok) portalStand = [ok[1], ok[2]];
       // камера катсцены входа: со стороны, откуда подходит герой, чуть сбоку — видно и героя, и вихрь
-      CAM.portal.target.set(px, 1.9, pz); CAM.portal.theta = Math.atan2(portalStand[1] - pz, portalStand[0] - px) + 0.45; CAM.portal.phi = 1.18; }
+      CAM.portal.target.set(px, 1.9, pz); CAM.portal.theta = Math.atan2(portalStand[1] - pz, portalStand[0] - px) + 0.45; CAM.portal.phi = 1.18;
+      // места прогулки в кадре: площадка перед порталом со стороны камеры (достижимые с места входа)
+      home = cand.filter(c => Math.hypot(c[1] - portalStand[0], c[2] - portalStand[1]) > 0.8).map(c => [c[1], c[2]] as [number, number]);
+      for (let dx = -3; dx <= 3; dx += 0.6) for (let dz = -3; dz <= 3; dz += 0.6) {
+        const q: [number, number] = [portalStand[0] + dx, portalStand[1] + dz], along = (q[0] - px) * nx + (q[1] - pz) * nz;
+        if (along > 1 && d.walkable(q[0], q[1]) && Math.hypot(dx, dz) > 0.9 && d.path(portalStand, q).length) home.push(q);
+      }
+      home.push(portalStand);
+      if (mode === 'hub') { const h0 = home[Math.floor(home.length / 2)]; hero.g.position.set(h0[0], d.height(h0[0], h0[1]) ?? 0, h0[1]); hero.g.rotation.y = PORTAL_FACE - 0.25; }
+      // камера главного меню: между порталом и площадкой перед ним
+      CAM.hub.target.set(px + nx * 2.6, 1.6, pz + nz * 2.6); }
     // реквизит палубы: готовые бочки, ящики, пушка (Kenney Pirate Kit) у бортов; вокруг них не ходим
     const k = await Kit.load('ship'), e = d.edges().sort((a, b) => a[0] - b[0]);
-    const far = ([x, z]: [number, number]) => Object.values(d.stations).every(s => Math.hypot(s[0] - x, s[1] - z) > 2.2);
+    const far = ([x, z]: [number, number]) => Object.values(d.stations).every(s => Math.hypot(s[0] - x, s[1] - z) > 2.2) && Math.hypot(portal.position.x - x, portal.position.z - z) > 3.2;   // площадка у портала свободна
     let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (const [name, f, h] of [['barrel', 0.1, 1.2], ['crate', 0.22, 1.1], ['cannon', 0.34, 1.3], ['barrel', 0.5, 1.2], ['crate-bottles', 0.62, 1.0], ['cannon', 0.74, 1.3], ['barrel', 0.9, 1.2]] as const) {
       const c = e.slice(Math.floor(e.length * f)).find(far); if (!c) continue;
@@ -242,7 +256,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   // ---------- Камера ----------
   const CAM: Record<Exclude<CamMode, 'map'>, { target: THREE.Vector3; radius: number; phi: number; theta: number }> = {
-    hub: { target: new THREE.Vector3(0, 2.0, 0), radius: 25, phi: 1.02, theta: 0.9 },
+    hub: { target: new THREE.Vector3(0, 1.6, 0), radius: 24, phi: 1.2, theta: HUB_THETA },
     battle: { target: new THREE.Vector3(0.2, 1.2, 0.6), radius: 11, phi: 1.12, theta: 1.62 },
     portal: { target: new THREE.Vector3(4.6, 2.2, 0), radius: 9, phi: 1.25, theta: 0.15 },
     hero: { target: new THREE.Vector3(-2, 1.5, 0.6), radius: 11, phi: 1.3, theta: 0.55 }, // портрет героя на палубе
@@ -301,7 +315,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     camera.aspect = w / h; camera.updateProjectionMatrix(); map.resize(w, h); arena.resize(w, h);
     const narrow = w / h < 0.8;
     const side = isSide(w, h);
-    if (!devLock) CAM.hub.radius = narrow ? 40 : side ? 30 : 33; CAM.portal.radius = narrow ? 17 : 11; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 12.5 : 9.5;   // целиком, со шлемом и оружием (скины)
+    if (!devLock) CAM.hub.radius = narrow ? 26 : side ? 21 : 22; CAM.portal.radius = narrow ? 17 : 11; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 12.5 : 9.5;   // целиком, со шлемом и оружием (скины)
     applyOffset();
   }
   // Раскладка экрана (та же, что в app.css): на широком экране панель справа — сцена сдвигается влево;
@@ -320,7 +334,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   resize();
 
   const clock = new THREE.Clock(); let raf = 0;
-  const tmp = new THREE.Vector3();
+  const tmp = new THREE.Vector3(), bitSide = new THREE.Vector3();
   function frame() {
     const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
     skyMat.uniforms.t.value = t;
@@ -340,7 +354,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
     // живой корабль: герой сам ходит между станциями палубы (нос у портала, корма, середина, борта)
     if (mode === 'hub' && !walk && !cutscene && km === 1 && deck && t > nextWander) {
-      const st = spot(WANDER[Math.floor(Math.random() * WANDER.length)]);
+      const st = home.length ? home[Math.floor(Math.random() * home.length)] : spot(WANDER[Math.floor(Math.random() * WANDER.length)]);   // в главном меню гуляет в кадре, у портала
       nextWander = t + 5 + Math.random() * 5;
       goTo(st[0], st[1], () => { if (Math.random() < 0.35) celebrateT = 0.5; });
     }
@@ -348,7 +362,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     let walking = false;
     if (walk) {
       const tg = walk.path[walk.i], dx = tg[0] - hero.g.position.x, dz = tg[1] - hero.g.position.z, L = Math.hypot(dx, dz);
-      if (L < 0.1) { if (++walk.i >= walk.path.length) { const r = walk.res; walk = null; hero.g.rotation.y = Math.PI / 2; r(); } }
+      if (L < 0.1) { if (++walk.i >= walk.path.length) { const r = walk.res; walk = null; hero.g.rotation.y = mode === 'hub' ? PORTAL_FACE - 0.25 : Math.PI / 2; r(); } }
       else { walking = true; const st = Math.min(L, dt * (walk.run ? 7 : 3.4)); hero.g.position.x += dx / L * st; hero.g.position.z += dz / L * st;
         hero.g.rotation.y += Math.atan2(Math.sin(Math.atan2(dx, dz) - hero.g.rotation.y), Math.cos(Math.atan2(dx, dz) - hero.g.rotation.y)) * Math.min(1, dt * 12); }
     }
@@ -360,7 +374,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     B.flame.scale.set(1, 0.8 + Math.sin(t * 25) * 0.2, 1);
 
     // Бит
-    hero.g.getWorldPosition(tmp); tmp.add(new THREE.Vector3(-0.7, 3 + Math.sin(t * 2.2) * 0.22, 1.3));
+    // Бит летает сбоку от героя (поперёк взгляда камеры), а не между героем и камерой
+    hero.g.getWorldPosition(tmp); tmp.add(bitSide.set(-Math.sin(cam.theta) * 1.1, 2.7 + Math.sin(t * 2.2) * 0.22, Math.cos(cam.theta) * 1.1));
     bit.position.lerp(tmp, 0.05); bit.lookAt(camera.position.x, bit.position.y, camera.position.z);
     bitProp.rotation.y += dt * 22; (antenna.material as THREE.MeshToonMaterial).emissiveIntensity = 1.5 + Math.sin(t * 5) * 1;
     blinkT += dt; if (blinkT > 3.2) { drawFace(true); if (blinkT > 3.35) { blinkT = 0; drawFace(); } }
@@ -377,7 +392,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     const C = focusPortal && mode === 'hub' ? CAM.portal : CAM[mode === 'map' ? 'hub' : mode];
     idle += dt;
     // сам камера не облетает корабль по кругу (сзади паруса закрывают палубу), а покачивается у лучшего ракурса
-    if (!dragging && idle > 2.5 && mode === 'hub' && km === 1 && !devLock) userTheta += (Math.sin(t * 0.08) * 0.45 - userTheta) * Math.min(1, dt * 0.3);
+    if (!dragging && idle > 2.5 && mode === 'hub' && km === 1 && !devLock) userTheta += (Math.sin(t * 0.08) * 0.22 - userTheta) * Math.min(1, dt * 0.3);
     cam.target.lerp(C.target, 0.05); cam.radius += (C.radius - cam.radius) * 0.05; cam.phi += (C.phi + userPhi - cam.phi) * 0.08; cam.theta += (C.theta + userTheta - cam.theta) * 0.08;
     const sh = shakeT > 0 ? (Math.random() - 0.5) * shakeT * 0.6 : 0; shakeT = Math.max(0, shakeT - dt);
     camera.position.set(cam.target.x + cam.radius * Math.sin(cam.phi) * Math.cos(cam.theta) + sh, cam.target.y + cam.radius * Math.cos(cam.phi) + sh, cam.target.z + cam.radius * Math.sin(cam.phi) * Math.sin(cam.theta));
@@ -405,7 +420,12 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   return {
     setEnergy(v, max) { energy = Math.max(0, Math.min(1, v / max)); },
     setMode(m) {
-      if ((m === 'hub' || m === 'hero') && (mode !== m || hero.g.scale.x < 0.99)) { walk = null; hero.g.scale.setScalar(1); cutscene = pulling = focusPortal = false; portalP = null; cutToken++; if (m === 'hero' || hero.g.position.x > portalStand[0] - 1) { const s0 = spot('mid'); hero.g.position.set(s0[0], 0, s0[1]); } hero.g.rotation.y = Math.PI / 2; portalOpen = false; }
+      const tiny = hero.g.scale.x < 0.99 || pulling;                  // после входа в портал герой уменьшен и висит в центре кольца
+      if ((m === 'hub' || m === 'hero') && (mode !== m || tiny)) {
+        walk = null; hero.g.scale.setScalar(1); cutscene = pulling = focusPortal = false; portalP = null; cutToken++; portalOpen = false;
+        if (m === 'hero') { const s0 = spot('mid'); hero.g.position.set(s0[0], 0, s0[1]); hero.g.rotation.y = Math.PI / 2; }
+        else if (tiny) { hero.g.position.set(portalStand[0], 0, portalStand[1]); hero.g.rotation.y = PORTAL_FACE - 0.25; }
+      }
       // из боя — герой возвращается через портал на палубу
       if (m === 'hub' && mode === 'battle') {
         // портал вспыхивает, герой вылетает из центра кольца и приземляется перед ним
@@ -413,7 +433,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
         hero.g.scale.setScalar(0.01); hero.g.position.copy(c); hero.g.rotation.y = PORTAL_FACE; portalOpen = true; pulling = cutscene = true;
         setTimeout(() => { if (tok !== cutToken) return; portalFx.pulse(); burst(portalCenter(), 0x3ff0ff, 50, 5);
           anim(0.55, u => { const e = 1 - (1 - u) ** 3; hero.g.scale.setScalar(Math.max(0.01, e)); hero.g.position.set(c.x + (gx - c.x) * e, c.y + (gy - c.y) * u * u + Math.sin(u * Math.PI) * 0.6, c.z + (b0[1] - c.z) * e); }, tok)
-            .then(() => { if (tok !== cutToken) return; hero.g.scale.setScalar(1); pulling = cutscene = false; nextWander = clock.elapsedTime + 8; hero.g.rotation.y = Math.PI / 2; const s1 = spot('mid'); goTo(s1[0], s1[1], () => { portalOpen = false; celebrateT = 0.6; }); });
+            .then(() => { if (tok !== cutToken) return; hero.g.scale.setScalar(1); pulling = cutscene = false; nextWander = clock.elapsedTime + 8; const s1 = home.length ? home[Math.floor(Math.random() * home.length)] : spot('mid'); goTo(s1[0], s1[1], () => { portalOpen = false; celebrateT = 0.6; }); });
         }, 350);
       }
       mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? (narrow ? 0.2 : 0.08) : narrow ? 0.24 : 0.12; applyOffset(); },
