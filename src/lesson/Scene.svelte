@@ -16,12 +16,13 @@
   import Venn3 from './scenes/Venn3.svelte';
   import FracBars from './scenes/FracBars.svelte';
   import FracLine from './scenes/FracLine.svelte';
+  import { fitZoom } from './fit';
   const MAP: Record<string, any> = { Train, Crystals, Tiles, Cubes, Scanner, Sieve, Tree, Common, Multiples, Strike, StarDigit, Ladder, Venn2, Venn3, FracBars, FracLine };
   let { name, s = {} }: { name: string; s?: Record<string, any> } = $props();
   const Comp = $derived(MAP[name]);
 </script>
 
-<div class="scene pe">{#if Comp}<Comp {...s} />{/if}</div>
+<div class="scene pe" use:fitZoom>{#if Comp}<Comp {...s} />{/if}</div>
 
 <style>
   .scene { position: relative; overflow: hidden; background: radial-gradient(ellipse at 50% 0%, #1c2556 0%, #0b0f28 70%); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }

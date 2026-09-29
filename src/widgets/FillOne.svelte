@@ -4,6 +4,7 @@
   import Frac from '../ui/Frac.svelte';
   import MathLine from '../lesson/MathLine.svelte';
   import { sum, cmp, val, toMixed, denColor, type Fr } from './fracdraw';
+  import { fitZoom } from '../lesson/fit';
 
   let { pieces, target = { n: 1, d: 1 }, ondone }: { pieces: Fr[]; target?: Fr; ondone?: () => void } = $props();
 
@@ -40,7 +41,7 @@
 
 {#snippet tg()}{#if target.d === 1}<b class="num tn">{target.n}</b>{:else}<Frac n={target.n} d={target.d} size="md" color="var(--gold)" />{/if}{/snippet}
 
-<div class="fo">
+<div class="fo" use:fitZoom={{ min: 0.78 }}>
   <p class="task">Көпір ұзындығы: <span class="tgt">{@render tg()}</span>. Бөліктерді басып, көпірді дәл толтыр.</p>
 
   <div class="cliffs">
@@ -69,19 +70,21 @@
     {/each}
   </div>
 
-  <p class="msg" class:ok={finished}>{msg || 'Бөлікті бас — ол көпірге түседі. Артық болса, бөлік кері секіреді.'}</p>
-  <button class="btn small ghost" onclick={reset} disabled={finished || !placed.length}>Қайта бастау</button>
+  <div class="foot">
+    <p class="msg" class:ok={finished}>{msg || 'Бөлікті бас — ол көпірге түседі. Артық болса, бөлік кері секіреді.'}</p>
+    <button class="btn small ghost" onclick={reset} disabled={finished || !placed.length}>Қайта бастау</button>
+  </div>
 </div>
 
 <style>
-  .fo { display: grid; gap: 12px; justify-items: center; }
+  .fo { display: grid; gap: 8px; justify-items: center; }
   .task { text-align: center; font-weight: 800; }
   .tgt { display: inline-block; vertical-align: middle; }
-  .cliffs { display: grid; grid-template-columns: 14px 1fr 14px; align-items: end; width: 100%; padding-top: 12px; }
-  .cliff { display: block; height: 92px; background: linear-gradient(#5b6699, #3d4670); border: 3px solid var(--outline); }
+  .cliffs { display: grid; grid-template-columns: 14px 1fr 14px; align-items: end; width: 100%; padding-top: 6px; }
+  .cliff { display: block; height: 64px; background: linear-gradient(#5b6699, #3d4670); border: 3px solid var(--outline); }
   .cliff.l { border-radius: 10px 0 0 0; border-right: 0; }
   .cliff.r { border-radius: 0 10px 0 0; border-left: 0; }
-  .bridge { position: relative; height: 62px; margin-bottom: 0; }
+  .bridge { position: relative; height: 48px; margin-bottom: 0; }
   .deck { position: absolute; inset: 0; border: 3px dashed var(--line-hi); border-radius: 6px; background: #0b103055; }
   .done .deck { border-color: var(--ok); border-style: solid; box-shadow: 0 0 18px #3ddc6e88; }
   .bridge.wobble { animation: wob .6s; transform-origin: 50% 100%; }
@@ -92,14 +95,17 @@
   .pc.over { animation: over .65s forwards; z-index: 2; cursor: default; overflow: visible; background: var(--miss); }
   @keyframes land { from { opacity: 0; transform: translateY(-40px); } to { opacity: 1; transform: none; } }
   @keyframes over { 0% { opacity: 1; transform: translateY(-6px); } 40% { opacity: 1; transform: translateY(6px) rotate(6deg); } 100% { opacity: 0; transform: translateY(70px) rotate(20deg); } }
-  .sum { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 8px 14px; width: 100%; color: var(--ink); text-align: center; }
+  .sum { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 4px 12px; width: 100%; color: var(--ink); text-align: center; }
   .tn { color: var(--gold); font-size: 22px; }
   .of { color: var(--dim); font-size: 22px; }
   .supply { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; width: 100%; }
-  .sp { min-height: 56px; display: grid; place-items: center; padding: 4px 6px; cursor: pointer;
+  .sp { min-height: 48px; display: grid; place-items: center; padding: 4px 6px; cursor: pointer;
     background: var(--c); border: 3px solid var(--outline); border-radius: 10px; box-shadow: inset 0 -5px 0 #00000030, 0 3px 0 var(--outline); transition: transform .08s, opacity .2s; }
   .sp:active:not(:disabled) { transform: translateY(2px); }
   .sp.used { opacity: .18; box-shadow: none; cursor: default; }
-  .msg { text-align: center; font-weight: 800; min-height: 2.6em; max-width: 340px; }
+  .foot { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; }
+  .msg { flex: 1; text-align: center; font-weight: 800; font-size: var(--fs-s); line-height: 1.3; min-height: 2.6em; max-width: 340px; display: grid; align-items: center; }
+  .foot .btn { flex: none; margin-bottom: 4px; }
+  @media (max-width: 999.98px) and (max-height: 560px) and (min-aspect-ratio: 23/20) { .task { display: none; } .fo { gap: 5px; } }
   .msg.ok { color: var(--ok); }
 </style>

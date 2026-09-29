@@ -1,8 +1,8 @@
 <script lang="ts">
   // Урок-миссия (docs/ARCHITECTURE.md 4.6) как бой: вирус Глитча сломал систему корабля, каждый пройденный шаг —
   // удар по нему в 3D. Мақсат → Қолмен → Болжа → Көр (анимированная сцена) → Өзің → Неге? → Глитчтің қатесі →
-  // Мини-ойын → Есте сақта → возврат к цели (вирус уничтожен, сундук).
-  import { onMount } from 'svelte';
+  // Шағын ойын → Есте сақта → возврат к цели (вирус уничтожен, сундук).
+  import { onMount, tick } from 'svelte';
   import Bit from '../ui/Bit.svelte';
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -22,6 +22,10 @@
   import { LESSONS } from '../../content/lessons.mjs';
   import VOICED from '../../content/voice_lessons.json';
   import MathLine from '../lesson/MathLine.svelte';
+  import Gap from '../lesson/Gap.svelte';
+  import { planGaps } from '../lesson/gap';
+  import { hasHighlight } from '../lesson/rich';
+  import { fitZoom } from '../lesson/fit';
   import Faded from '../lesson/Faded.svelte';
   import BugHunt from '../lesson/BugHunt.svelte';
   import Blitz from '../lesson/Blitz.svelte';
@@ -41,16 +45,20 @@
   import FractionBar from '../widgets/FractionBar.svelte';
   import NumberLine from '../widgets/NumberLine.svelte';
   import FillOne from '../widgets/FillOne.svelte';
+  import Scales from '../widgets/Scales.svelte';
+  import ZeroCounter from '../widgets/ZeroCounter.svelte';
 
   // replay — пересмотр из альбома: без XP и без перехода к практике
   let { skill, replay = false }: { skill: string; replay?: boolean } = $props();
-  const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline, MultipleHunt, StarPicker, SetSort, FractionCircle, FractionBar, NumberLine, FillOne };
+  // FractionCircle и FillOne подгоняют себя сами (пицца и мост по высоте); остальные виджеты сжимаются целиком не сильнее 0.8
+  const SELF_FIT = ['FractionCircle', 'FillOne'];
+  const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline, MultipleHunt, StarPicker, SetSort, FractionCircle, FractionBar, NumberLine, FillOne, Scales, ZeroCounter };
   const steps: any[] = (LESSONS as Record<string, any[]>)[skill] ?? [{ type: 'say', kz: 'Бұл тақырыптың сабағы әзірленуде. Бірден жаттығуға көшейік!' }];
   const goal = steps.find(s => s.type === 'goal');
   const target = goal?.title ?? skillTitle(skill).kz;
   const CHIP: Record<string, string> = {
     goal: 'Мақсат', widget: 'Қолмен', predict: 'Болжа', example: 'Көр', faded: 'Өзің', why: 'Неге?',
-    bug: 'Глитчтің қатесі', blitz: 'Мини-ойын', rule: 'Есте сақта', final: 'Соңғы соққы', quiz: 'Қалай ойлайсың?', say: 'Бит',
+    bug: 'Глитчтің қатесі', blitz: 'Шағын ойын', rule: 'Есте сақта', final: 'Соңғы соққы', quiz: 'Қалай ойлайсың?', say: 'Бит',
   };
   // Шаги-«удары»: всё, где ребёнок что-то делает сам
   const EXPLAIN = ['widget', 'example', 'faded', 'why', 'bug', 'predict', 'rule'];
@@ -77,6 +85,16 @@
   // объяснения нельзя пролистать вслепую: «дальше» заряжается на время чтения (GAME_LOOP.md 10)
   const gate = new ReadGate();
   let cine = $state(true);   // катсцена входа и победы — панель урока скрыта
+  let blitzPhase = $state<'ready' | 'play' | 'over'>('ready');
+  // Горизонталь и широкий экран (как в Screen.svelte): сцена слева, реплика Бита поверх неё, панель узкая и низкая
+  const LAND = '(min-width: 1000px) and (min-aspect-ratio: 23/20), (max-width: 999.98px) and (max-height: 560px) and (min-aspect-ratio: 23/20)';
+  let land = $state(false);
+  // D11: пропуски в «Көр» и «Есте сақта» (автоматически, отключается флагом noGap на кадре или шаге)
+  const gaps = $derived(planGaps(skill, i, step));
+  let solved = $state<Record<string, boolean>>({});
+  const curGap = $derived(step.type === 'example' ? gaps?.frames?.[frame] ?? null : step.type === 'rule' ? gaps?.rule?.gap ?? null : null);
+  const gapKey = $derived(`${i}:${frame}`);
+  const gapOpen = $derived(!!curGap && !solved[gapKey]);
   const frameText = (s: any, k: number) => [s.frames[k]?.math, s.frames[k]?.kz].join(' ');
   const fr = $derived(step.type === 'example' ? step.frames[frame] : null);
 
@@ -95,12 +113,14 @@
     requestAnimationFrame(() => cardEl?.closest('.body')?.scrollTo({ top: 0 }));
   }
   onMount(() => {
+    const mq = matchMedia(LAND); land = mq.matches;
+    const onLand = (e: MediaQueryListEvent) => (land = e.matches); mq.addEventListener('change', onLand);
     W.dim = false; W.world?.setMode('battle'); W.world?.bitMood('idle');
     const v = W.world?.setSpot(skill);   // урок и практика темы — в одном уголке мира
     if (v !== undefined) setTimeout(() => { const c = sceneCenter(0.3); floatText(`${currentWorld().kz} · ${SPOT_KZ[v]}`, c.x, c.y, '#ffc94a', true); }, 400);
     (W.world?.arrive() ?? Promise.resolve()).then(() => W.world?.spawnMob(maxHp, currentWorld().mob)).then(() => (cine = false));
     audio.setMood('focus'); enter();
-    return () => { clearTimeout(skipTimer); W.world?.clearMob(); };
+    return () => { clearTimeout(skipTimer); W.world?.clearMob(); mq.removeEventListener('change', onLand); };
   });
 
   function strike(crit = false) {
@@ -123,7 +143,7 @@
     if (step.type === 'final' && won) return;
     pick = k;
     const ok = k === step.answer;
-    if (step.type === 'predict') { audio.play(ok ? 'correct' : 'hint'); if (ok) react('correct'); reward(ok ? 3 : 0); gate.start(readMs(step.reveal)); return; }
+    if (step.type === 'predict') { audio.play(ok ? 'correct' : 'hint'); if (ok) react('correct'); reward(ok ? 3 : 0); gate.start(readMs(step.reveal)); showChoices(); return; }
     if (step.type === 'final') {
       if (!ok) { audio.play('wrong'); flash('#ff9a6b'); W.world?.enemyAttack(); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake'); return; }
       won = true; hp = 0; audio.play('crit'); react('win');
@@ -139,7 +159,10 @@
     audio.play(ok ? 'correct' : 'wrong'); react(ok ? 'correct' : 'wrong'); reward(ok ? 5 : 0);
     if (step.why) gate.start(readMs(step.why));
     if (!ok) W.world?.enemyAttack();
+    showChoices();
   }
+  // после ответа появляется разбор: варианты и кнопка должны остаться в поле зрения
+  const showChoices = () => tick().then(() => setTimeout(() => cardEl?.querySelector('.choices')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 80));
 
   function next() {
     if (HIT(step.type) && step.type !== 'final') strike(step.type === 'blitz');
@@ -155,13 +178,36 @@
   const primaryLabel = $derived(
     moreFrames ? 'Келесі кадр' : step.type === 'goal' ? 'Миссияны бастау' : i < steps.length - 1 ? (HIT(step.type) ? 'Соққы беру' : 'Келесі')
     : replay ? 'Альбомға қайту' : 'Жаттығуға');
+  // D12: «прочитал» — касание подсвеченной части открывает «дальше» раньше таймера (таймер остаётся запасным)
+  function readTap(e: Event) {
+    if (!gate.on) return;
+    gate.stop(); gate.done = true; audio.play('correct');
+    const c = centerOf(e.currentTarget as HTMLElement); sparksAt(c.x, c.y, ['#ffc94a', '#3ff0ff'], 16);
+  }
+  // D11: верный вариант в пропуске тоже считается «прочитал»
+  function gapSolved() { solved[gapKey] = true; gate.stop(); gate.done = true; if (nextBtn) { const c = centerOf(nextBtn); sparksAt(c.x, c.y - 40, ['#5ce39c', '#ffc94a'], 18); } }
+  const canTap = $derived(gate.on && !gapOpen);
   function primary() {
+    if (gapOpen) { audio.play('click'); toast('Алдымен жасырылған санды тап'); return; }
     if (gate.on) { gate.nope(); audio.play('click'); toast('Алдымен оқы — батырма зарядталып жатыр'); return; }
     if (moreFrames) return go2(frame + 1);
     if (!ready) { toast(step.type === 'widget' ? 'Алдымен тапсырманы орында' : 'Алдымен жауап таңда'); audio.play('click'); return; }
     next();
   }
   function leave() { askExit = false; if (!replay) { game.save.lessonPos = { skill, step: i }; persist(); } go({ name: replay ? 'album' : 'hub' }); }
+  const bit = $derived.by((): { text: string; mood: 'idle' | 'happy' | 'wow' | 'think' | 'sad'; compact: boolean; voice?: string } | null => {
+    const t = step.type;
+    if (t === 'say' || t === 'goal') return { text: step.kz, mood: 'wow', compact: t === 'goal', voice: voiceUrl(i) };
+    if (t === 'widget') return { text: step.kz, mood: 'think', compact: true, voice: voiceUrl(i) };
+    if (t === 'example') return fr?.kz ? { text: fr.kz, mood: 'think', compact: true, voice: voiceUrl(`${i}_f${frame}`) } : null;
+    if (t === 'faded') return { text: 'Енді өзің! Бұзылған модульдерді жөнде.', mood: 'think', compact: true };
+    if (t === 'blitz') return blitzPhase === 'play' ? null : { text: step.kz, mood: 'wow', compact: true };
+    if (['predict', 'why', 'quiz', 'final'].includes(t)) return { text: bitLine, mood: pick === null || pick !== step.answer ? 'think' : 'happy', compact: true };
+    return null;
+  });
+  // окно 3D-сцены: на «читательских» шагах повыше, на шагах с заданием — низкое (задаче нужно место, DESIGN_SYSTEM 6)
+  const sceneSize = $derived(step.type === 'say' ? 'short' : 'strip');
+  const longChoices = $derived(['predict', 'why', 'quiz', 'final'].includes(step.type) && Math.max(...(step.choices ?? ['']).map((c: string) => c.length)) > 22);
   const bitLine = $derived.by(() => {
     if (step.type === 'predict') return pick === null ? `${game.save.heroName}, алдымен болжап көр — қателесуден қорықпа!` : (pick === step.answer ? 'Дәл таптың! ' : 'Қызық болжам! ') + step.reveal;
     if (step.type === 'why' || step.type === 'quiz') return pick === null ? 'Қалай ойлайсың?' : pick === step.answer ? 'Дұрыс! ' + step.why : 'Жақын, бірақ: ' + step.why;
@@ -170,7 +216,11 @@
   });
 </script>
 
-<Screen scene="short" cinema={cine} back={() => (askExit = true)}>
+{#snippet bitView()}
+  {#if bit}<Bit text={bit.text} mood={bit.mood} compact={bit.compact} voice={bit.voice} />{/if}
+{/snippet}
+
+<Screen scene={sceneSize} cinema={cine} back={() => (askExit = true)}>
   {#snippet head()}
     <div class="hd">
       <div class="t1"><b>{target}</b>{#if earned}<span class="xp num">+{earned} XP</span>{/if}</div>
@@ -178,63 +228,71 @@
     </div>
   {/snippet}
 
+  {#snippet overlay()}
+    {#if land && bit}<div class="say">{#key i}{@render bitView()}{/key}</div>{/if}
+  {/snippet}
+
   {#key i}
     <div class="card" class:final={step.type === 'final'} bind:this={cardEl}>
-      <span class="tag c-{step.type}">{CHIP[step.type] ?? ''}</span>
+      {#if step.type !== 'example'}<span class="tag c-{step.type}">{CHIP[step.type] ?? ''}</span>{/if}
 
       {#if step.type === 'say'}
-        <Bit text={step.kz} mood="wow" voice={voiceUrl(i)} />
+        {#if !land}{@render bitView()}{/if}
       {:else if step.type === 'goal'}
         {#if step.scene}<Scene name={step.scene} s={step.s} />{/if}
-        <Bit text={step.kz} mood="wow" voice={voiceUrl(i)} />
-        <div class="paper lock"><Icon name="lock" fill="var(--gold)" size={28} /><MathLine text={step.task} big /></div>
+        {#if !land}{@render bitView()}{/if}
+        <div class="paper lock" class:long={step.task.length > 28}><Icon name="lock" fill="var(--gold)" size={28} /><MathLine text={step.task} big={step.task.length <= 28} inherit={step.task.length > 28} /></div>
       {:else if step.type === 'widget'}
         {@const Comp = WIDGETS[step.w]}
-        <Bit text={step.kz} mood="think" compact voice={voiceUrl(i)} />
-        <div class="widget pe"><Comp {...step.props} ondone={widgetDone} /></div>
+        {#if !land}{@render bitView()}{/if}
+        <div class="widget pe" use:fitZoom={{ min: SELF_FIT.includes(step.w) ? 1 : 0.8 }}><Comp {...step.props} ondone={widgetDone} /></div>
       {:else if step.type === 'example'}
-        <h2 class="h">{step.kz}</h2>
+        <div class="hrow"><span class="tag c-example">{CHIP.example}</span><h2 class="h"><MathLine text={step.kz.replace(/^Көр:\s*/, '')} inherit /></h2></div>
         {#if step.scene || fr.scene}
           {#key frame}
             <Scene name={fr.scene ?? step.scene} s={fr.s} />
-            {#if fr.math}<div class="paper mline appear"><MathLine text={fr.math} big /></div>{/if}
-            <div class="appear"><Bit text={fr.kz} mood="think" compact voice={voiceUrl(`${i}_f${frame}`)} /></div>
+            {#if fr.math}<div class="paper mline appear"><MathLine text={curGap ? curGap.text : fr.math} fill={curGap && solved[gapKey] ? curGap.answer : null} big ontap={canTap && hasHighlight(curGap ? curGap.text : fr.math) ? readTap : undefined} /></div>{/if}
+            {#if gapOpen && curGap}<Gap options={curGap.options} answer={curGap.answer} onsolved={gapSolved} />
+            {:else if fr.math && hasHighlight(fr.math) && (gate.on || gate.done)}<p class="tip" class:off={!canTap} aria-hidden={!canTap}>Сары бөлікті түртсең, батырма ашылады</p>{/if}
+            {#if !land}<div class="appear">{@render bitView()}</div>{/if}
           {/key}
           <div class="fdots" aria-label="Кадр {frame + 1} / {step.frames.length}">{#each step.frames as _, k}<button class:on={k === frame} class:seen={k < frame} onclick={() => k <= frame && go2(k)} aria-label="Кадр {k + 1}"></button>{/each}</div>
         {:else}
           <ol class="paper frames">
             {#each step.frames.slice(0, frame + 1) as f, k}
-              <li class="appear" class:cur={k === frame}>{#if f.math}<MathLine text={f.math} big={k === frame} />{/if}<span>{f.kz}</span></li>
+              <li class="appear" class:cur={k === frame}>{#if f.math}<MathLine text={k === frame && curGap ? curGap.text : f.math} fill={k === frame && curGap && solved[gapKey] ? curGap.answer : null} big={k === frame} ontap={k === frame && canTap && hasHighlight(f.math) ? readTap : undefined} />{/if}<span><MathLine text={f.kz} inherit /></span></li>
             {/each}
           </ol>
+          {#if gapOpen && curGap}<Gap options={curGap.options} answer={curGap.answer} onsolved={gapSolved} />{/if}
         {/if}
       {:else if step.type === 'faded'}
-        <Bit text="Енді өзің! Бұзылған модульдерді жөнде." mood="think" compact />
+        {#if !land}{@render bitView()}{/if}
         <div class="paper"><Faded task={step.kz} steps={step.steps} ondone={clean => reward(clean ? 8 : 3)} /></div>
       {:else if step.type === 'bug'}
         <GlitchSays text={step.kz} beaten={bugFound} />
         <div class="paper"><BugHunt lines={step.lines} bad={step.bad} follows={step.follows} fix={step.fix} ondone={clean => { bugFound = true; W.world?.heroAttack(clean); reward(clean ? 8 : 3); }} /></div>
       {:else if step.type === 'blitz'}
-        <Bit text={step.kz} mood="wow" compact />
-        <div class="paper"><Blitz title={step.title} count={step.count} make={step.make} onhit={crit => W.world?.heroAttack(crit)} ondone={stars => reward(stars * 5, stars === 3)} /></div>
+        {#if !land}{@render bitView()}{/if}
+        <div class="paper"><Blitz title={step.title} count={step.count} make={step.make} onphase={p => (blitzPhase = p)} onhit={crit => W.world?.heroAttack(crit)} ondone={stars => reward(stars * 5, stars === 3)} /></div>
       {:else if step.type === 'rule'}
         <div class="paper rule">
           <b><Icon name="star" fill="var(--gold)" size={22} />{step.kz}</b>
-          {#each step.lines as l, k}<p class="appear" style="animation-delay:{k * 120}ms">{l}</p>{/each}
+          {#each step.lines as l, k}<p class="appear" style="animation-delay:{k * 120}ms"><MathLine text={gaps?.rule?.line === k ? gaps.rule.gap.text : l} fill={gaps?.rule?.line === k && solved[gapKey] ? gaps.rule.gap.answer : null} inherit /></p>{/each}
           <small>Бұл ереже Альбомдағы тақырып картасына сақталды.</small>
         </div>
+        {#if gapOpen && curGap}<Gap options={curGap.options} answer={curGap.answer} onsolved={gapSolved} />{/if}
       {:else}
         {#if step.type === 'final' && step.scene}<Scene name={step.scene} s={won ? step.s : goal?.s ?? step.s} />{/if}
-        <Bit text={bitLine} mood={pick === null ? 'think' : pick === step.answer ? 'happy' : 'think'} compact />
+        {#if !land}{@render bitView()}{/if}
         <div class="paper qbox">
           {#if step.type === 'final'}<Icon name={won ? 'check' : 'lock'} fill={won ? 'var(--ok)' : 'var(--gold)'} size={24} />{/if}
-          <p class="q">{step.kz}</p>
+          <p class="q"><MathLine text={step.kz} inherit /></p>
         </div>
-        <div class="choices">
+        <div class="choices" class:one={longChoices}>
           {#each step.choices as c, k}
             <button class="ans" class:right={pick !== null && k === step.answer && (step.type !== 'final' || won)} class:wrong={pick === k && k !== step.answer}
               disabled={step.type === 'final' ? won : pick !== null} onclick={() => choose(k)}>
-              <span class="l">{#if pick !== null && k === step.answer && (step.type !== 'final' || won)}<Icon name="check" fill="#fff" size={16} />{:else if pick === k && k !== step.answer}<Icon name="cross" fill="#fff" size={16} />{:else}{'ABCDE'[k]}{/if}</span><span>{c}</span>
+              <span class="l">{#if pick !== null && k === step.answer && (step.type !== 'final' || won)}<Icon name="check" fill="#fff" size={16} />{:else if pick === k && k !== step.answer}<Icon name="cross" fill="#fff" size={16} />{:else}{'ABCDE'[k]}{/if}</span><span class="ct"><MathLine text={c} inherit /></span>
             </button>
           {/each}
         </div>
@@ -244,8 +302,8 @@
 
   {#snippet footer()}
     {#if showSkip && !ready}<button class="btn ghost" onclick={() => (ready = true)}>Өткізу</button>{/if}
-    <button bind:this={nextBtn} class="btn big grow {ready || moreFrames ? (won || step.type === 'goal' ? 'primary' : 'go') : 'wait'}" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={primary}>
-      {primaryLabel}<Icon name="chevron" fill={ready || moreFrames ? 'var(--outline)' : '#d7dcf5'} size={20} />
+    <button bind:this={nextBtn} class="btn big grow {(ready || moreFrames) && !gapOpen ? (won || step.type === 'goal' ? 'primary' : 'go') : 'wait'}" class:charging={gate.on && !gapOpen} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={primary}>
+      {primaryLabel}<Icon name="chevron" fill={(ready || moreFrames) && !gapOpen ? 'var(--outline)' : '#d7dcf5'} size={20} />
     </button>
   {/snippet}
 </Screen>
@@ -269,8 +327,9 @@
   .tag.c-bug { background: var(--glitch); }
   .tag.c-blitz { background: var(--ok); }
   .tag.c-why, .tag.c-predict { background: var(--crystal); }
-  .widget { background: var(--deep); border: 3px solid var(--outline); padding: 14px 8px; border-radius: 16px; }
-  .h { font-size: 19px; text-shadow: 0 2px 0 var(--outline); }
+  .widget { background: var(--deep); border: 3px solid var(--outline); padding: 10px 8px; border-radius: 16px; }
+  .hrow { display: flex; align-items: center; gap: 10px; }
+  .h { font-size: 19px; line-height: 1.2; text-shadow: 0 2px 0 var(--outline); min-width: 0; }
   .mline { display: flex; justify-content: center; }
   .fdots { display: flex; justify-content: center; gap: 8px; }
   .fdots button { width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 2px solid var(--outline); background: #0b1030; cursor: pointer; }
@@ -280,16 +339,60 @@
   .frames li { opacity: .5; display: grid; gap: 4px; }
   .frames li.cur { opacity: 1; }
   .lock, .qbox { display: flex; align-items: center; gap: 12px; }
+  .lock.long { font: 800 19px/1.35 var(--disp); }
+  .lock :global(.icon), .lock > :global(svg) { flex: none; }
   .rule { display: grid; gap: 8px; box-shadow: inset 0 -4px 0 #ffe38a, 0 0 0 3px var(--gold); }
   .rule b { display: flex; align-items: center; gap: 8px; font: 900 19px var(--disp); }
   .rule p { font-size: 17px; font-weight: 800; }
   .q { font-size: 19px; font-weight: 800; }
   .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
+  .choices.one { grid-template-columns: minmax(0, 1fr); }
+  /* варианты закреплены внизу панели: даже если условие длинное и панель прокручивается, ответы не уезжают под кнопку */
+  .choices { position: sticky; bottom: 0; z-index: 2; margin: 0 -14px; padding: 12px 14px 4px; background: linear-gradient(180deg, transparent, var(--panel-2) 12px); }
+  .choices .ans { min-width: 0; min-height: 48px; padding: 6px 10px; gap: 8px; font-size: clamp(15px, 4.4vw, 19px); }
+  .choices .ans .l { width: 26px; height: 26px; font-size: 14px; }
+  .ct { min-width: 0; overflow-wrap: break-word; line-height: 1.2; }
+  .tip { text-align: center; color: var(--dim); font: 800 var(--fs-xs) var(--txt); }
+  .tip.off { visibility: hidden; }   /* место не отдаём: иначе сцена и реплика прыгают после касания */
+  /* реплика Бита в горизонтали — поверх окна сцены (как в Session.svelte): панель справа остаётся под задачу */
+  .say { margin-top: auto; padding: 0 4px 4px; width: min(480px, 100%); animation: pop-in .25s var(--ease-out) both; }
+  .say :global(.bubble) { font-size: 14px !important; line-height: 1.35; padding: 7px 10px !important; }
+  .say :global(.typed) { inset: 7px 10px !important; }   /* тот же отступ, что у невидимого «призрака» текста, иначе строка переносится иначе и вылезает из пузыря */
   .grow { flex: 1; min-width: 0; }
   /* выкладка на бумаге: подсветка и пропуски — тёмные цвета */
   .card :global(.paper .hl) { color: #7a4d00; background: #ffe38a; border-bottom-color: var(--gold-deep); }
   .card :global(.paper .blank) { color: #b0276f; background: #ffe0f1; }
   .card :global(.paper .blank.filled) { color: var(--code-deep); background: #d9f8ff; border-color: var(--code-deep); }
   .card :global(.paper li small), .card :global(.paper .note) { color: var(--paper-dim); }
+  /* финальный вопрос важнее иллюстрации: на невысоком экране картинку убираем (бой виден в окне сцены сверху) */
+  @media (max-height: 830px) { .card.final :global(.scene) { display: none; } }
+  @media (max-height: 830px) { .card :global(.bit .bubble) { font-size: 14px; line-height: 1.35; } .lock.long { font-size: 17px; } }
+  /* невысокий телефон (667): плотнее */
+  @media (max-height: 720px) {
+    .card { gap: 8px; }
+    .card :global(.paper) { padding: 10px 12px; }
+    .h { font-size: 17px; }
+    .q { font-size: 17px; }
+    .frames { font-size: 16px; gap: 8px; padding: 10px 12px 10px 30px; }
+    .rule { gap: 6px; } .rule p { font-size: 16px; } .rule b { font-size: 17px; }
+    .choices { gap: 6px; } .choices .ans { min-height: 42px; padding: 4px 8px; } .choices .ans .l { width: 24px; height: 24px; }
+    .widget { padding: 6px; }
+  }
+  /* телефон в горизонтали: колонка справа низкая (~230 px под содержимое) */
+  @media (max-width: 999.98px) and (max-height: 560px) and (min-aspect-ratio: 23/20) {
+    .card { gap: 6px; }
+    .card :global(.tag) { font-size: 11px; padding: 2px 8px; }
+    .card :global(.paper) { padding: 6px 10px; }
+    .card :global(.bit .bubble) { font-size: 14px; }
+    .h { font-size: 15px; }
+    .q { font-size: 16px; }
+    .mline :global(.ml.big) { font-size: 22px; }
+    .frames { font-size: 15px; gap: 6px; padding: 8px 10px 8px 26px; }
+    .rule { gap: 4px; } .rule p { font-size: 15px; } .rule b { font-size: 16px; } .rule small { display: none; }
+    .lock { gap: 8px; }
+    .choices { gap: 5px; } .choices .ans { min-height: 38px; padding: 3px 8px; font-size: clamp(14px, 2.2vw, 16px); } .choices .ans .l { width: 22px; height: 22px; font-size: 12px; }
+    .widget { padding: 4px; }
+    .tip { font-size: 12px; }
+  }
   .card :global(.paper .task) { color: var(--paper-ink); }
 </style>

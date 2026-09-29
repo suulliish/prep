@@ -18,8 +18,9 @@ export function toMixed(f: Fr): { whole: number; n: number; d: number } {
 
 // ---------- разбор дробей в строках ----------
 export type Seg = { t: 'text'; s: string } | { t: 'frac'; whole: number | null; n: number; d: number };
-// «2 3/4» или «3/4»; не трогаем 1/2/3, 0.5/2 и числа, приклеенные к цифрам
-const FRAC_RE = /(?<![\d/.,])(?:(\d+) )?(\d+)\/(\d+)(?![\d/])/g;
+// «2 3/4» или «3/4»; не трогаем 1/2/3, 0.5/2 и числа, приклеенные к цифрам.
+// Целая часть смешанного числа не может стоять после группы «цифра + пробел»: в «1 000 1/2» «000» — разряды, а не целая часть.
+const FRAC_RE = /(?<![\d/.,])(?:(?<!\d )(\d+) )?(\d+)\/(\d+)(?![\d/])/g;
 export const FRAC_SRC = String.raw`(?:\d+ )?\d+\/\d+`;
 
 export function splitFractions(text: string): Seg[] {

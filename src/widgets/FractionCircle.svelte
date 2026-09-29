@@ -5,6 +5,7 @@
   import { audio } from '../lib/audio';
   import Frac from '../ui/Frac.svelte';
   import { eq, boundary, sectorPath, polar, tween, type Fr } from './fracdraw';
+  import { room, watchRoom } from '../lesson/fit';
 
   let { den, shade = 0, target, mode, wholes = 1, equiv, ondone }:
     { den?: number; shade?: number; target: Fr; mode?: 'cut' | 'shade' | 'mixed'; wholes?: number; equiv?: boolean; ondone?: () => void } = $props();
@@ -21,6 +22,20 @@
   let finished = $state(false);
   let msg = $state('');
   let stop = () => {};
+  // размер пиццы подгоняем под высоту, которая осталась в панели урока (иначе между пиццей и «Тексеру» приходится прокручивать)
+  let fcEl = $state<HTMLElement>(), pzEl = $state<HTMLElement>();
+  let pw = $state(240);
+  $effect(() => {
+    if (!fcEl || !pzEl) return;
+    const cap = wholes > 1 ? 150 : 240;
+    return watchRoom(fcEl, () => {
+      if (!fcEl || !pzEl) return;
+      const ph = pzEl.getBoundingClientRect().height, other = fcEl.getBoundingClientRect().height - ph;
+      const rows = Math.max(1, ph / Math.max(1, pw));
+      const next = Math.round(Math.max(96, Math.min(cap, (room(fcEl) - other) / rows)));
+      if (Math.abs(next - pw) > 2) pw = next;
+    });
+  });
 
   const count = $derived(on.filter(Boolean).length);
   const R = 84, C = 100;
@@ -54,13 +69,13 @@
   function key(e: KeyboardEvent, p: number, i: number) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(p, i); } }
 </script>
 
-<div class="fc">
+<div class="fc" class:multi={wholes > 1} bind:this={fcEl}>
   <div class="goal panel flat"><span class="label">Мақсат</span><Frac n={target.n} d={target.d} size="lg" />
     {#if m === 'cut'}<small>бөлік</small>{/if}</div>
 
-  <div class="pizzas" class:bad class:done={finished}>
+  <div class="pizzas" class:bad class:done={finished} bind:this={pzEl}>
     {#each Array(wholes) as _, p}
-      <svg viewBox="0 0 200 200" class="pz" style="--pw:{wholes > 1 ? 150 : 240}px" role="group" aria-label="Пицца {p + 1}">
+      <svg viewBox="0 0 200 200" class="pz" style="--pw:{pw}px" role="group" aria-label="Пицца {p + 1}">
         <circle cx={C} cy={C} r={R + 8} class="crust" />
         {#each slices as i}
           {@const a0 = boundary(i, prevD, d, t)}
@@ -83,25 +98,29 @@
     {#if mixed}<span class="eqs num">=</span><Frac whole={mixed.whole} n={mixed.n} d={mixed.d} size="lg" />{/if}
   </div>
 
-  {#if canCut}
-    <div class="stepper" aria-label="Бөлік саны">
-      <button class="btn" onclick={() => setDen(d - 1)} disabled={d <= 2 || finished} aria-label="Азайту">−</button>
-      <span class="num cnt"><b>{d}</b> тең бөлік</span>
-      <button class="btn" onclick={() => setDen(d + 1)} disabled={d >= 12 || finished} aria-label="Көбейту">+</button>
-    </div>
-  {/if}
+  <div class="ctl">
+    {#if canCut}
+      <div class="stepper" aria-label="Бөлік саны">
+        <button class="btn" onclick={() => setDen(d - 1)} disabled={d <= 2 || finished} aria-label="Азайту">−</button>
+        <span class="num cnt"><b>{d}</b><small>тең бөлік</small></span>
+        <button class="btn" onclick={() => setDen(d + 1)} disabled={d >= 12 || finished} aria-label="Көбейту">+</button>
+      </div>
+    {/if}
+    <button class="btn primary chk" onclick={check} disabled={finished}>Тексеру</button>
+  </div>
 
-  <p class="msg" class:ok={finished}>{msg || (m === 'cut' ? `Пиццаны ${target.d} тең бөлікке кес.` : m === 'shade' ? 'Бөліктерді басып боя.' : 'Пиццаны тең бөліктерге кес, сосын керек бөліктерін боя.')}</p>
-  <button class="btn primary big" onclick={check} disabled={finished}>Тексеру</button>
+  <p class="msg" class:ok={finished} class:hint={!msg}>{msg || (m === 'cut' ? `Пиццаны ${target.d} тең бөлікке кес.` : m === 'shade' ? 'Бөліктерді басып боя.' : 'Кес, сосын керек бөліктерін боя.')}</p>
 </div>
 
 <style>
-  .fc { display: grid; gap: 10px; justify-items: center; }
-  .goal { display: flex; align-items: center; gap: 12px; padding: 8px 16px; color: var(--ink); }
-  .goal small { color: var(--dim); font-size: var(--fs-s); }
-  .pizzas { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: 100%; }
+  /* портрет: слева «Мақсат», в центре пицца, справа текущая дробь; ниже кнопки и подсказка. Пицца сжимается под высоту панели (pw). */
+  .fc { display: grid; grid-template-columns: minmax(64px, 1fr) auto minmax(64px, 1fr); grid-template-areas: "goal pz cur" "ctl ctl ctl" "msg msg msg"; align-items: center; justify-items: center; gap: 6px 8px; }
+  .fc.multi { grid-template-columns: 1fr 1fr; grid-template-areas: "goal cur" "pz pz" "ctl ctl" "msg msg"; }
+  .goal { grid-area: goal; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 8px; color: var(--ink); }
+  .goal small { color: var(--dim); font-size: var(--fs-xs); }
+  .pizzas { grid-area: pz; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
   .pizzas.bad { animation: shake .35s; }
-  .pz { width: min(100%, var(--pw)); height: auto; touch-action: manipulation; overflow: visible; }
+  .pz { width: var(--pw); max-width: 100%; height: auto; touch-action: manipulation; overflow: visible; }
   .crust { fill: #d9902a; stroke: var(--outline); stroke-width: 4; }
   .sl { fill: #ffeec2; stroke: var(--outline); stroke-width: 3; stroke-linejoin: round; transition: fill .2s; outline: none; }
   .sl.tap { cursor: pointer; }
@@ -111,12 +130,29 @@
   .pep { fill: #ffb0dd; stroke: var(--outline); stroke-width: 2; pointer-events: none; animation: pop-in .3s var(--ease-out); }
   .done .sl.on { animation: pulse 0.6s 2; }
   @keyframes pulse { 50% { fill: var(--gold); } }
-  .cur { display: flex; align-items: center; gap: 10px; min-height: 64px; color: var(--ink); }
-  .eqs { font-size: 26px; color: var(--dim); }
-  .stepper { display: flex; align-items: center; gap: 12px; }
-  .stepper .btn { width: 56px; min-height: 52px; padding: 4px; font-size: 28px; }
-  .cnt { min-width: 130px; text-align: center; font-size: var(--fs-m); color: var(--dim); }
-  .cnt b { font-size: 30px; color: var(--ink); }
-  .msg { text-align: center; font-weight: 800; min-height: 2.6em; max-width: 340px; }
+  .cur { grid-area: cur; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; min-height: 48px; color: var(--ink); }
+  .eqs { font-size: 22px; color: var(--dim); }
+  .ctl { grid-area: ctl; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 10px; }
+  .stepper { display: flex; align-items: center; gap: 6px; }
+  .stepper .btn { width: 44px; min-height: 44px; padding: 2px; font-size: 24px; margin-bottom: 4px; }
+  .cnt { min-width: 56px; display: grid; justify-items: center; line-height: 1; color: var(--dim); }
+  .cnt b { font-size: 28px; color: var(--ink); }
+  .cnt small { font: 800 11px var(--txt); }
+  .chk { min-height: 44px; padding: 6px 14px 9px; }
+  .msg { grid-area: msg; text-align: center; font-weight: 800; font-size: var(--fs-s); line-height: 1.3; min-height: 2.6em; max-width: 340px; }
   .msg.ok { color: var(--ok); }
+  @media (max-height: 720px) { .fc { gap: 4px 8px; } .msg { min-height: 1.3em; } }
+  /* телефон в горизонтали: пицца слева на всю высоту, справа цель и дробь в ряд, ниже кнопки и подсказка */
+  @media (max-width: 999.98px) and (max-height: 560px) and (min-aspect-ratio: 23/20) {
+    .fc, .fc.multi { grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "pz goal cur" "pz ctl ctl" "pz msg msg"; column-gap: 10px; row-gap: 4px; }
+    .goal { flex-direction: row; gap: 8px; padding: 2px 10px; }
+    .stepper .btn { width: 40px; min-height: 40px; font-size: 22px; }
+    .chk { min-height: 40px; padding: 4px 14px 7px; }
+    .cur { min-height: 0; }
+    .cur :global(.frac) { font-size: 30px !important; }
+    .cur .eqs { font-size: 16px; }
+    .cur :global(.frac + .eqs + .frac) { font-size: 20px !important; }
+    .msg { min-height: 0; font-size: 13px; }
+    .msg.hint { display: none; }   /* обычная подсказка дублирует реплику Бита; ошибка и «Дұрыс!» показываются */
+  }
 </style>
