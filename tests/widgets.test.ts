@@ -156,3 +156,62 @@ describe('геометрия и вспомогательное', () => {
     expect(denColor(1)).toBe(denColor(13));
   });
 });
+
+// ---------- Красный отряд: чистая логика NumberLine и FractionBar (модульный <script module> в самих виджетах) ----------
+describe('NumberLine: проверка постановки и выстрела', () => {
+  it('den=4, цель 1/3: деление 1/4 не засчитывается, сама цель засчитывается', async () => {
+    const { placeTol, placedOK, onGridOf } = (await import('../src/widgets/NumberLine.svelte')) as any;
+    const f = { n: 1, d: 3 }, tv = 1 / 3, tol = placeTol({ den: 4, onGrid: onGridOf(f, 4), archer: false, target: tv });
+    expect(onGridOf(f, 4)).toBe(false);
+    expect(tol).toBeLessThan(0.5 / 4);
+    expect(placedOK(0.25, tv, tol)).toBe(false);
+    expect(placedOK(0.5, tv, tol)).toBe(false);
+    expect(placedOK(1 / 3, tv, tol)).toBe(true);
+    expect(placedOK(0.34, tv, tol)).toBe(true);
+  });
+  it('ни одно деление 1/den не засчитывается за цель между делениями (den 2..16, цели n/d до 3)', async () => {
+    const { placeTol, placedOK, onGridOf } = (await import('../src/widgets/NumberLine.svelte')) as any;
+    let checked = 0;
+    for (let den = 2; den <= 16; den++) for (let d = 2; d <= 16; d++) for (let n = 1; n < 3 * d; n++) {
+      const f = { n, d }, tv = n / d, og = onGridOf(f, den), tol = placeTol({ den, onGrid: og, archer: false, target: tv });
+      expect(tol, `den=${den} ${n}/${d}`).toBeLessThan(0.5 / den);
+      const hits: number[] = [];
+      for (let k = 0; k <= 3 * den; k++) if (placedOK(k / den, tv, tol)) hits.push(k);
+      // на делении: засчитывается только оно само; между делениями: ни одно
+      expect(hits, `den=${den} цель ${n}/${d}`).toEqual(og ? [(n * den) / d] : []);
+      expect(placedOK(tv, tv, tol)).toBe(true); checked++;
+    }
+    expect(checked).toBeGreaterThan(3000);
+  });
+  it('явный tolerance не превышает полуделения при заданном den; без den остаётся как задан', async () => {
+    const { placeTol } = (await import('../src/widgets/NumberLine.svelte')) as any;
+    expect(placeTol({ den: 4, onGrid: false, archer: false, tolerance: 0.5 })).toBeLessThan(0.125);
+    expect(placeTol({ den: 4, onGrid: true, archer: false, tolerance: 0.2 })).toBeLessThan(0.125);
+    expect(placeTol({ onGrid: false, archer: false, tolerance: 0.2 })).toBe(0.2);
+    expect(placeTol({ onGrid: false, archer: true })).toBe(0.04);
+  });
+  it('выстрел с несдвинутого маркера не даёт звёзд (null), сдвинутый оценивается по расстоянию', async () => {
+    const { shotStars, TAP_LOCK_MS } = (await import('../src/widgets/NumberLine.svelte')) as any;
+    expect(shotStars(false, 0, 0.75, 0.04)).toBeNull();
+    expect(shotStars(false, 0.75, 0.75, 0.04)).toBeNull();   // даже если маркер случайно на цели: без прицеливания выстрела нет
+    expect(shotStars(true, 0.75, 0.75, 0.04)).toBe(3);
+    expect(shotStars(true, 0, 0.75, 0.04)).toBe(0);
+    expect(TAP_LOCK_MS).toBeGreaterThanOrEqual(400);
+  });
+});
+
+describe('FractionBar: режим equal без target', () => {
+  it('«×2, потом :2» возвращает исходный знаменатель и не засчитывается; другая равная дробь засчитывается', async () => {
+    const { equalDone } = (await import('../src/widgets/FractionBar.svelte')) as any;
+    expect(equalDone({ startD: 3, nd: 6, ops: 1 })).toBe(false);          // одной операции мало
+    expect(equalDone({ startD: 3, nd: 3, ops: 2 })).toBe(false);          // ×2 затем :2
+    expect(equalDone({ startD: 4, nd: 4, ops: 4 })).toBe(false);
+    expect(equalDone({ startD: 3, nd: 12, ops: 2 })).toBe(true);          // ×2 ×2
+    expect(equalDone({ startD: 4, nd: 2, ops: 2 })).toBe(true);           // :2 — другой знаменатель
+  });
+  it('с target решает только знаменатель target.d', async () => {
+    const { equalDone } = (await import('../src/widgets/FractionBar.svelte')) as any;
+    expect(equalDone({ target: { d: 12 }, startD: 3, nd: 12, ops: 1 })).toBe(true);
+    expect(equalDone({ target: { d: 12 }, startD: 3, nd: 6, ops: 5 })).toBe(false);
+  });
+});

@@ -25,7 +25,7 @@ s('div.count_multiples', 'D', 5, 'Еселіктер санын табу', 'Ск
 s('div.star_digit', 'D', 5, 'Жұлдызшаның орнына цифр қою', 'Цифра вместо звёздочки', ['div.rules'], { t: ['div.star_digit_9'] });
 s('div.powers_count', 'D', 5, 'Квадраттар мен кубтар саны', 'Сколько квадратов/кубов', ['nat.powers'], { t: ['div.count_powers'] });
 s('div.last_digit', 'D', 'olymp', 'Дәреженің соңғы цифры', 'Последняя цифра степени', ['nat.powers'], { t: ['div.last_digit_power'] });
-s('div.trailing_zeros', 'D', 5, 'Көбейтіндінің соңындағы нөлдер', 'Нули в конце произведения', ['div.factorization']);
+s('div.trailing_zeros', 'D', 5, 'Көбейтіндінің соңындағы нөлдер', 'Нули в конце произведения', ['div.factorization'], { t: ['div.trailing_zeros_factorial', 'div.trailing_zeros_product'] });
 
 // ---- Обыкновенные дроби ----
 s('frac.concept', 'C', 5, 'Жай бөлшек ұғымы', 'Понятие дроби', ['nat.ops'], { t: ['frac.concept_part', 'frac.concept_equal'] });
@@ -161,7 +161,7 @@ s('logic.pairs_tournament', 'I', 5, 'Жұптар және турнир', 'Па�
 s('logic.probability', 'I', 6, 'Ықтималдық', 'Вероятность', ['frac.concept']);
 s('logic.page_digits', 'I', 5, 'Беттерді нөмірлеу', 'Нумерация страниц', ['nat.place_value'], { t: ['logic.page_digits'] });
 s('logic.seat_number', 'I', 5, 'Қатар мен орын нөмірі', 'Ряд и место (деление с остатком)', ['nat.ops']);
-s('logic.weighing', 'I', 5, 'Таразы және гірлер', 'Взвешивания и гири', ['nat.ops']);
+s('logic.weighing', 'I', 5, 'Таразы және гірлер', 'Взвешивания и гири', ['nat.ops'], { t: ['logic.weighing_set', 'logic.weighing_range'] });
 s('logic.pigeonhole', 'I', 'olymp', 'Ең нашар жағдай', 'Наихудший случай', ['nat.ops']);
 s('logic.invariant', 'I', 'olymp', 'Өзгермейтін шама (инвариант)', 'Инвариант', ['nat.ops']);
 s('logic.snail', 'I', 'olymp', 'Ұлу: күндіз көтеріледі, түнде түседі', 'Улитка на столбе', ['nat.ops']);

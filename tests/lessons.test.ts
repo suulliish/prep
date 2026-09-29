@@ -10,8 +10,10 @@ import { WEEK2 as W2 } from '../content/lessons_week2.mjs';
 import { WEEK3 as W3 } from '../content/lessons_week3.mjs';
 // @ts-ignore
 import { WEEK4 as W4 } from '../content/lessons_week4.mjs';
-const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>, WEEK3 = W3 as Record<string, any[]>, WEEK4 = W4 as Record<string, any[]>;
-const FULL = { ...WEEK1, ...WEEK2, ...WEEK3, ...WEEK4 };
+// @ts-ignore
+import { WEEK5 as W5 } from '../content/lessons_week5.mjs';
+const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>, WEEK3 = W3 as Record<string, any[]>, WEEK4 = W4 as Record<string, any[]>, WEEK5 = W5 as Record<string, any[]>;
+const FULL = { ...WEEK1, ...WEEK2, ...WEEK3, ...WEEK4, ...WEEK5 };
 // @ts-ignore
 import { skillById } from '../content/skills.mjs';
 // @ts-ignore
@@ -48,7 +50,7 @@ describe('уроки', () => {
   }
 });
 
-describe('недели 1–4 — полный сценарий', () => {
+describe('недели 1–5 — полный сценарий', () => {
   for (const [id, steps] of Object.entries(FULL) as [string, any[]][]) {
     it(`${id}: цель → … → возврат к цели`, () => {
       const t = steps.map(s => s.type);
@@ -133,10 +135,88 @@ describe('недели 1–4 — полный сценарий', () => {
       expect(n2).toBeGreaterThan(0);
     }
   });
+  it('мини-игры недели 5 считают правильно', () => {
+    const r = rng(23), bl = (id: string) => WEEK5[id].find((s: any) => s.type === 'blitz')!;
+    const g = (a: number, b: number): number => (b ? g(b, a % b) : a);
+    const red = ([n, d]: number[]) => { const k = g(n, d); return [n / k, d / k]; };
+    // значение варианта («3/4», «1 3/4», «5») как несократимая дробь
+    const val = (t: string) => {
+      let m;
+      if ((m = /^(\d+) (\d+)\/(\d+)$/.exec(t))) return red([+m[1] * +m[3] + +m[2], +m[3]]);
+      if ((m = /^(\d+)\/(\d+)$/.exec(t))) return red([+m[1], +m[2]]);
+      if (/^\d+$/.test(t)) return [+t, 1];
+      throw new Error('не число: ' + t);
+    };
+    const same = (a: number[], b: number[]) => a[0] === b[0] && a[1] === b[1];
+    const fr = (q: string) => [...q.matchAll(/(\d+)\/(\d+)/g)].map(m => [+m[1], +m[2]]);
+    const tz = (nums: number[]) => { let p = 1n; for (const x of nums) p *= BigInt(x); let c = 0; while (p % 10n === 0n) { p /= 10n; c++; } return c; };
+    const v5 = (k: number) => { let c = 0; while (k % 5 === 0) { k /= 5; c++; } return c; };
+    for (let k = 0; k < 300; k++) {
+      // frac.compare: кто больше (или «Тең»), из трёх — наибольший
+      let it = bl('frac.compare').make(r); let F = fr(it.q);
+      if (it.q.includes('ең үлкен')) {
+        const vs = F.map(([a, b]) => a / b), best = vs.indexOf(Math.max(...vs));
+        expect(it.choices.map((c: string) => c.trim())).toEqual(F.map(([a, b]) => `${a}/${b}`));
+        expect(vs.filter(x => Math.abs(x - vs[best]) < 1e-9)).toHaveLength(1);
+        expect(it.answer, it.q).toBe(best);
+      } else {
+        const [[a, b], [c, d]] = F, cmp = Math.sign(a * d - c * b);
+        expect(it.choices.slice(0, 2), it.q).toEqual([`${a}/${b}`, `${c}/${d}`]);
+        expect(it.choices[2]).toBe('Тең');
+        expect(it.choices[it.answer], it.q).toBe(cmp > 0 ? `${a}/${b}` : cmp < 0 ? `${c}/${d}` : 'Тең');
+      }
+      // frac.add_sub: ровно один вариант равен верному значению
+      it = bl('frac.add_sub').make(r); F = fr(it.q);
+      let want: number[];
+      if (it.q.includes('жетіспейді')) { const [a, b] = F[0]; want = red([b - a, b]); }
+      else {
+        const [[a, b], [c, d]] = F, L = (b / g(b, d)) * d, sgn = it.q.includes('−') ? -1 : 1;
+        want = red([a * (L / b) + sgn * c * (L / d), L]);
+        if (sgn < 0) expect(a * d).toBeGreaterThan(c * b);
+      }
+      expect(it.choices.filter((c: string) => same(val(c), want)), it.q + it.choices).toHaveLength(1);
+      expect(same(val(it.choices[it.answer]), want), it.q).toBe(true);
+      // frac.mixed: перевод в обе стороны и порции
+      it = bl('frac.mixed').make(r);
+      const nn = it.q.match(/\d+/g)!.map(Number);
+      let mw: number[];
+      if (it.q.includes('бұрыс бөлшекке')) { const [w, n, d] = nn; mw = [w * d + n, d]; }
+      else if (it.q.includes('аралас санға')) { const [p, d] = nn; mw = red([p, d]); }
+      else { const [w, n, d] = nn; mw = [w * d + n, 1]; }
+      expect(it.choices.filter((c: string) => same(val(c), red(mw))), it.q + it.choices).toHaveLength(1);
+      expect(same(val(it.choices[it.answer]), red(mw)), it.q).toBe(true);
+      if (it.q.includes('аралас санға')) { const m = /^(\d+) (\d+)\/(\d+)$/.exec(it.choices[it.answer])!; expect(+m[2]).toBeLessThan(+m[3]); }
+      // logic.weighing: гири
+      it = bl('logic.weighing').make(r);
+      const ans = it.choices[it.answer], q = it.q, num = q.match(/\d+/g)!.map(Number), N = num[num.length - 1];
+      if (q.includes('екі табаққа')) {
+        const side = (t: string) => t.split(/[+—]/).map(x => +x).filter(Boolean);
+        const sums = (c: string) => { const m = /^оң: (.*); сол: (.*)$/.exec(c)!; return side(m[1]).reduce((s: number, x: number) => s + x, 0) - side(m[2]).reduce((s: number, x: number) => s + x, 0); };
+        it.choices.forEach((c: string, i: number) => expect(sums(c) === N, q + c).toBe(i === it.answer));
+        expect(ans).toMatch(/сол: \d/);
+      } else if (q.includes('неше гір')) {
+        expect(ans).toBe(String(N.toString(2).replace(/0/g, '').length));
+      } else if (q.includes('тағы неше грамм')) {
+        const [n0, g0] = num; expect(ans).toBe(String(n0 - g0));
+      } else {
+        const sum = (c: string) => c.split(' + ').reduce((s, x) => s + +x, 0);
+        it.choices.forEach((c: string, i: number) => expect(sum(c) === N, q + c).toBe(i === it.answer));
+      }
+      // div.trailing_zeros
+      it = bl('div.trailing_zeros').make(r); const zn = it.q.match(/\d+/g)!.map(Number);
+      if (it.q.startsWith('1-ден')) {
+        const n = zn[1]; expect(n).not.toBe(50);
+        const nums = Array.from({ length: n }, (_, i) => i + 1);
+        expect(ans_(it), it.q).toBe(String(tz(nums)));
+      } else if (it.q.includes('жіктегенде')) expect(ans_(it)).toBe(String(v5(zn[0])));
+      else expect(ans_(it), it.q).toBe(String(tz(zn)));
+    }
+    function ans_(it: any) { return it.choices[it.answer]; }
+  });
   it('уроки: сцены и виджеты зарегистрированы, запрещённых слов нет', () => {
     const scenes = readFileSync('src/lesson/Scene.svelte', 'utf8'), lesson = readFileSync('src/screens/Lesson.svelte', 'utf8');
     const avoid: string[] = (GLOSSARY as any).terms.flatMap((t: any) => t.avoid ?? []).filter((w: string) => w.length > 3);
-    for (const [id, steps] of Object.entries(WEEK4)) {
+    for (const [id, steps] of Object.entries({ ...WEEK4, ...WEEK5 })) {
       const txt: string[] = [];
       for (const s of steps) {
         if (s.scene) expect(scenes, `${id}: сцена ${s.scene}`).toMatch(new RegExp(`\\b${s.scene}\\b`));
