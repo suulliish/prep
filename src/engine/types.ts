@@ -24,6 +24,7 @@ export interface Attempt {
   hintLevel: number;
   honest: boolean;
   timeMs: number;
+  fast?: boolean;            // быстрее порога для длины условия (src/engine/rush.ts); в старых сохранениях поля нет
   tag?: string;              // метка выбранной ошибки
   mode: 'lesson' | 'practice' | 'warmup' | 'mixed' | 'boss' | 'diagnostic' | 'extra' | 'mock';
 }

@@ -82,3 +82,41 @@ export const canStartExtra = (rec: DayRecord, plan: Plan, cap: number) => planCo
 export function isHonest(timeMs: number, hintLevel: number, minMs = 5000) {
   return timeMs >= minMs && hintLevel < 4;
 }
+
+// ---------- Очередь вопросов боя: чередование (D5, docs/GAME_LOOP.md 15) ----------
+export interface Slot { skill: string; tpl: string | null }
+
+const sameTpl = (a: Slot, b: Slot) => !!a.tpl && a.tpl === b.tpl;
+export const tplClashes = (seq: Slot[]) => seq.reduce((n, s, i) => n + (i > 0 && sameTpl(seq[i - 1], s) ? 1 : 0), 0);
+
+/** Очередь из `total` вопросов: темы идут по кругу (чередование), внутри темы шаблоны выбираются так, чтобы два вопроса
+ *  одного шаблона не шли подряд и шаблоны использовались поровну. Если у единственной темы единственный шаблон — подряд неизбежно.
+ *  Тему без шаблонов пропускаем. Чистая функция: `rand` подставляется в тестах. */
+export function sequenceSlots(skills: string[], total: number, tplOf: (skill: string) => string[], rand: () => number = Math.random): Slot[] {
+  const ring = [...new Set(skills)].filter(s => tplOf(s).length);
+  if (!ring.length) return [];
+  const used = new Map<string, number>();
+  const seq: Slot[] = [];
+  for (let i = 0; i < total; i++) {
+    const skill = ring[i % ring.length], prev = seq[i - 1]?.tpl ?? null;
+    const all = tplOf(skill), ok = all.filter(t => t !== prev), pool = ok.length ? ok : all;
+    const least = Math.min(...pool.map(t => used.get(t) ?? 0));
+    const best = pool.filter(t => (used.get(t) ?? 0) === least);
+    const tpl = best[Math.floor(rand() * best.length)];
+    used.set(tpl, (used.get(tpl) ?? 0) + 1);
+    seq.push({ skill, tpl });
+  }
+  // общий шаблон у соседних тем (или единственный шаблон у темы) мог дать стык — меняем вопросы местами, пока стыков не станет меньше
+  for (let guard = 0; guard < total * total && tplClashes(seq) > 0; guard++) {
+    const i = seq.findIndex((s, k) => k > 0 && sameTpl(seq[k - 1], s));
+    let fixed = false;
+    for (let j = 0; j < seq.length && !fixed; j++) {
+      if (j === i) continue;
+      const before = tplClashes(seq);
+      [seq[i], seq[j]] = [seq[j], seq[i]];
+      if (tplClashes(seq) < before) fixed = true; else [seq[i], seq[j]] = [seq[j], seq[i]];
+    }
+    if (!fixed) break;
+  }
+  return seq;
+}

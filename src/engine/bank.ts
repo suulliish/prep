@@ -46,6 +46,9 @@ for (const s of skills as any[]) for (const t of s.templates ?? []) (t2s[t] ??= 
 export const BANK_SKILLS: Record<string, string[]> = {};
 for (const t of templates as any[]) for (const f of t.from ?? []) BANK_SKILLS[f] = [...new Set([...(BANK_SKILLS[f] ?? []), ...(t2s[t.id] ?? [])])];
 
+/** Шаблоны, сделанные по этой задаче банка (поле from): для «егіз» — те же условия, новые числа. */
+export const templatesForBank = (id: string): string[] => (templates as any[]).filter(t => (t.from ?? []).includes(id)).map(t => t.id);
+
 /** Задачи пула, все темы которых уже пройдены; сначала те, что ещё не встречались. */
 export function bankFor(done: (skill: string) => boolean, seen: Set<string>, pool: BankItem['pool'] = 'practice') {
   const ok = readyItems.filter(it => it.pool === pool && BANK_SKILLS[it.id]?.length && BANK_SKILLS[it.id].every(done));

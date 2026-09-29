@@ -10,10 +10,11 @@
   import { game, go, persist, skillDefs } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { ensurePlan, completeBlock, dayRec } from '../lib/session.svelte';
-  import { makeItem, mistakeText, skillTitle, type Item } from '../engine/items';
-  import { bankFor, bankToItem } from '../engine/bank';
+  import { makeItem, mistakeText, skillTitle, templatesOf, isTemplateId, type Item } from '../engine/items';
+  import { bankFor, bankToItem, templatesForBank } from '../engine/bank';
   import { recordAttempt, isDone } from '../engine/progress';
-  import { isHonest, addMasteryBonus, settleDay, taught } from '../engine/planner';
+  import { isHonest, addMasteryBonus, settleDay, taught, sequenceSlots } from '../engine/planner';
+  import { RUSH, RUSH_SAY, stemChars, isTooFast, rushAction, nextStreak, twinSlot, changedMarkup, varyAnswerPos, miniCheck, type Seg, type MiniCheck } from '../engine/rush';
   import { showReward, queueReward } from '../lib/reward.svelte';
   import { audio } from '../lib/audio';
   import { currentWorld, totalStars, STAR_REWARDS } from '../lib/look';
@@ -130,6 +131,7 @@
   const isLastWave = () => wave >= waves.length - 1;
   async function hit(sup: boolean) {
     busy = true;
+    mobHp = Math.max(0, mobHp - (sup ? 2 : 1));   // суперудар в 3D бьёт на 2 (world.ts: dmg), полоска на экране — на столько же
     const killed = await W.world?.heroAttack(combo >= 2, sup);
     if (killed && !isLastWave()) {
       await W.world?.killMob(); audio.play('chest');
@@ -144,6 +146,17 @@
   async function enemyTurn() { busy = true; await W.world?.enemyAttack(); busy = false; }
   let startAt = 0;
   let cardEl: HTMLElement;
+
+  // Против спешки (docs/GAME_LOOP.md 15, src/engine/rush.ts): подсветка изменений, лесенка быстрых ответов, «егіз», мини-проверка
+  const seq = sequenceSlots(skills, total, templatesOf);   // чередование: темы по кругу, два вопроса одного шаблона подряд не ставим
+  let prevKz: string | null = null, prevPos = -1;
+  let hlLines = $state<Seg[][]>([]);
+  let qKey = $state(0);
+  let streak = 0;                                          // быстрых ответов подряд
+  let rushTwin: { skill: string; tpl: string | null; at: number; kz: string } | null = null;   // «егіз»: тот же шаблон, новые числа
+  let checkNext = false, wasCheck = false;
+  let chk = $state<{ mc: MiniCheck | null; phase: 'calm' | 'ask'; wrong: number[] } | null>(null);
+  let chkTimer = 0;
   let bitEl = $state<HTMLElement>();
   // после ответа — показать реплику Бита (она ниже вариантов)
   const showBit = () => setTimeout(() => bitEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60);
@@ -155,13 +168,41 @@
   const seen = new Set(game.save.attempts.map(a => a.source));
   const bankQueue = BANK_SLOTS[block] ? bankFor(id => isDone(game.save.skills[id]) && taught(game.save, skillDefs, id), seen) : [];
   function nextItem() {
-    const sk = block === 'new' ? skills[0] : skills[idx % Math.max(1, skills.length)];
-    const fromBank = !twin && BANK_SLOTS[block]?.includes(idx) && bankQueue.length ? bankQueue.shift() : null;
-    item = fromBank ? bankToItem(fromBank) : makeItem(sk);
+    const prev = item;
+    const due = !twin && rushTwin && idx >= rushTwin.at ? rushTwin : null;   // «егіз» занимает место вопроса; реванш идёт раньше
+    let fresh: Item | null = null;
+    if (due) { rushTwin = null; fresh = makeItem(due.skill, { tpl: due.tpl ?? undefined, avoidKz: prev?.kz }); }
+    else if (twin && prev) fresh = makeItem(prev.skill, { tpl: isTemplateId(prev.source) ? prev.source : templatesForBank(prev.source)[0], avoidKz: prev.kz });   // реванш: тот же шаблон, новые числа
+    if (!fresh) {
+      const slot = seq[idx] ?? { skill: skills[idx % Math.max(1, skills.length)], tpl: null };
+      const fromBank = BANK_SLOTS[block]?.includes(idx) && bankQueue.length ? bankQueue.shift() : null;
+      fresh = fromBank ? bankToItem(fromBank) : makeItem(slot.skill, { tpl: slot.tpl ?? undefined, avoidKz: prev?.kz });
+    }
+    if (fresh && !fresh.real) fresh = varyAnswerPos(fresh, prevPos);   // верный ответ не на том же месте, что в прошлом вопросе
+    item = fresh; isRushTwin = !!due;
+    // «егіз» сравниваем с исходной задачей (что в ней стало другим), остальные — с прошлым вопросом
+    if (fresh) { hlLines = changedMarkup(fresh.kz.split('\n').map(nb), due ? due.kz : prevKz); prevKz = fresh.kz; prevPos = fresh.answer; }
+    qKey++;
     picked = null; phase = 'answer'; hintLevel = 0; showSol = false; tries = 0; struck = []; gate.stop(); gap = null; gapDone = false;
     aiTurns = []; aiErr = ''; aiQ = ''; aiBusy = false;
-    bitText = twin ? 'Реванш! Дәл осындай есеп — енді өзің шығарып көр.' : ''; bitMood = twin ? 'think' : 'idle';
+    // после 3 быстрых подряд в этом вопросе — пауза и мини-проверка «Сұрақ не туралы?»; ответ на него лесенку обнуляет
+    wasCheck = checkNext; checkNext = false; clearTimeout(chkTimer);
+    chk = wasCheck && fresh ? { mc: miniCheck(fresh.kz), phase: 'calm', wrong: [] } : null;
+    bitText = due ? RUSH_SAY.twinArrive : twin ? 'Реванш! Дәл осындай есеп — енді өзің шығарып көр.' : ''; bitMood = twin || due ? 'think' : 'idle';
     startAt = performance.now();
+  }
+  let isRushTwin = $state(false);
+  // спокойная пауза 3 с, потом вопрос «что спрашивается?» (нет уверенного вида вопроса — «оқыдым»); варианты ответа открываются после него
+  function beginCheck() {
+    if (!chk) return;
+    bitText = RUSH_SAY.checkPause; bitMood = 'think'; audio.play('hint');
+    chkTimer = window.setTimeout(() => { if (!chk) return; chk.phase = 'ask'; bitText = chk.mc ? RUSH_SAY.checkAsk : RUSH_SAY.checkRead; }, RUSH.pauseMs);
+  }
+  function endCheck() { chk = null; locked = false; bitText = RUSH_SAY.checkOk; bitMood = 'happy'; audio.play('correct'); }
+  function checkPick(i: number) {
+    if (!chk?.mc || chk.wrong.includes(i)) return;
+    if (i === chk.mc.answer) return endCheck();
+    chk.wrong = [...chk.wrong, i]; audio.play('click'); bitText = RUSH_SAY.checkWrong; bitMood = 'think';
   }
 
   onMount(() => {
@@ -174,7 +215,7 @@
     if (v !== undefined) say(`${currentWorld().kz} · ${SPOT_KZ[v]}`);
     (W.world?.arrive() ?? Promise.resolve())
       .then(() => W.world?.spawnMob(mobHp, currentWorld().mob, waves.length === 1))
-      .then(() => { cine = false; say(waves.length > 1 ? '1-толқын' : 'Шайқас!'); busy = false; });
+      .then(() => { cine = false; say(waves.length > 1 ? '1-толқын' : 'Шайқас!'); busy = false; startAt = performance.now(); });   // время ответа — с момента, когда вопрос можно решать
     if (block === 'boss') setTimeout(() => react('boss'), 600);
     audio.setMood(block === 'new' ? 'focus' : 'battle');
     nextItem();
@@ -185,7 +226,7 @@
       else if (phase === 'feedback' && e.key === 'Enter') next();
     };
     addEventListener('keydown', onKey);
-    return () => { removeEventListener('keydown', onKey); W.world?.clearMob(); };
+    return () => { removeEventListener('keydown', onKey); clearTimeout(chkTimer); W.world?.clearMob(); };
   });
 
   function pick(i: number) { if (phase !== 'answer' || locked || busy || struck.includes(i)) return; picked = i; audio.play('click'); }
@@ -208,12 +249,16 @@
     tries++;
     if (tries === 2) return secondTry(correct);
     const honest = isHonest(timeMs, hintLevel);
+    // лесенка против спешки: реванш не считаем (та же задача только что была); ответ после мини-проверки обнуляет серию
+    const fast = !twin && !wasCheck && isTooFast(timeMs, stemChars(item.kz), hintLevel);
+    if (!twin) streak = wasCheck ? 0 : nextStreak(streak, fast);
+    const act = fast ? rushAction(streak) : 'none';
     answered++;
     if (!twin) { firstTries++; if (correct && hintLevel === 0) firstRight++; }   // реванш — не новый вопрос, в звёзды не идёт
     if (!honest && hintLevel < 4) { honestAll = false; guessed++; }
     const events = recordAttempt(game.save, {
       at: Date.now(), day: game.day, skill: item.skill, source: item.source, correct, confidence,
-      hintLevel, honest, timeMs: Math.round(timeMs), tag: item.choices[picked].tag, mode: block === 'new' ? 'practice' : block === 'extra' ? 'extra' : block === 'boss' ? 'boss' : block === 'warmup' ? 'warmup' : block === 'repair' ? 'practice' : 'mixed',
+      hintLevel, honest, timeMs: Math.round(timeMs), ...(fast ? { fast: true } : {}), tag: item.choices[picked].tag, mode: block === 'new' ? 'practice' : block === 'extra' ? 'extra' : block === 'boss' ? 'boss' : block === 'warmup' ? 'warmup' : block === 'repair' ? 'practice' : 'mixed',
     });
     lastCorrect = correct; phase = correct || hintLevel >= 4 ? 'feedback' : 'retry';
     if (!correct) struck = [...struck, picked];
@@ -229,9 +274,9 @@
       if (xp) floatText(`+${xp} XP`, at.x, at.y - 20, '#ffc94a', combo >= 3);
       if (combo >= 3) floatText(`КОМБО ×${combo}`, sceneCenter(0.25).x, sceneCenter(0.25).y, '#3ff0ff', true);
       bitText = hintLevel ? 'Дұрыс! Кеңеспен болса да — жақсы.' : combo >= 3 ? 'Керемет серия!' : 'Дұрыс!';
-      if (!honest && hintLevel < 4) bitText = 'Дұрыс, бірақ тым жылдам! Асықпа — алдымен оқы.';
+      if (!honest && hintLevel < 4 && !fast) bitText = 'Дұрыс, бірақ тым жылдам! Асықпа — алдымен оқы.';
       bitMood = combo >= 3 ? 'wow' : 'happy';
-      if (battle) { mobHp--; hit(combo > 0 && combo % 3 === 0); if (combo % 3 === 0) say('СУПЕР СОҚҚЫ!'); }
+      if (battle) { hit(combo > 0 && combo % 3 === 0); if (combo % 3 === 0) say('СУПЕР СОҚҚЫ!'); }
       if (block === 'repair' && hintLevel === 0) { const r = game.save.repairShop.find(x => !x.fixed && x.skill === item!.skill); if (r) { r.fixed = true; floatText('ЖӨНДЕЛДІ', at.x, at.y - 50, '#5ce39c'); } }
       if (confidence === 'unsure') bitText += ' Білмеймін дедің, бірақ таптың — демек, түсінік бар.';
     } else {
@@ -241,7 +286,7 @@
       cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake');
       const m = mistakeText(item.choices[picked].tag);
       bitText = (confidence === 'sure' ? 'Сенімді едің, бірақ қателік бар. ' : 'Әзірге қате. ') + m.kz + (phase === 'retry' ? ' Тағы бір рет көр!' : '');
-      if (!honest && hintLevel < 4) bitText = 'Тым жылдам! Асықпа — алдымен шартты оқы. ' + bitText;
+      if (!honest && hintLevel < 4 && !fast) bitText = 'Тым жылдам! Асықпа — алдымен шартты оқы. ' + bitText;
       bitMood = 'think';
       if (phase === 'feedback') explain(); else gate.start(readMs(bitText));
       if (battle) enemyTurn();
@@ -261,8 +306,22 @@
       }
       if (ev === 'review_failed') { bitText = 'Бұл тақырып сәл ұмытылған екен — қайта жаттығамыз, қорқынышты емес.'; bitMood = 'think'; }
     }
+    if (act !== 'none' && !events.some(e => e === 'learned' || e === 'crystal')) rushSay(act, correct);
     twin = hintLevel >= 4;
     persist(); showBit();
+  }
+
+  // Бит по лесенке (D2). Верный ответ — реплика Бита; на ошибке Бит разбирает ошибку (с «Асықпа!» впереди), обещание идёт всплывающей подсказкой
+  function rushSay(act: 'nudge' | 'twin' | 'check', correct: boolean) {
+    const last = idx >= total - 1;
+    let msg: string = RUSH_SAY.nudgeRight;
+    if (act === 'twin') {
+      const at = twinSlot(idx, total);
+      if (at !== null && !rushTwin && item) rushTwin = { skill: item.skill, tpl: isTemplateId(item.source) ? item.source : templatesForBank(item.source)[0] ?? null, at, kz: item.kz };
+      msg = at !== null ? RUSH_SAY.twinLater : RUSH_SAY.twinNoSlot;
+    } else if (act === 'check' && !last) { checkNext = true; msg = RUSH_SAY.checkNext; }
+    if (correct) { bitText = msg; bitMood = 'think'; }
+    else { bitText = 'Асықпа! ' + bitText; if (act !== 'nudge') toast(msg); }
   }
 
   // Вторая попытка: в модель знаний не идёт (там — первая), но ребёнок доводит задачу до конца
@@ -274,7 +333,7 @@
       game.save.xp += 3; audio.play('correct'); react('correct', 0.4);
       sparksAt(at.x, at.y, ['#5ce39c', '#3ff0ff'], 20); floatText('+3 XP', at.x, at.y - 20, '#ffc94a');
       bitText = 'Екінші әрекеттен дұрыс! Қатені өзің таптың — бұл нағыз оқу.'; bitMood = 'happy';
-      if (battle) { mobHp--; hit(false); }
+      if (battle) hit(false);
     } else {
       struck = [...struck, picked!]; audio.play('wrong'); flash('#ff9a6b'); if (battle) enemyTurn();
       bitText = 'Дұрыс жауабы жасылмен белгіленді. Шешуін оқы — сосын дәл осындай есепте реванш аласың.'; bitMood = 'think';
@@ -292,9 +351,9 @@
     if (idx >= total || learnedNow) return finish();
     nextItem();
     // новый вопрос виден сразу: перелистывание, номер, ввод закрыт 0.7 с
-    locked = true; say(twin ? 'Реванш!' : `Сұрақ ${idx + 1}/${total}`); audio.play('click');
+    locked = true; say(twin ? 'Реванш!' : isRushTwin ? 'Егіз есеп!' : `Сұрақ ${idx + 1}/${total}`); audio.play('click');
     cardEl?.closest('.body')?.scrollTo({ top: 0 });
-    setTimeout(() => { locked = false; startAt = performance.now(); }, 700);
+    setTimeout(() => { startAt = performance.now(); if (chk) beginCheck(); else locked = false; }, 700);
   }
   const starsOf = () => { const a = firstTries ? firstRight / firstTries : 0; return a >= 0.9 ? 3 : a >= 0.7 ? 2 : 1; };
 
@@ -396,16 +455,30 @@
     {@const chunk = Math.max(...item.choices.map(c => longestChunk(c.text)))}
     <div class="qa" class:fit={phase !== 'feedback' && !gapOpen}>
     <div class="q-sticky">
-      {#key idx + (twin ? 1000 : 0)}
+      {#key qKey}
         <div class="paper q" class:locked bind:this={cardEl}>
           {#if item.real}<span class="real">★ Нағыз емтихан есебі · {item.source.startsWith('daryn') ? `«Дарын» ${item.source.slice(5, 9)}` : 'Bolashak'}</span>{/if}
-          <p>{#each item.kz.split('\n') as line, i}{#if i}<br />{/if}<span class:formula={i > 0}>{nb(line)}</span>{/each}</p>
+          <p>{#each hlLines as segs, i}{#if i}<br />{/if}<span class:formula={i > 0}>{#each segs as sg}{#if sg.hl}<mark class="chg">{sg.t}</mark>{:else}{sg.t}{/if}{/each}</span>{/each}</p>
           {#if item.figure?.svg}<div class="fig">{@html item.figure.svg}</div>
           {:else if item.figure?.src}<div class="fig"><img src={import.meta.env.BASE_URL + item.figure.src} alt="Есептің суреті" /></div>{/if}
         </div>
       {/key}
     </div>
 
+    {#if chk}
+      <div class="paper chk" role="group" aria-label="Сұрақ не туралы?">
+        {#if chk.phase === 'calm'}
+          <b class="cq">Дем ал…</b><small>Сұрақты баяу оқып шық</small>
+          <i class="calmbar" style="--calm:{RUSH.pauseMs}ms"></i>
+        {:else if chk.mc}
+          <b class="cq">{chk.mc.prompt}</b>
+          <div class="copts">{#each chk.mc.options as o, i}<button class="ans" class:wrong={chk.wrong.includes(i)} disabled={chk.wrong.includes(i)} onclick={() => checkPick(i)}>{o}</button>{/each}</div>
+        {:else}
+          <b class="cq">Сұрақты соңына дейін оқып шықтың ба?</b>
+          <button class="btn go" onclick={endCheck}>Оқыдым</button>
+        {/if}
+      </div>
+    {:else}
     <div class="choices" class:long={maxLen > 5} class:xlong={maxLen > 24 || chunk > 11} class:wide={chunk >= 10} class:xxlong={maxLen > 60} class:locked>
       {#each item.choices as c, i}
         <button bind:this={choiceEls[i]} class="ans" style="animation-delay:{locked ? i * 70 : 0}ms"
@@ -420,6 +493,7 @@
         </button>
       {/each}
     </div>
+    {/if}
       {#if bitText}<div class="say-in" bind:this={bitEl}><Bit text={bitText} mood={bitMood} compact /></div>{/if}
     </div>
 
@@ -487,6 +561,19 @@
   .gap { display: inline-block; min-width: 2.2em; padding: 0 6px; text-align: center; border-radius: 8px; background: #ffe9a8; border: 2px dashed #b88a1a; color: #6b4a0a; }
   .gap.done { background: #c8f5d8; border-style: solid; border-color: var(--ok); color: #135c32; animation: flipIn .35s; }
   .gq { font-weight: 800; margin-top: 8px; }
+  /* D3: то, что изменилось в новом вопросе: жёлтая вспышка 0,8 с, потом остаётся мягкое подчёркивание */
+  .chg { background: transparent; color: inherit; border-radius: 6px; padding: 0 2px; margin: 0 -2px; text-decoration: underline; text-decoration-color: rgba(214, 150, 0, .7);
+    text-decoration-thickness: 3px; text-underline-offset: 4px; animation: chgPulse .8s ease-out 1 both; animation-delay: .35s; }
+  @keyframes chgPulse { 0% { background: #ffe066; box-shadow: 0 0 0 0 rgba(255, 214, 64, .9); } 35% { background: #ffdb3a; box-shadow: 0 0 16px 8px rgba(255, 210, 40, .85); } 100% { background: transparent; box-shadow: 0 0 0 0 rgba(255, 214, 64, 0); } }
+  /* D2: спокойная пауза и мини-проверка на месте вариантов ответа */
+  .chk { display: grid; gap: 8px; text-align: center; animation: pop-in .3s var(--ease-out) both; }
+  .chk small { color: var(--paper-ink); opacity: .7; }
+  .cq { font: 900 17px var(--disp); color: var(--code-deep); }
+  .copts { display: grid; gap: 8px; }
+  .copts .ans { justify-content: center; min-height: 44px; font: 800 16px var(--disp); }
+  .calmbar { display: block; height: 10px; border-radius: 999px; background: #d9def7; border: 2px solid var(--outline); overflow: hidden; position: relative; }
+  .calmbar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, #7fd6ff, #5ce39c); transform-origin: left; animation: calmFill var(--calm) linear both; }
+  @keyframes calmFill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
   .unlock { margin: 0; padding: 10px 12px; border-radius: 14px; background: linear-gradient(180deg, #ffe07a, #f2b632); color: #3a2400; border: 3px solid var(--outline); font-weight: 800; text-align: center; animation: flipIn .5s; }
   .next { margin: 0; color: var(--gold); font: 800 15px var(--disp); text-align: center; }
   .gopts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
