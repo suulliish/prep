@@ -133,8 +133,8 @@
       await W.world?.killMob(); audio.play('chest');
       wave++; mobHp = waves[wave];
       const boss = isLastWave(); if (boss) cine = true;
-      say(boss ? 'Мини-босс!' : `${wave + 1}-толқын`);
-      await W.world?.spawnMob(mobHp, currentWorld().mob, boss);
+      say(boss ? (block === 'boss' ? 'Босс!' : 'Мини-босс!') : `${wave + 1}-толқын`);
+      await W.world?.spawnMob(mobHp, currentWorld().mob, boss, block === 'boss' && boss);
       cine = false;
     }
     busy = false;

@@ -8,6 +8,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { makeHero, makeBit, makeMob as buildMob, addShipDetails, waveFlag } from './characters';
 import { createMap, type MapIsle, type MapLabel } from './map';
 import { createArena } from './arena';
+import { LOOKS, DEFAULT_LOOK } from './looks';
 import { equip, animateGear, GEAR, type Equipped } from './gear';
 
 export type CamMode = 'hub' | 'battle' | 'portal' | 'map' | 'hero';
@@ -19,7 +20,7 @@ export interface World {
   heroWalk(x: number, z: number): Promise<void>;
   /** Удар героя в бою; sup — суперудар. Возвращает, повержен ли враг. */
   heroAttack(crit?: boolean, sup?: boolean): Promise<boolean>;
-  spawnMob(hp: number, kind?: number, boss?: boolean): Promise<void>;
+  spawnMob(hp: number, kind?: number, boss?: boolean, worldBoss?: boolean): Promise<void>;
   /** Ход врага при ошибке: снаряд и щит героя (урона нет). */
   enemyAttack(): Promise<void>;
   /** Герой выходит из портала в локацию. */
@@ -70,7 +71,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   renderer.setPixelRatio(Math.min(devicePixelRatio, quality === 'high' ? 1.75 : 1.25));
   renderer.shadowMap.enabled = quality === 'high';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMapping = THREE.NeutralToneMapping;   // готовые модели красятся палитрой: нейтральное отображение не сереет и не темнит
   renderer.toneMappingExposure = 1.05;
 
   const scene = new THREE.Scene();
@@ -302,7 +303,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   // ---------- 3D-карта миров (своя сцена) ----------
   const map = createMap({ skyMat, starGeo, starMat, km, dressHero: dress });
-  const arena = createArena({ skyMat, starGeo, starMat, km, dressHero: dress, animHero: (h, t, w) => { const e = worn.get(h); if (e) animateGear(e, t, w); } });
+  const arena = createArena({ skyMat, starGeo, starMat, km, shadows: quality === 'high' });
 
   // ---------- Постобработка ----------
   let composer: EffectComposer | null = null;
@@ -517,7 +518,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? (narrow ? 0.2 : 0.08) : narrow ? 0.24 : 0.12; applyOffset(); },
     heroWalk(x, z) { return new Promise(res => (walk = { x, z, res })); },
     heroAttack(crit = false, sup = false) { return arena.attack({ crit, sup, dmg: sup ? 2 : 1 }); },
-    spawnMob(hp, kind = 0, boss = false) { return arena.spawn(hp, kind, boss); },
+    spawnMob(hp, kind = 0, boss = false, worldBoss = false) { return arena.spawn(hp, kind, boss && !worldBoss, worldBoss); },
     enemyAttack() { return arena.enemyAttack(); },
     arrive() { return arena.arrive(); },
     setArena(k, a, b) { arena.theme(k, a, b); },
@@ -542,7 +543,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     openPortal() { portalOpen = true; flash = 1; burst(worldPos(portal, 2), 0x3ff0ff, 90, 7); },
     setTheme(sky, fog) { themeTo = sky.map(c => new THREE.Vector3(c[0], c[1], c[2])); fogTo.setHex(fog); },
     setFrame(top, height) { frameWin.top = top; frameWin.h = height; applyOffset(); },
-    setOutfit(jacket, dark, visor, id = 'cyan') { outfitNow = [jacket, dark, visor]; paintOutfit(jacket, dark, visor); gearNow = GEAR[id] ?? GEAR.cyan; colorsNow = { jacket, dark, visor }; [...worn.keys()].forEach(wear); },
+    setOutfit(jacket, dark, visor, id = 'cyan') { arena.setLook(LOOKS[id] ?? DEFAULT_LOOK); outfitNow = [jacket, dark, visor]; paintOutfit(jacket, dark, visor); gearNow = GEAR[id] ?? GEAR.cyan; colorsNow = { jacket, dark, visor }; [...worn.keys()].forEach(wear); },
     mapSetup(isles, current) { map.setup(isles, current); },
     mapFocus(i) { map.focus(i); },
     mapTravel(i) { return map.travel(i); },
