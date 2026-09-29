@@ -7,6 +7,8 @@
   import { game, go, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
+  import { ReadGate, readMs } from '../lib/readgate.svelte';
+  import { toast } from '../ui/notify.svelte';
   import { sparksAt, sceneCenter } from '../ui/fx.svelte';
   // @ts-ignore
   import { INTRO } from '../../content/intro.mjs';
@@ -14,6 +16,9 @@
   const slides = INTRO as { act: string; title: string; kz: string }[];
   let i = $state(0);
   let started = $state(false);
+  const gate = new ReadGate();
+  // кнопка «дальше» закрыта, пока Бит не договорил и время чтения не вышло (и пока идёт действие в 3D)
+  const hold = (k: number) => gate.start(Math.max(3500, readMs(slides[k].kz)));
   const s = $derived(slides[i]);
   const voice = (k: number) => `${import.meta.env.BASE_URL}voice/intro/intro_${k}.mp3`;
 
@@ -27,10 +32,11 @@
   }
   onMount(() => { W.dim = false; audio.setMood('map'); act(slides[0].act); });
 
-  function start() { audio.unlock(); started = true; audio.play('mission'); act(slides[0].act); }
+  function start() { audio.unlock(); started = true; audio.play('mission'); act(slides[0].act); hold(0); }
   function next() {
+    if (gate.on) { gate.nope(); audio.play('click'); toast('Бит әлі сөйлеп жатыр — соңына дейін тыңда'); return; }
     audio.play('click');
-    if (i < slides.length - 1) { i++; act(slides[i].act); return; }
+    if (i < slides.length - 1) { i++; act(slides[i].act); hold(i); return; }
     game.save.introSeen = true; persist();
     go({ name: 'diagnostic' });
   }
@@ -57,7 +63,7 @@
     {#if !started}
       <button class="btn primary big grow intro-next" onclick={start}><Icon name="play" fill="var(--outline)" stroke="none" size={20} />Ойынды бастау</button>
     {:else}
-      <button class="btn primary big grow intro-next" onclick={next}>{i < slides.length - 1 ? 'Әрі қарай' : 'Сканерлеуге!'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
+      <button class="btn primary big grow intro-next" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={next}>{i < slides.length - 1 ? 'Әрі қарай' : 'Сканерлеуге!'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
     {/if}
   {/snippet}
 </Screen>

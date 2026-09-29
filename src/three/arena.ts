@@ -186,7 +186,7 @@ export function createArena(d: Deps) {
 
   let ready = false;
   const lookAtV = new THREE.Vector3(0.1, 1.4, 0);
-  let aspect = 1;
+  let aspect = 1, visAspect = 1, winFrac = 1;   // visAspect — форма видимой части сцены (в ландшафте справа колонка), winFrac — доля высоты экрана под окно сцены
 
   function update(dt: number, t: number) {
     const k = d.km;
@@ -212,7 +212,9 @@ export function createArena(d: Deps) {
     // камера: оба бойца в центре окна сцены, лёгкое «дыхание»; план меняется плавно (режиссёр — shot())
     const a = 1 - Math.exp(-dt * 5.5);
     camFocus.lerp(shotTo.focus, a); camZoom += (shotTo.zoom - camZoom) * a; camLift += (shotTo.lift - camLift) * a;
-    const halfW = 5.4, dist = Math.max(10, halfW / (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * aspect)) * camZoom;
+    // оба бойца целиком в видимом окне: по ширине видимой части и по высоте окна (на планшете в портрете окно низкое)
+    const tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), halfW = 5.4, needH = 4.8;
+    const dist = Math.max(10, halfW / (tanH * Math.min(aspect, visAspect)), needH / (2 * tanH * winFrac)) * camZoom;
     const sh = shake > 0 ? (Math.random() - 0.5) * shake : 0; shake = Math.max(0, shake - dt * 1.8);
     lookAtV.copy(camFocus);
     camera.position.set(lookAtV.x + Math.sin(t * 0.25) * 0.4 * k + sh, lookAtV.y + dist * camLift + sh, lookAtV.z + dist);
@@ -233,7 +235,9 @@ export function createArena(d: Deps) {
     isReady: () => ready,
     setFog(c: THREE.Color) { (scene.fog as THREE.Fog).color.copy(c); },
     resize(w: number, h: number) { aspect = w / h; camera.aspect = aspect; camera.updateProjectionMatrix(); },
-    frame(offsetX: number, offsetY: number, w: number, h: number) { if (offsetX || offsetY) camera.setViewOffset(w, h, offsetX, offsetY, w, h); else camera.clearViewOffset(); camera.updateProjectionMatrix(); },
+    frame(offsetX: number, offsetY: number, w: number, h: number, win = 1) {
+      visAspect = offsetX ? Math.max(0.3, (w - 2 * offsetX) / h) : aspect; winFrac = Math.max(0.15, win);
+      if (offsetX || offsetY) camera.setViewOffset(w, h, offsetX, offsetY, w, h); else camera.clearViewOffset(); camera.updateProjectionMatrix(); },
 
     /** Катсцена входа: портал в воздухе → герой вылетает, приземляется, осматривается. */
     async arrive() {

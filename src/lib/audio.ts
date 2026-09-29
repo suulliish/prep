@@ -97,13 +97,21 @@ class AudioEngine {
 
   /** Реплика Бита (mp3 из scripts/voice). Музыка приглушается на время речи. */
   say(url: string) {
-    if (this.voiceEl) this.voiceEl.pause();
+    if (this.voiceEl) { this.voiceEl.pause(); this.voiceDone(); }
     const el = new Audio(url);
     el.volume = this.settings.voice * this.settings.master;
     this.voiceEl = el;
-    el.onended = el.onpause = () => this.applyVolumes();
-    el.play().then(() => this.applyVolumes()).catch(() => {});
+    el.onpause = () => this.applyVolumes();
+    el.onended = () => { this.applyVolumes(); this.voiceDone(); };
+    el.onerror = () => this.voiceDone();
+    el.play().then(() => this.applyVolumes()).catch(() => this.voiceDone());
   }
+  /** Бит сейчас говорит вслух (звук включён). Нужно, чтобы кнопка «дальше» ждала конца реплики. */
+  voiceBusy() { const e = this.voiceEl; return !!e && !e.paused && !e.ended && this.settings.voice * this.settings.master > 0.01; }
+  #voiceWaiters: (() => void)[] = [];
+  /** Один раз вызвать, когда реплика закончится (или сразу, если Бит молчит). */
+  whenVoiceDone(cb: () => void) { if (this.voiceBusy()) this.#voiceWaiters.push(cb); else cb(); }
+  private voiceDone() { const w = this.#voiceWaiters; this.#voiceWaiters = []; w.forEach(f => f()); }
 
   play(name: Sfx, opts: { combo?: number } = {}) {
     const c = this.ctx; if (!c) return;

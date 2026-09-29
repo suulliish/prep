@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { HeroFigure } from './figure';
 import { DEFAULT_LOOK, type HeroLook } from './looks';
 import { buildMapIsle, loadIslandKits } from './island3d';
+import { Kit } from './assets';
 
 export type IsleState = 'cleared' | 'current' | 'open' | 'next' | 'locked' | 'fog';
 export interface MapIsle { id: string; a: string; b: string; state: IsleState }
@@ -96,14 +97,20 @@ export function createMap(d: Deps) {
 
   // ---------- корабль и герой ----------
   const ship = new THREE.Group(); scene.add(ship);
-  const sb = (sx: number, sy: number, sz: number, x: number, y: number, z: number, c: number, e = 0, ei = 1) => { const m = new THREE.Mesh(box, mat(c, e, ei)); m.scale.set(sx, sy, sz); m.position.set(x, y, z); ship.add(m); return m; };
-  sb(3.2, 0.3, 1.6, 0, 0, 0, 0xa0673a); sb(3.3, 0.35, 0.12, 0, 0.3, 0.8, 0x7c4a28); sb(3.3, 0.35, 0.12, 0, 0.3, -0.8, 0x7c4a28);
-  sb(2.6, 0.35, 1.3, 0, -0.3, 0, 0x74462a); sb(0.5, 0.3, 0.7, 1.8, -0.1, 0, 0x6b3f22); sb(0.3, 0.2, 0.3, 2.1, -0.05, 0, 0xffc94a, 0xffa000, 0.8);
-  sb(3.2, 1.2, 1.4, 0, 2.6, 0, 0x5ff4ff); sb(2.4, 0.4, 1.0, 0, 3.3, 0, 0x4a5fd0); sb(2.4, 0.4, 1.0, 0, 1.9, 0, 0x4a5fd0);
-  [[-1.2, 0.6], [-1.2, -0.6], [1.2, 0.6], [1.2, -0.6]].forEach(([x, z]) => sb(0.05, 1.8, 0.05, x, 1.1, z, 0x3a2a1d));
-  const flame = sb(0.3, 0.4, 0.4, -1.8, -0.1, 0, 0xff8a3d, 0xff5a00, 2.5);
-  const shipLight = new THREE.PointLight(0xffb84a, 1.2, 6); shipLight.position.set(0, 1, 0); ship.add(shipLight);
-  ship.scale.setScalar(0.85);
+  // корабль на карте — готовая модель Kenney (как на палубе в хабе); герой стоит на её палубе
+  const DECK = new THREE.Vector3(0, 0.6, 0);
+  const shipLight = new THREE.PointLight(0x3ff0ff, 1.4, 7); shipLight.position.set(0, -1, 0); ship.add(shipLight);
+  const glow = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.08, 6, 36), new THREE.MeshBasicMaterial({ color: 0x3ff0ff, transparent: true, opacity: 0.8 }));
+  glow.rotation.x = Math.PI / 2; glow.position.y = -0.9; ship.add(glow);
+  Kit.load('ship').then(k => {
+    const m = k.get('ship-small', { height: 4.6 }); const h = new THREE.Group(); h.add(m); h.rotation.y = Math.PI / 2; ship.add(h);
+    m.traverse(o => { const me = o as THREE.Mesh; if (me.isMesh && /sail/.test(me.name)) { const mt = (me.material as THREE.MeshToonMaterial).clone(); mt.transparent = true; mt.opacity = 0.55; mt.depthWrite = false; mt.side = THREE.DoubleSide; me.material = mt; } });
+    ship.updateMatrixWorld(true);
+    // палуба: верх корпуса в центре (паруса не считаем)
+    const rc = new THREE.Raycaster(new THREE.Vector3(0, 20, 0).applyMatrix4(ship.matrixWorld), new THREE.Vector3(0, -1, 0));
+    const hit = rc.intersectObject(ship, true).find(x => !/sail|flag|outline/.test(x.object.name) && x.point.y < 2.6 + ship.position.y);
+    if (hit) DECK.y = ship.worldToLocal(hit.point.clone()).y;
+  }).catch(() => {});
 
   const fig = new HeroFigure(DEFAULT_LOOK, 0.62), hero = { g: fig.g }; scene.add(fig.g);   // настоящий герой с анимациями
   const DOCK = new THREE.Vector3(-3.9, 0.9, 3.4);   // где корабль стоит у острова
@@ -149,7 +156,7 @@ export function createMap(d: Deps) {
     return new Promise(res => {
       if (to === cur || !curve) { res(); return; }
       const from = cur;
-      const board = () => { phase = { k: 'walk', from: hero.g.position.clone(), to: dockAt(from).add(new THREE.Vector3(0, 0.25, 0)), t: 0, dur: 0.7, next: fly }; };
+      const board = () => { phase = { k: 'walk', from: hero.g.position.clone(), to: dockAt(from).add(DECK), t: 0, dur: 0.7, next: fly }; };
       const fly = () => { heroOnShip = true; phase = { k: 'fly', a: from, b: to, t: 0, dur: Math.min(4.5, 1.2 + Math.abs(to - from) * 0.9), next: land }; };
       const land = () => { heroOnShip = false; cur = to; phase = { k: 'walk', from: hero.g.position.clone(), to: standAt(to), t: 0, dur: 0.8, next: () => { phase = { k: 'idle' }; follow = null; res(); } }; };
       board();
@@ -161,7 +168,7 @@ export function createMap(d: Deps) {
     bob.forEach(o => (o.g.position.y = o.y + Math.sin(t * 0.6 + o.ph) * 0.35 * km));
     rings.forEach(r => { const k = 1 + Math.sin(t * 2.4) * 0.04; r.scale.set(k, k, k); (r.material as THREE.MeshBasicMaterial).opacity = 0.6 + Math.sin(t * 2.4) * 0.3; r.rotation.z += dt * 0.4; });
     beacons.forEach(b => ((b.material as THREE.MeshBasicMaterial).opacity = 0.16 + Math.abs(Math.sin(t * 1.6)) * 0.18));
-    flame.scale.set(0.3 + Math.sin(t * 22) * 0.06, 0.4, 0.4);
+    glow.rotation.z += dt * 1.2; (glow.material as THREE.MeshBasicMaterial).opacity = 0.6 + Math.sin(t * 4) * 0.25;
 
     // герой / корабль
     let walking = false;
@@ -184,7 +191,7 @@ export function createMap(d: Deps) {
     } else {
       ship.position.y += (dockAt(cur).y + Math.sin(t * 1.1) * 0.15 - ship.position.y) * 0.1;
     }
-    if (heroOnShip) { hero.g.position.copy(ship.position).add(new THREE.Vector3(0, 0.25, 0)); hero.g.rotation.y = ship.rotation.y + Math.PI / 2; }
+    if (heroOnShip) { hero.g.position.copy(ship.position).add(DECK); hero.g.rotation.y = ship.rotation.y + Math.PI / 2; }
     fig.walking(walking); fig.update(dt);
 
     // камера: плавно к точке маршрута (или за кораблём в полёте)

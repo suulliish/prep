@@ -543,6 +543,14 @@
   .choices.xlong { grid-template-columns: minmax(0, 1fr); }
   .choices.xlong .ans { font-size: clamp(14px, 3.9vw, 16px); }
   .ct { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
+  /* планшет: экран большой, значит и текст с вариантами крупнее (портрет 820×1180, ландшафт 1180×820) */
+  @media (min-width: 700px) and (min-height: 760px) {
+    .q { font-size: 24px; } .q p { line-height: 1.4; } .formula { font-size: 30px; }
+    .choices { gap: 12px; }
+    .choices .ans { min-height: 68px; padding: 10px 16px; gap: 12px; font-size: 24px; }
+    .choices .ans .l { width: 36px; height: 36px; font-size: 18px; }
+    .choices.long .ans, .choices.xlong .ans { font-size: 21px; }
+  }
   .sol summary { cursor: pointer; font: 900 15px var(--disp); color: var(--code-deep); }
   .sol p { margin-top: 8px; }
   .sol.rule summary { color: var(--gold-deep); }

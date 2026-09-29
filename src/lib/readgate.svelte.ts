@@ -1,5 +1,7 @@
 // «Кнопка заряжается» (GAME_LOOP.md 10): после ошибки и на объяснениях кнопка «дальше» открывается
-// через время чтения текста — как перезарядка умения в играх. Жмёт раньше — кнопка качается, Бит просит прочитать.
+// через время чтения текста И после конца голосовой реплики Бита — как перезарядка умения в играх.
+// Жмёт раньше — кнопка качается, Бит просит дослушать.
+import { audio } from './audio';
 
 /** Время чтения: ~0.35 с на слово (беглое чтение 5-го класса), от 2 до 9 с. */
 export const readMs = (...texts: (string | undefined | null)[]) => {
@@ -13,8 +15,15 @@ export class ReadGate {
   ms = $state(0);
   key = $state(0);
   #t = 0;
-  start(ms: number) { clearTimeout(this.#t); this.ms = ms; this.key++; this.on = true; this.done = false; this.#t = window.setTimeout(() => { this.on = false; this.done = true; }, ms); }
-  stop() { clearTimeout(this.#t); this.on = false; this.done = false; }
+  #cap = 0; #id = 0;
+  start(ms: number) {
+    clearTimeout(this.#t); clearTimeout(this.#cap); const id = ++this.#id;
+    this.ms = ms; this.key++; this.on = true; this.done = false;
+    const open = () => { if (id !== this.#id) return; clearTimeout(this.#cap); this.on = false; this.done = true; };
+    // время чтения прошло; если Бит ещё говорит — ждём конца реплики (но не дольше 25 с: сеть могла подвиснуть)
+    this.#t = window.setTimeout(() => { if (audio.voiceBusy()) { audio.whenVoiceDone(open); this.#cap = window.setTimeout(open, 25000); } else open(); }, ms);
+  }
+  stop() { clearTimeout(this.#t); clearTimeout(this.#cap); this.#id++; this.on = false; this.done = false; }
   /** Нажал раньше времени: кнопка качается. */
   nope() { const b = document.querySelector<HTMLElement>('.btn.charging'); b?.classList.remove('nope'); void b?.offsetWidth; b?.classList.add('nope'); }
 }

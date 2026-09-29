@@ -4,8 +4,11 @@
   import Icon from './Icon.svelte';
   import { sparksAt } from './fx.svelte';
   let btn = $state<HTMLButtonElement>();
+  let ready = $state(false);   // 1,6 с плашка «заряжается»: нельзя смахнуть, не прочитав
+  $effect(() => { if (rewardUI.cur) { ready = false; const t = setTimeout(() => (ready = true), 1600); return () => clearTimeout(t); } });
+  const accept = () => { if (!ready) { btn?.classList.remove('nope'); void btn?.offsetWidth; btn?.classList.add('nope'); return; } acceptReward(); };
   $effect(() => { if (rewardUI.cur) { requestAnimationFrame(() => { btn?.focus(); sparksAt(innerWidth / 2, innerHeight * 0.38, ['#ffc94a', '#3ff0ff', '#ff4fb8'], 70, 10); }); } });
-  const onKey = (e: KeyboardEvent) => { if (rewardUI.cur && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); acceptReward(); } };
+  const onKey = (e: KeyboardEvent) => { if (rewardUI.cur && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); accept(); } };
 </script>
 
 <svelte:window onkeydown={onKey} />
@@ -17,7 +20,7 @@
       <div class="amount"><Icon name="clock" fill="var(--gold)" size={54} /><b class="num">+{r.minutes}</b><span>мин ойын</span></div>
       {#if r.why}<p class="why">{r.why}</p>{/if}
       {#if r.today !== undefined}<p class="tot">Бүгін жиналды: <b class="num">{r.today}</b> мин{#if r.weekend}{' '}· демалысқа: <b class="num">{r.weekend}</b> мин{/if}</p>{/if}
-      <button bind:this={btn} class="btn primary big" onclick={acceptReward}><Icon name="check" fill="var(--outline)" size={22} />Қабылдау</button>
+      <button bind:this={btn} class="btn primary big" class:charging={!ready} style="--gate:1600ms" onclick={accept}><Icon name="check" fill="var(--outline)" size={22} />Қабылдау</button>
     </div>
   </div>
 {/if}

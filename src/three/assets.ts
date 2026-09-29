@@ -5,6 +5,9 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+// Текстуры внутри моделей грузим через обычную картинку (<img>), а не через fetch(blob:): так они видны и там, где политика безопасности страницы
+// запрещает fetch к blob-адресам (встроенные просмотрщики, пробные копии); в обычном браузере разницы нет.
+loader.register(parser => { (parser as unknown as { textureLoader: THREE.Loader }).textureLoader = new THREE.TextureLoader(parser.options.manager); return { name: 'PlainTextureLoader' }; });
 const url = (path: string) => new URL(`models/${path}`, document.baseURI).href;
 const cache = new Map<string, Promise<GLTF>>();
 export function loadModel(path: string): Promise<GLTF> {

@@ -66,6 +66,7 @@
   .short .window { height: clamp(150px, 27dvh, 300px); }
   .strip .window { height: clamp(130px, 21dvh, 230px); }
   @media (max-height: 700px) { .strip .window { height: clamp(96px, 17dvh, 130px); } }
+  @media (min-height: 900px) and (min-width: 700px) and (max-aspect-ratio: 23/20) { .strip .window { height: clamp(260px, 34dvh, 420px); } }   /* планшет в портрете: окно боя побольше */
 
   /* катсцена */
   .cinema .top, .cinema .sheet { display: none; }
