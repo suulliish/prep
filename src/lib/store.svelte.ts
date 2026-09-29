@@ -42,7 +42,6 @@ export type Screen =
   | { name: 'album' }
   | { name: 'sound' }
   | { name: 'commander' }
-  | { name: 'playtime' }
   | { name: 'map' }
   | { name: 'hero' }
   | { name: 'intro' };

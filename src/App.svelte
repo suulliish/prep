@@ -16,7 +16,6 @@
   import Diagnostic from './screens/Diagnostic.svelte';
   import SoundLab from './screens/SoundLab.svelte';
   import Commander from './screens/Commander.svelte';
-  import PlayTime from './screens/PlayTime.svelte';
   import Album from './screens/Album.svelte';
 
   let canvas: HTMLCanvasElement;
@@ -41,7 +40,6 @@
       {:else if game.screen.name === 'diagnostic'}<Diagnostic />
       {:else if game.screen.name === 'sound'}<SoundLab back={() => (game.screen = { name: 'commander' })} />
       {:else if game.screen.name === 'commander'}<Commander />
-      {:else if game.screen.name === 'playtime'}<PlayTime />
       {:else if game.screen.name === 'album'}<Album />
       {:else if game.screen.name === 'map'}<MapScreen />
       {:else if game.screen.name === 'hero'}<Hero />

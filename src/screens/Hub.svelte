@@ -82,16 +82,16 @@
     if (nextBlock?.id !== id) { toast(`Алдымен: ${BLOCK[nextBlock!.id].kz}`); audio.play('click'); return; }
     start(id);
   }
-  function nav(to: 'map' | 'hero' | 'album' | 'playtime') { audio.unlock(); audio.play('click'); go({ name: to }); }
+  function nav(to: 'map' | 'hero' | 'album') { audio.unlock(); audio.play('click'); go({ name: to }); }
   let muted = $state(audio.settings.master === 0);
   function toggleSound() { audio.unlock(); muted = !muted; audio.save({ master: muted ? 0 : 0.8 }); if (!muted) audio.play('click'); }
 
   const primary = $derived(
     !game.save.diagnosticDone ? { label: 'Сканерлеуді бастау', go: () => { audio.unlock(); go({ name: 'diagnostic' }); } }
-    : !weekday ? { label: 'Ойын уақыты', go: () => nav('playtime') }
+    : !weekday ? { label: 'Демалыс! Картаны ашу', go: () => nav('map') }
     : nextBlock ? { label: nextBlock.id === 'new' && nextBlock.lesson ? (resume ? `Жалғастыру · ${resume}` : `Миссия: ${skillTitle(nextBlock.skills[0]).kz}`) : BLOCK[nextBlock.id].kz, go: () => start(nextBlock!.id) }
     : extraOk ? { label: 'Қосымша миссия · +15 мин', go: () => { audio.unlock(); audio.play('energy'); portal(() => go({ name: 'session', block: 'extra' })); } }
-    : { label: 'Ойын уақыты', go: () => nav('playtime') }
+    : { label: 'Бүгін бітті! Картаны ашу', go: () => nav('map') }
   );
 </script>
 
@@ -154,7 +154,6 @@
         <button class="mi" onclick={() => nav('map')}><Icon name="map" fill="#7ee08f" size={26} /><span>Карта</span>{#if bossReady}<b class="badge">!</b>{/if}</button>
         <button class="mi" onclick={() => nav('hero')}><Icon name="hero" fill="#5ea0ff" size={26} /><span>Кейіпкер</span></button>
         <button class="mi" onclick={() => nav('album')}><Icon name="cards" fill="var(--crystal)" size={26} /><span>Альбом</span>{#if broken}<b class="badge">{broken}</b>{/if}</button>
-        <button class="mi" onclick={() => nav('playtime')}><Icon name="clock" fill="var(--gold)" size={26} /><span>Ойын</span></button>
       </nav>
     </div>
   {/snippet}
@@ -211,7 +210,7 @@
 
   .stack { flex: 1; display: grid; gap: 8px; }
   .stack .btn { gap: 10px; }
-  .menu { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .menu { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .mi { position: relative; display: grid; justify-items: center; gap: 2px; padding: 6px 2px 5px; min-height: 56px; font: 800 12px var(--disp); color: var(--ink);
     background: transparent; border: 0; border-radius: 12px; cursor: pointer; }
   .mi:active { transform: translateY(2px); }
