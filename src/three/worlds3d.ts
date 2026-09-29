@@ -41,7 +41,7 @@ export const VILLAGE: Palette = {
     bush: [['forest', F('Bush_1_A'), 1.0], ['forest', F('Bush_2_B'), 1.1], ['forest', F('Bush_4_B'), 1.1]],
     grass: [['forest', F('Grass_2_A'), 0.7], ['forest', F('Grass_1_C'), 0.6], ['forest', F('Grass_2_B'), 0.7]],
     c1: [['hexcore', 'flag_red', 3.0]], c2: [['hexcore', 'weaponrack', 2.0]], c3: [['hexcore', 'target', 2.2]], c4: [['hexcore', 'crate_A_big', 1.5]], c5: [['hexcore', 'barrel', 1.4]], c6: [['hexcore', 'wheelbarrow', 1.5]],
-    w1: [['hexcore', 'waterlily_A', 1.2]], w2: [['hexcore', 'waterlily_B', 1.1]], w3: [['hexcore', 'waterplant_A', 1.6], ['hexcore', 'waterplant_B', 1.6]],
+    w1: [['hexcore', 'waterlily_A', 0.13]], w2: [['hexcore', 'waterlily_B', 0.09]], w3: [['hexcore', 'waterplant_A', 1.6], ['hexcore', 'waterplant_B', 1.6]],   // кувшинки плоские: высота 1,2 растягивала лист в плиту поверх героя
   },
   water: 0x2f9bd8, crystals: [0x35e6ff, 0xb58cff, 0xff4fb8],
 };

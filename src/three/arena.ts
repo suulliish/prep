@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { Actor, createHero, createMonster, dress, type Monster, HERO_HEIGHT } from './actor';
 import { Kit } from './assets';
+import { createPortal } from './portal';
 import { buildIsland, loadIslandKits } from './island3d';
 import { DEFAULT_LOOK, type HeroLook } from './looks';
 import { pickEnemy } from './roster';
@@ -222,10 +223,16 @@ export function createArena(d: Deps) {
     sky.position.copy(camera.position);
   }
 
+  // действия боя идут строго по очереди: два одновременных удара не перебивают анимации друг друга и не зависают
+  let chain: Promise<unknown> = Promise.resolve();
+  const seq = <T>(fn: () => Promise<T>): Promise<T> => { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; };
+  /** Ждать не дольше s секунд (защита от вечного ожидания момента удара, если анимацию прервали). */
+  const within = (p: Promise<unknown>, s: number) => Promise.race([p, new Promise(r => setTimeout(r, s * 1000))]);
+
   /** Всё нужное для сцены загружено: остров и герой. */
   const whenReady = () => { if (groundDirty) buildGround(); return Promise.all([groundP, heroP]).then(() => {}); };
 
-  return {
+  const api = {
     scene, camera, update,
     theme(k: number, a: string, b: string) { worldK = k; colA = new THREE.Color(a).getHex(); void b; groundDirty = true; ready = true; },
     /** Уголок мира по теме: одна тема — всегда один и тот же уголок. Возвращает номер варианта. */
@@ -249,17 +256,18 @@ export function createArena(d: Deps) {
       camFocus.set(0.4, 0.8, -1.5); camZoom = 1.5; camLift = 0.75; shot(new THREE.Vector3(0.2, 1, -1), 1.2, 0.5);
       await wait(0.9);
       shot(new THREE.Vector3(HERO_X - 0.8, 1.8, Z0), 0.62, 0.3);
-      const portal = new THREE.Group(); portal.position.copy(P); portal.scale.setScalar(0.01); scene.add(portal);
-      portal.add(new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.15, 8, 32), new THREE.MeshBasicMaterial({ color: 0x7ff3ff })));
-      portal.add(new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: 0xbff9ff, transparent: true, opacity: 0.75 })));
+      // тот же портал, что на корабле (src/three/portal.ts), без основания — открывается в воздухе
+      const pf = createPortal({ radius: 1.05, base: false, light: 0.4 }), portal = pf.g; let open = true, pt = 0;
+      portal.position.copy(P); portal.rotation.y = 0.35; portal.scale.setScalar(0.01); scene.add(portal); pf.setPower(0.8);
+      fx.push({ update: (dt: number) => { pt += dt; pf.update(dt, pt); return open; } });
       h.g.position.copy(P); h.g.rotation.y = Math.PI / 2;
       await tween(0.35, u => portal.scale.setScalar(Math.max(0.01, easeBack(u))));
-      burst(P, [0x35e6ff, 0xffffff, 0xa77bff], 30, 4); sfx('portal');
+      burst(P, [0x35e6ff, 0xffffff, 0xa77bff], 30, 4); sfx('portal'); pf.pulse();
       tween(0.2, u => h.g.scale.setScalar(Math.max(0.01, u)));
       h.play('Spawn_Air', { speed: 1.1 });
       await jumpTo(HERO_X, Z0, 1.1, 0.6, P.y);
       sfx('land'); await land(true);
-      tween(0.3, u => portal.scale.setScalar(Math.max(0.01, 1 - u))).then(() => scene.remove(portal));
+      tween(0.3, u => portal.scale.setScalar(Math.max(0.01, 1 - u))).then(() => { scene.remove(portal); open = false; pf.dispose(); });
       shot(heroAt(1.4), 0.5, 0.22);
       await h.play('Interact', { speed: 1.3 });     // осматривается
       stance();
@@ -334,7 +342,7 @@ export function createArena(d: Deps) {
         trailOn = true;
         h.play(clip, { speed: 1.35, marks: [{ at: 0.12, fn: () => sfx('slash') }, { at: HIT_AT[clip], fn: impact }] });
       }
-      await hit; if (!opts.sup) await wait(h.length(clip, 1.35) * (1 - HIT_AT[clip]) * 0.9);
+      await within(hit, 3); if (!opts.sup) await wait(h.length(clip, 1.35) * (1 - HIT_AT[clip]) * 0.9);
       trailOn = false;
       if (opts.sup) { await jumpTo(HERO_X, Z0, 1.2, 0.4); h.g.rotation.y = Math.PI / 2; shot(null); }
       else await runTo(HERO_X, 0.34);
@@ -349,7 +357,7 @@ export function createArena(d: Deps) {
       let launch: () => void = () => {}; const launched = new Promise<void>(r => (launch = r));
       sfx('growl');
       const atk = e.m.a.play(e.m.attack(), { speed: 1.25, marks: [{ at: 0.45, fn: launch }] });
-      await launched;
+      await within(launched, 2.5);
       guard = true; stance();
       await projectile(new THREE.Vector3(e.m.a.g.position.x - 0.6, e.top * 0.55, Z0), new THREE.Vector3(HERO_X + 0.7, 1.4, Z0), 0xff4fb8);
       burst(new THREE.Vector3(HERO_X + 0.8, 1.4, Z0), [0x35e6ff, 0xffffff], 18, 3, 0.14);
@@ -433,5 +441,10 @@ export function createArena(d: Deps) {
     clear() { if (enemy) { scene.remove(enemy.m.a.g); enemy.m.a.dispose(); enemy = null; } hpBar.visible = false; guard = false; if (hero) { neutral(); hero.g.position.set(HERO_X, 0, Z0); hero.g.rotation.y = Math.PI / 2; } shot(null); },
     hasEnemy: () => !!enemy,
   };
+  for (const k of ['arrive', 'spawn', 'attack', 'enemyAttack', 'defeat', 'victory'] as const) {
+    const f = api[k] as (...a: unknown[]) => Promise<unknown>;
+    (api as Record<string, unknown>)[k] = (...a: unknown[]) => seq(() => f(...a));
+  }
+  return api;
 }
 export type Arena = ReturnType<typeof createArena>;

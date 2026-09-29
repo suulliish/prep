@@ -6,6 +6,7 @@ import { HeroFigure } from './figure';
 import { DEFAULT_LOOK, type HeroLook } from './looks';
 import { buildMapIsle, loadIslandKits } from './island3d';
 import { Kit } from './assets';
+import { dressAirship, type Airship } from './airship';
 
 export type IsleState = 'cleared' | 'current' | 'open' | 'next' | 'locked' | 'fog';
 export interface MapIsle { id: string; a: string; b: string; state: IsleState }
@@ -99,17 +100,17 @@ export function createMap(d: Deps) {
   const ship = new THREE.Group(); scene.add(ship);
   // корабль на карте — готовая модель Kenney (как на палубе в хабе); герой стоит на её палубе
   const DECK = new THREE.Vector3(0, 0.6, 0);
-  const shipLight = new THREE.PointLight(0x3ff0ff, 1.4, 7); shipLight.position.set(0, -1, 0); ship.add(shipLight);
-  const glow = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.08, 6, 36), new THREE.MeshBasicMaterial({ color: 0x3ff0ff, transparent: true, opacity: 0.8 }));
-  glow.rotation.x = Math.PI / 2; glow.position.y = -0.9; ship.add(glow);
+  // та же лётная оснастка, что у корабля-базы (airship.ts): двигатели, кристалл под килем, фонари
+  let air: Airship | null = null;
   Kit.load('ship').then(k => {
-    const m = k.get('ship-small', { height: 4.6 }); const h = new THREE.Group(); h.add(m); h.rotation.y = Math.PI / 2; ship.add(h);
-    m.traverse(o => { const me = o as THREE.Mesh; if (me.isMesh && /sail/.test(me.name)) { const mt = (me.material as THREE.MeshToonMaterial).clone(); mt.transparent = true; mt.opacity = 0.55; mt.depthWrite = false; mt.side = THREE.DoubleSide; me.material = mt; } });
-    ship.updateMatrixWorld(true);
+    const m = k.get('ship-small', { height: 4.6 }); const h = new THREE.Group(); h.add(m); h.rotation.y = Math.PI / 2;
+    h.updateMatrixWorld(true); const hull = new THREE.Box3().setFromObject(h);
+    ship.add(h); ship.updateMatrixWorld(true);
     // палуба: верх корпуса в центре (паруса не считаем)
     const rc = new THREE.Raycaster(new THREE.Vector3(0, 20, 0).applyMatrix4(ship.matrixWorld), new THREE.Vector3(0, -1, 0));
     const hit = rc.intersectObject(ship, true).find(x => !/sail|flag|outline/.test(x.object.name) && x.point.y < 2.6 + ship.position.y);
     if (hit) DECK.y = ship.worldToLocal(hit.point.clone()).y;
+    air = dressAirship(hull, m, { quality: 'low', deckY: DECK.y }); ship.add(air.g);
   }).catch(() => {});
 
   const fig = new HeroFigure(DEFAULT_LOOK, 0.62), hero = { g: fig.g }; scene.add(fig.g);   // настоящий герой с анимациями
@@ -168,7 +169,7 @@ export function createMap(d: Deps) {
     bob.forEach(o => (o.g.position.y = o.y + Math.sin(t * 0.6 + o.ph) * 0.35 * km));
     rings.forEach(r => { const k = 1 + Math.sin(t * 2.4) * 0.04; r.scale.set(k, k, k); (r.material as THREE.MeshBasicMaterial).opacity = 0.6 + Math.sin(t * 2.4) * 0.3; r.rotation.z += dt * 0.4; });
     beacons.forEach(b => ((b.material as THREE.MeshBasicMaterial).opacity = 0.16 + Math.abs(Math.sin(t * 1.6)) * 0.18));
-    glow.rotation.z += dt * 1.2; (glow.material as THREE.MeshBasicMaterial).opacity = 0.6 + Math.sin(t * 4) * 0.25;
+    air?.update(dt, t, km);
 
     // герой / корабль
     let walking = false;

@@ -21,6 +21,9 @@ export interface Deck {
   /** Проходимые клетки у бортов: сюда можно ставить реквизит. */
   edges(): [number, number][];
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+  /** Габариты корпуса (без парусов) в системе корабля: главная палуба на y = 0. */
+  hull: THREE.Box3;
+  model: THREE.Object3D;
   update(t: number, km: number): void;
 }
 
@@ -37,10 +40,8 @@ export async function createDeck(quality: 'high' | 'low', scale = 1.5): Promise<
     if (/sail|flag/.test(m.name)) { sails.push(m); return; }
     m.geometry.computeBoundingBox(); const s = m.geometry.boundingBox!.getSize(new THREE.Vector3()); const v = s.x * s.y * s.z;
     if (v > hullVol) { hullVol = v; hull = m; } });
-  // паруса полупрозрачные: не закрывают героя, когда камера облетает корабль
-  for (const s of sails) if (/sail/.test(s.name)) {
-    const m = (s.material as THREE.MeshToonMaterial).clone(); m.transparent = true; m.opacity = 0.5; m.depthWrite = false; m.side = THREE.DoubleSide; s.material = m; s.castShadow = false;
-  }
+  // паруса перекрашивает airship.ts (плотные, в цветах игры); камера не облетает корму, поэтому прозрачность не нужна
+  for (const s of sails) s.castShadow = false;
   const ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0), from = new THREE.Vector3();
   const heightAt = (x: number, z: number): number | null => { from.set(x, 80, z); ray.set(from, down); const h = ray.intersectObject(hull!, false)[0]; return h ? h.point.y : null; };
 
@@ -53,6 +54,7 @@ export async function createDeck(quality: 'high' | 'low', scale = 1.5): Promise<
   for (const h of H) if (!Number.isNaN(h) && h < 3.2 * scale) { const k = Math.round(h * 10); bins.set(k, (bins.get(k) ?? 0) + 1); }
   let deckLevel = 0, best = 0; for (const [k, n] of bins) if (n > best) { best = n; deckLevel = k / 10; }
   g.position.y = -deckLevel; g.updateMatrixWorld(true);
+  const hullBox = new THREE.Box3().setFromObject(hull!);
 
   // проходимо: пол не выше надстройки и без резких скачков (лестницы можно, поручни и мачты нельзя)
   const idx = (i: number, j: number) => i * nz + j, inGrid = (i: number, j: number) => i >= 0 && j >= 0 && i < nx && j < nz;
@@ -117,6 +119,6 @@ export async function createDeck(quality: 'high' | 'low', scale = 1.5): Promise<
   const edges = () => c0.filter(([i, j]) => walk[idx(i, j)] && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([di, dj]) => !walk[idx(i + di, j + dj)])).map(([i, j]) => pos(i, j));
 
   const sailNodes = sails.filter(s => /sail/.test(s.name));
-  return { g, height, walkable, nearest, path, reserve, stations, edges, bounds: { minX, maxX, minZ, maxZ },
+  return { g, height, walkable, nearest, path, reserve, stations, edges, bounds: { minX, maxX, minZ, maxZ }, hull: hullBox, model,
     update(t, km) { sailNodes.forEach((s, i) => (s.rotation.y = Math.sin(t * 1.3 + i) * 0.03 * km)); } };
 }

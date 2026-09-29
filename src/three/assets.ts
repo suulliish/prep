@@ -46,10 +46,10 @@ function outlineMat(thick: number, color = 0x0a0b1e) {
 }
 
 export interface ToonOpts { outline?: number; shadows?: boolean }
-/** Привести модель к общему виду. outline — толщина контура (0/не задано — без контура). */
+/** Привести модель к общему виду. outline — толщина контура (0/не задано — без контура). Светящиеся части (userData.noToon) не трогаем. */
 export function toonify<T extends THREE.Object3D>(root: T, o: ToonOpts = {}): T {
   const meshes: THREE.Mesh[] = [];
-  root.traverse(n => { if ((n as THREE.Mesh).isMesh) meshes.push(n as THREE.Mesh); });
+  root.traverse(n => { if ((n as THREE.Mesh).isMesh && !n.userData.noToon) meshes.push(n as THREE.Mesh); });
   for (const m of meshes) {
     m.material = Array.isArray(m.material) ? m.material.map(toonMat) : toonMat(m.material);
     m.castShadow = o.shadows ?? true; m.receiveShadow = o.shadows ?? true;

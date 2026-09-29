@@ -12,6 +12,9 @@ import { createArena } from './arena';
 import { LOOKS, DEFAULT_LOOK } from './looks';
 import { HeroFigure } from './figure';
 import { Kit } from './assets';
+import { createPortal } from './portal';
+import { dressAirship, type Airship } from './airship';
+import { createSkyscape } from './skyscape';
 import { audio } from '../lib/audio';
 
 export type CamMode = 'hub' | 'battle' | 'portal' | 'map' | 'hero';
@@ -58,6 +61,8 @@ export interface World {
   /** Окно сцены в каркасе экрана (доли высоты): камера центрирует цель в этом окне. */
   setFrame(top: number, height: number): void;
   resize(): void;
+  /** Только для проверки (hub.html?cam=…): камера режима hub вручную. */
+  devCam?(x: number, y: number, z: number, r: number, phi: number, theta: number): void;
   dispose(): void;
 }
 
@@ -136,44 +141,34 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   }
 
   // ---------- Корабль ----------
-  // готовый корабль Kenney (src/three/deck3d.ts): по его палубе ходит герой; под килем светящееся кольцо подъёма
+  // готовый корабль Kenney (src/three/deck3d.ts): по его палубе ходит герой; лётная оснастка (двигатели, кристалл под килем) — airship.ts
   const ship = new THREE.Group(); scene.add(ship);
-  let deck: Deck | null = null;
-  const lift = new THREE.Mesh(new THREE.TorusGeometry(3.6, 0.17, 8, 48), new THREE.MeshBasicMaterial({ color: 0x3ff0ff, transparent: true, opacity: 0.8 }));
-  lift.rotation.x = Math.PI / 2; lift.position.y = -3.4; ship.add(lift);
-  const liftLight = new THREE.PointLight(0x3ff0ff, 1.6, 14); liftLight.position.set(0, -3, 0); ship.add(liftLight);
+  let deck: Deck | null = null, air: Airship | null = null;
 
-  // ---------- Портал ----------
-  const portal = new THREE.Group(); portal.position.set(4.6, 0.15, 0); ship.add(portal);
-  const frameMat = [0x2a1b4d, 0x16082e] as const;
-  for (let y = 0; y < 6; y++) { block(portal, 0.6, 0.6, 0.6, 0, 0.3 + y * 0.6, -1.5, frameMat[0], 0x5a2bb0, 0.5); block(portal, 0.6, 0.6, 0.6, 0, 0.3 + y * 0.6, 1.5, frameMat[0], 0x5a2bb0, 0.5); }
-  for (let z = -1.5; z <= 1.51; z += 0.6) block(portal, 0.6, 0.6, 0.6, 0, 3.9, z, frameMat[0], 0x5a2bb0, 0.5);
-  const portalMat = new THREE.ShaderMaterial({
-    transparent: true, side: THREE.DoubleSide, depthWrite: false, uniforms: { t: { value: 0 }, power: { value: 0.3 } },
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
-    fragmentShader: `uniform float t; uniform float power; varying vec2 vUv;
-      void main(){ vec2 p = vUv - .5; p.y *= 1.25; float r = length(p); float a = atan(p.y, p.x);
-        float sw = sin(a*3. + r*18. - t*3.)*.5+.5; vec3 c = mix(vec3(1.,.31,.72), vec3(.25,.94,1.), sw);
-        float core = smoothstep(.5,0.,r); gl_FragColor = vec4(c*(1.+power*1.5) + core*power, (.3+.65*power)*core); }`,
-  });
-  const portalPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 3.4), portalMat);
-  portalPlane.rotation.y = Math.PI / 2; portalPlane.position.set(0, 2.05, 0); portal.add(portalPlane);
-  const portalLight = new THREE.PointLight(0x7bf6ff, 2, 10); portalLight.position.set(-0.8, 2, 0); portal.add(portalLight);
-  const pCount = 180, pPos = new Float32Array(pCount * 3), pSeed = Array.from({ length: pCount }, () => ({ a: Math.random() * 6.28, r: 0.3 + Math.random() * 1.3, s: 0.5 + Math.random() }));
-  const pGeo = new THREE.BufferGeometry(); pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-  const pMat = new THREE.PointsMaterial({ color: 0x9ffcff, size: 0.13, transparent: true, opacity: 0.8, depthWrite: false });
-  portal.add(new THREE.Points(pGeo, pMat));
-  let energy = 0.3, portalOpen = false, flash = 0;
+  // ---------- Портал ---------- (src/three/portal.ts) на носу; лицом к корме и правому борту — к обычному ракурсу камеры,
+  // чтобы с главного экрана был виден вихрь, а не ребро кольца. Герой подходит к нему спереди.
+  const PORTAL_FACE = -0.35;                                   // поворот вокруг вертикали: 0 — лицом к правому борту (+z), −π/2 — к корме
+  const portalFx = createPortal({ radius: 1.35 }), portal = portalFx.g;
+  portal.rotation.y = PORTAL_FACE; portal.scale.setScalar(0.85); portal.position.set(4.6, 0, 0); ship.add(portal);
+  let energy = 0.3, portalOpen = false, pulling = false, portalStand: [number, number] = [3.5, 0];
+  const portalCenter = () => portal.localToWorld(new THREE.Vector3(0, portalFx.center, 0));
+  /** Покадровая анимация по времени (для катсцен на палубе). */
+  const anim = (dur: number, step: (u: number) => void) => new Promise<void>(res => { const t0 = performance.now(); const f = () => { const u = Math.min(1, (performance.now() - t0) / (dur * 1000)); step(u); if (u < 1) requestAnimationFrame(f); else res(); }; f(); });
 
 
   // ---------- Герой ----------
   const fig = new HeroFigure(DEFAULT_LOOK, 1.15), hero = { g: fig.g };   // настоящий герой (модель с анимациями)
-  let themeTo: THREE.Vector3[] | null = null; const fogTo = new THREE.Color(0x17104a);
+  let themeTo: THREE.Vector3[] | null = null; const fogTo = new THREE.Color(0x17104a), worldFog = new THREE.Color(0x17104a), tmpC = new THREE.Color();
   hero.g.position.set(0, 0, 0); hero.g.rotation.y = Math.PI / 2; ship.add(hero.g);
   createDeck(quality).then(async d => {
     deck = d; ship.add(d.g);
+    air = dressAirship(d.hull, d.model, { quality }); ship.add(air.g);
     const [mx, mz] = d.stations.mid; hero.g.position.set(mx, 0, mz);
-    const [bx, bz] = d.stations.bow; portal.position.set(bx - 0.6, d.height(bx, bz) ?? 0, bz);
+    // портал — на открытой носовой палубе (перед фок-мачтой, чтобы парус не закрывал), герой встаёт перед ним
+    const [px, pz] = d.nearest(d.bounds.maxX - 2.2, 0); portal.position.set(px, d.height(px, pz) ?? 0, pz);
+    for (const k of [-1.3, -0.65, 0, 0.65, 1.3]) d.reserve(px + Math.cos(PORTAL_FACE) * k, pz - Math.sin(PORTAL_FACE) * k, 0.75);   // кольцо поперёк: сквозь камни не ходим
+    portalStand = d.nearest(px + Math.sin(PORTAL_FACE) * 1.5, pz + Math.cos(PORTAL_FACE) * 1.5);
+    CAM.portal.target.set(px - 0.5, 2.2, pz);
     // реквизит палубы: готовые бочки, ящики, пушка (Kenney Pirate Kit) у бортов; вокруг них не ходим
     const k = await Kit.load('ship'), e = d.edges().sort((a, b) => a[0] - b[0]);
     const far = ([x, z]: [number, number]) => Object.values(d.stations).every(s => Math.hypot(s[0] - x, s[1] - z) > 2.2);
@@ -210,24 +205,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   const antenna = B.antenna, bitProp = B.prop;
   bit.position.set(-2, 3, 1.6);
 
-  // ---------- Острова и облака ----------
-  const islands: { g: THREE.Group; y: number; ph: number }[] = [];
-  function island(cx: number, cy: number, cz: number, R: number, seed: number) {
-    const g = new THREE.Group(); g.position.set(cx, cy, cz); scene.add(g);
-    const cols: [number, number, number][] = [];
-    for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) { const d = Math.hypot(x, z); if (d > R + 0.3) continue; cols.push([x, z, Math.max(1, Math.round((R - d) * 1.4 + ((x * 7 + z * 13 + seed) % 3)))]); }
-    const total = cols.reduce((s, c) => s + c[2], 0);
-    const im = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ roughness: 0.9, flatShading: true }), total);
-    const m4 = new THREE.Matrix4(), col = new THREE.Color(); let i = 0;
-    cols.forEach(([x, z, dp]) => { for (let k = 0; k < dp; k++) { m4.makeTranslation(x, -k, z); im.setMatrixAt(i, m4); col.set(k === 0 ? ((x + z + seed) % 3 ? 0x4fbf5a : 0x45ad50) : k < 2 ? 0x8a5a36 : 0x6d6a80); im.setColorAt(i++, col); } });
-    g.add(im);
-    if (R >= 3) { block(g, 0.8, 2.4, 0.8, 0, 1.7, 0, 0x6b4428); block(g, 2.6, 1.1, 2.6, 0, 3.4, 0, 0x2f9e57); block(g, 1.6, 1.1, 1.6, 0, 4.4, 0, 0x37b064); }
-    if (seed % 2) { const cr = block(g, 0.6, 1.2, 0.6, 1.5, 1.1, -1, 0xb58cff, 0x8a5cff, 1.6); cr.rotation.y = 0.6; }
-    islands.push({ g, y: cy, ph: seed });
-  }
-  island(-17, -3, -15, 4, 1); island(19, -6, -11, 3, 2); island(-21, 2, 13, 3, 3); island(13, 4, 19, 2, 4); island(29, -1, 6, 4, 5); island(-7, -10, 23, 3, 6);
-  const clouds: THREE.Group[] = [];
-  for (let i = 0; i < 10; i++) { const c = new THREE.Group(); for (let k = 0; k < 3 + (i % 3); k++) { const b = block(c, 2 + (k % 2), 1, 1.6 + (k % 3) * 0.4, k * 1.3, (k % 2) * 0.4, (k % 3) * 0.5, 0xe8e6ff); b.castShadow = false; } c.position.set(-45 + i * 10, -9 + (i % 4) * 5, -28 + (i * 17) % 56); scene.add(c); clouds.push(c); }
+  // ---------- Острова и облака ---------- (src/three/skyscape.ts)
+  const sky = createSkyscape({ quality }); scene.add(sky.g);
 
   // ---------- Частицы ----------
   const bursts: { g: THREE.Group; parts: { m: THREE.Mesh; v: THREE.Vector3 }[]; life: number }[] = [];
@@ -258,7 +237,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     portal: { target: new THREE.Vector3(4.6, 2.2, 0), radius: 9, phi: 1.25, theta: 0.15 },
     hero: { target: new THREE.Vector3(-2, 1.5, 0.6), radius: 11, phi: 1.3, theta: 0.55 }, // портрет героя на палубе
   };
-  let mode: CamMode = 'hub';
+  let mode: CamMode = 'hub', devLock = false;
   const cam = { target: CAM.hub.target.clone(), radius: CAM.hub.radius, phi: CAM.hub.phi, theta: CAM.hub.theta };
   let dragging = false, lastX = 0, lastY = 0, idle = 0, userTheta = 0, userPhi = 0, shakeT = 0;
   let downX = 0, downY = 0;
@@ -310,7 +289,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     camera.aspect = w / h; camera.updateProjectionMatrix(); map.resize(w, h); arena.resize(w, h);
     const narrow = w / h < 0.8;
     const side = isSide(w, h);
-    CAM.hub.radius = narrow ? 40 : side ? 30 : 33; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 12.5 : 9.5;   // целиком, со шлемом и оружием (скины)
+    if (!devLock) CAM.hub.radius = narrow ? 40 : side ? 30 : 33; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 12.5 : 9.5;   // целиком, со шлемом и оружием (скины)
     applyOffset();
   }
   // Раскладка экрана (та же, что в app.css): на широком экране панель справа — сцена сдвигается влево;
@@ -333,23 +312,19 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   function frame() {
     const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
     skyMat.uniforms.t.value = t;
-    if (themeTo) { const u = skyMat.uniforms, k = Math.min(1, dt * 1.5); (['cTop', 'cMid', 'cLow', 'cAur'] as const).forEach((n, i) => u[n].value.lerp(themeTo![i], k)); (scene.fog as THREE.Fog).color.lerp(fogTo, k); }
+    if (themeTo) { const u = skyMat.uniforms, k = Math.min(1, dt * 1.5); (['cTop', 'cMid', 'cLow', 'cAur'] as const).forEach((n, i) => u[n].value.lerp(themeTo![i], k)); worldFog.lerp(fogTo, k); }
+    // у корабля туман — цвет низа неба: дальние облака и острова тают в небе, а не темнеют пятнами (туман мира — для боя и карты)
+    { const u = skyMat.uniforms; (scene.fog as THREE.Fog).color.setRGB(u.cLow.value.x, u.cLow.value.y, u.cLow.value.z).lerp(tmpC.setRGB(u.cMid.value.x, u.cMid.value.y, u.cMid.value.z), 0.3);
+      if (!composer) (scene.fog as THREE.Fog).color.convertSRGBToLinear(); }   // без постобработки небо выводится как есть (sRGB), туман — через перевод цвета
     starMat.opacity = 0.75 + Math.sin(t * 1.3) * 0.15;
     rifts.forEach((r, i) => { (r.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.abs(Math.sin(t * (2 + i) + i)) * 0.5 * (Math.random() > 0.97 ? 0.2 : 1); r.position.x += Math.random() > 0.98 ? (Math.random() - 0.5) * 0.6 : 0; });
 
     ship.position.y = Math.sin(t * 0.8) * 0.25 * km; ship.rotation.z = Math.sin(t * 0.6) * 0.02 * km; ship.rotation.x = Math.sin(t * 0.5) * 0.015 * km;
-    deck?.update(t, km); lift.rotation.z += dt * 0.8; (lift.material as THREE.MeshBasicMaterial).opacity = 0.6 + 0.25 * Math.sin(t * 3); liftLight.intensity = 1.4 + Math.sin(t * 3) * 0.4;
-    islands.forEach(o => (o.g.position.y = o.y + Math.sin(t * 0.5 + o.ph) * 0.6 * km));
-    clouds.forEach(c => { c.position.x += dt * 0.6 * km; if (c.position.x > 55) c.position.x = -55; });
+    deck?.update(t, km); air?.update(dt, t, km);
+    sky.update(dt, t, km, (scene.fog as THREE.Fog).color);
 
-    // портал
-    portalMat.uniforms.t.value = t;
-    const targetPower = portalOpen ? 1 : 0.15 + energy * 0.7;
-    portalMat.uniforms.power.value += (targetPower - portalMat.uniforms.power.value) * 0.05;
-    const pw = portalMat.uniforms.power.value;
-    portalLight.intensity = 1 + pw * 3 + Math.sin(t * 7) * 0.2 + flash * 8; flash = Math.max(0, flash - dt * 1.5);
-    for (let i = 0; i < pCount; i++) { const s = pSeed[i]; s.a += dt * s.s * (1 + pw * 2); s.r -= dt * 0.25 * s.s; if (s.r < 0.1) s.r = 1.4; pPos[i * 3] = -0.1 - (1.4 - s.r) * 0.5; pPos[i * 3 + 1] = 2.05 + Math.sin(s.a) * s.r * 1.2; pPos[i * 3 + 2] = Math.cos(s.a) * s.r; }
-    pGeo.attributes.position.needsUpdate = true; pMat.opacity = 0.35 + pw * 0.55;
+    // портал: руны горят по энергии дня, открытый — в полную силу
+    portalFx.setPower(portalOpen ? 1.1 : 0.12 + energy * 0.75); portalFx.update(dt, t);
 
     // живой корабль: герой сам ходит между станциями палубы (нос у портала, корма, середина, борта)
     if (mode === 'hub' && !walk && km === 1 && deck && t > nextWander) {
@@ -365,7 +340,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       else { walking = true; const st = Math.min(L, dt * 3.4); hero.g.position.x += dx / L * st; hero.g.position.z += dz / L * st;
         hero.g.rotation.y += Math.atan2(Math.sin(Math.atan2(dx, dz) - hero.g.rotation.y), Math.cos(Math.atan2(dx, dz) - hero.g.rotation.y)) * Math.min(1, dt * 12); }
     }
-    if (deck) { const hh = deck.height(hero.g.position.x, hero.g.position.z); if (hh != null) hero.g.position.y += (hh - hero.g.position.y) * Math.min(1, dt * 14); }
+    if (deck && !pulling) { const hh = deck.height(hero.g.position.x, hero.g.position.z); if (hh != null) hero.g.position.y += (hh - hero.g.position.y) * Math.min(1, dt * 14); }
     // анимации героя настоящие: ходьба/стойка меняются сами, радость — разовая
     fig.walking(walking); fig.update(dt);
     if (celebrateT > 0) { celebrateT = 0; fig.play('Cheering', 1.1); }
@@ -389,18 +364,19 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     // камера плавно к режиму
     const C = CAM[mode === 'map' ? 'hub' : mode];
     idle += dt;
-    if (!dragging && idle > 2.5 && mode === 'hub' && km === 1) userTheta += dt * 0.04;
+    // сам камера не облетает корабль по кругу (сзади паруса закрывают палубу), а покачивается у лучшего ракурса
+    if (!dragging && idle > 2.5 && mode === 'hub' && km === 1 && !devLock) userTheta += (Math.sin(t * 0.08) * 0.45 - userTheta) * Math.min(1, dt * 0.3);
     cam.target.lerp(C.target, 0.05); cam.radius += (C.radius - cam.radius) * 0.05; cam.phi += (C.phi + userPhi - cam.phi) * 0.08; cam.theta += (C.theta + userTheta - cam.theta) * 0.08;
     const sh = shakeT > 0 ? (Math.random() - 0.5) * shakeT * 0.6 : 0; shakeT = Math.max(0, shakeT - dt);
     camera.position.set(cam.target.x + cam.radius * Math.sin(cam.phi) * Math.cos(cam.theta) + sh, cam.target.y + cam.radius * Math.cos(cam.phi) + sh, cam.target.z + cam.radius * Math.sin(cam.phi) * Math.sin(cam.theta));
     camera.lookAt(cam.target);
 
     if (mode === 'map') {
-      map.setFog((scene.fog as THREE.Fog).color); map.update(dt, t);
+      map.setFog(worldFog); map.update(dt, t);
       if (composer && renderPass) { renderPass.scene = map.scene; renderPass.camera = map.camera; composer.render(); }
       else renderer.render(map.scene, map.camera);
     } else if (mode === 'battle') {
-      arena.setFog((scene.fog as THREE.Fog).color); arena.update(dt, t);
+      arena.setFog(worldFog); arena.update(dt, t);
       if (composer && renderPass) { renderPass.scene = arena.scene; renderPass.camera = arena.camera; composer.render(); }
       else renderer.render(arena.scene, arena.camera);
     } else {
@@ -417,13 +393,16 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   return {
     setEnergy(v, max) { energy = Math.max(0, Math.min(1, v / max)); },
     setMode(m) {
-      if ((m === 'hub' || m === 'hero') && mode !== m) { walk = null; hero.g.scale.setScalar(1); if (m === 'hero' || hero.g.position.x > spot('bow')[0] - 2) { const s0 = spot('mid'); hero.g.position.set(s0[0], 0, s0[1]); } hero.g.rotation.y = Math.PI / 2; portalOpen = false; }
+      if ((m === 'hub' || m === 'hero') && mode !== m) { walk = null; hero.g.scale.setScalar(1); if (m === 'hero' || hero.g.position.x > portalStand[0] - 1) { const s0 = spot('mid'); hero.g.position.set(s0[0], 0, s0[1]); } hero.g.rotation.y = Math.PI / 2; portalOpen = false; }
       // из боя — герой возвращается через портал на палубу
       if (m === 'hub' && mode === 'battle') {
-        { const b0 = spot('bow'); hero.g.position.set(b0[0] - 0.9, deck?.height(b0[0], b0[1]) ?? 0, b0[1]); } hero.g.scale.setScalar(0.01); portalOpen = true; flash = 1;
-        const t0 = performance.now();
-        const grow = () => { const u = Math.min(1, (performance.now() - t0) / 400); hero.g.scale.setScalar(Math.max(0.01, u)); if (u < 1) requestAnimationFrame(grow); else { burst(worldPos(portal, 2), 0x3ff0ff, 50, 5); { const s1 = spot('mid'); goTo(s1[0], s1[1], () => { portalOpen = false; celebrateT = 0.6; }); } } };
-        setTimeout(grow, 250);
+        // портал вспыхивает, герой вылетает из центра кольца и приземляется перед ним
+        const b0 = portalStand, gx = b0[0], gy = deck?.height(b0[0], b0[1]) ?? 0, c = ship.worldToLocal(portalCenter());
+        hero.g.scale.setScalar(0.01); hero.g.position.copy(c); hero.g.rotation.y = PORTAL_FACE; portalOpen = true; pulling = true;
+        setTimeout(() => { portalFx.pulse(); burst(portalCenter(), 0x3ff0ff, 50, 5);
+          anim(0.55, u => { const e = 1 - (1 - u) ** 3; hero.g.scale.setScalar(Math.max(0.01, e)); hero.g.position.set(c.x + (gx - c.x) * e, c.y + (gy - c.y) * u * u + Math.sin(u * Math.PI) * 0.6, c.z + (b0[1] - c.z) * e); })
+            .then(() => { pulling = false; hero.g.rotation.y = Math.PI / 2; const s1 = spot('mid'); goTo(s1[0], s1[1], () => { portalOpen = false; celebrateT = 0.6; }); });
+        }, 350);
       }
       mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? (narrow ? 0.2 : 0.08) : narrow ? 0.24 : 0.12; applyOffset(); },
     heroWalk(x, z) { return new Promise<void>(res => goTo(x, z, res)); },
@@ -440,17 +419,20 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     openChest() { return arena.victory(); },
     portalWalk() {
       return new Promise<void>(res => {
-        const bw = spot('bow'); goTo(bw[0] - 0.9, bw[1], () => {
-          portalOpen = true; flash = 1; burst(worldPos(portal, 2), 0x3ff0ff, 90, 7);
-          const t0 = performance.now();
-          const shrink = () => { const u = Math.min(1, (performance.now() - t0) / 350); hero.g.scale.setScalar(Math.max(0.01, 1 - u)); if (u < 1) requestAnimationFrame(shrink); else res(); };
-          shrink();
+        // герой подходит, портал разгорается, героя затягивает в центр вихря с поворотом — вспышка
+        goTo(portalStand[0], portalStand[1], async () => {
+          hero.g.rotation.y = Math.atan2(portal.position.x - hero.g.position.x, portal.position.z - hero.g.position.z);   // лицом к порталу
+          portalOpen = true; portalFx.pulse(); fig.play('Cheering', 1.4);
+          await anim(0.5, () => {});
+          pulling = true; const p0 = hero.g.position.clone(), c = ship.worldToLocal(portalCenter()), r0 = hero.g.rotation.y;
+          await anim(0.6, u => { const e = u * u; hero.g.position.lerpVectors(p0, c, e); hero.g.rotation.y = r0 + e * Math.PI * 3; hero.g.scale.setScalar(Math.max(0.01, 1 - e)); });
+          portalFx.pulse(); burst(portalCenter(), 0x3ff0ff, 90, 7); pulling = false; res();
         });
       });
     },
     bitMood(m) { mood = m; drawFace(); },
     celebrate(color = 0x3ff0ff) { if (mode === 'battle') { arena.celebrate(); return; } celebrateT = 1.2; burst(worldPos(hero.g, 2.5), color, 50, 5); },
-    openPortal() { portalOpen = true; flash = 1; burst(worldPos(portal, 2), 0x3ff0ff, 90, 7); },
+    openPortal() { portalOpen = true; portalFx.pulse(); burst(portalCenter(), 0x3ff0ff, 90, 7); },
     setTheme(sky, fog) { themeTo = sky.map(c => new THREE.Vector3(c[0], c[1], c[2])); fogTo.setHex(fog); },
     setFrame(top, height) { frameWin.top = top; frameWin.h = height; applyOffset(); },
     setOutfit(_jacket, _dark, _visor, id = 'cyan') { const look = LOOKS[id] ?? DEFAULT_LOOK; arena.setLook(look); fig.setLook(look); map.setLook(look); },
@@ -461,6 +443,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     mapLabels() { return map.labels(); },
     mapFocused() { return map.focusIndex; },
     resize,
+    /** Только для проверки (hub.html?cam=x,y,z,радиус,phi,theta): поставить камеру режима hub вручную. */
+    devCam(x: number, y: number, z: number, r: number, phi: number, theta: number) { CAM.hub.target.set(x, y, z); CAM.hub.radius = r; CAM.hub.phi = phi; CAM.hub.theta = theta; viewShift = 0; frameWin.h = 1; applyOffset(); devLock = true; cam.target.set(x, y, z); Object.assign(cam, { radius: r, phi, theta }); },
     dispose() {
       cancelAnimationFrame(raf); removeEventListener('resize', resize);
       canvas.removeEventListener('pointerdown', onDown); window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp);
