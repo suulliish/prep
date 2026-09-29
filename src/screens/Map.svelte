@@ -56,10 +56,12 @@
     const top = openMax(), seen = readSeen();
     if (seen == null || top <= seen || top === curIdx) { build(); if (seen == null || top > seen) writeSeen(top); }
     else {
-      build(top); flying = true; writeSeen(top);
+      build(top); flying = true;
       setTimeout(async () => {
+        if (gone) return;
         await W.world?.mapUnveil(top);
-        toast(`Жаңа әлем ашылды: ${WORLDS[top].kz}!`);
+        if (gone) return;                                                // ушли с карты посреди катсцены — покажем в следующий раз
+        writeSeen(top); toast(`Жаңа әлем ашылды: ${WORLDS[top].kz}!`);
         build(); sel = top; W.world?.mapFocus(top); flying = false;
       }, 700);
     }
@@ -73,7 +75,8 @@
     };
     raf = requestAnimationFrame(tick);
   });
-  onDestroy(() => { cancelAnimationFrame(raf); W.world?.onMapPick(() => {}); W.world?.setMode('hub'); });
+  let gone = false;
+  onDestroy(() => { gone = true; W.world?.mapAbort(); cancelAnimationFrame(raf); W.world?.onMapPick(() => {}); W.world?.setMode('hub'); });
 
   function pick(i: number) { sel = Math.max(0, Math.min(WORLDS.length - 1, i)); W.world?.mapFocus(sel); audio.play('click'); }
 
@@ -81,6 +84,7 @@
     if (flying || !worldOpen(i) || i === curIdx) return;
     flying = true; audio.play('portal');
     await W.world?.mapTravel(i);
+    if (gone) return;                                                  // перелёт отменён уходом с карты — мир не меняем
     travel(WORLDS[i].id); build(); flying = false; audio.play('levelup');
   }
 

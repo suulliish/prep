@@ -54,6 +54,8 @@ export interface World {
   mapSetup(isles: MapIsle[], current: number): void;
   mapFocus(i: number): void;
   mapTravel(i: number): Promise<void>;
+  /** Ушли с карты посреди перелёта/катсцены: вернуть корабль к текущему миру, завершить ожидающие промисы. */
+  mapAbort(): void;
   /** Катсцена на карте: мир i только что открылся (серый остров расцветает). */
   mapUnveil(i: number): Promise<void>;
   onMapPick(cb: (i: number) => void): void;
@@ -192,7 +194,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
         if (along > 1 && d.walkable(q[0], q[1]) && Math.hypot(dx, dz) > 0.9 && d.path(portalStand, q).length) home.push(q);
       }
       home.push(portalStand);
-      if (mode === 'hub') { const h0 = home[Math.floor(home.length / 2)]; hero.g.position.set(h0[0], d.height(h0[0], h0[1]) ?? 0, h0[1]); hero.g.rotation.y = PORTAL_FACE - 0.25; }
+      if (mode === 'hub' || mode === 'hero') { const h0 = home[Math.floor(home.length / 2)]; hero.g.position.set(h0[0], d.height(h0[0], h0[1]) ?? 0, h0[1]); hero.g.rotation.y = mode === 'hero' ? PORTAL_FACE + 0.2 : PORTAL_FACE - 0.25; }   // «Кейіпкер» мог открыться до загрузки палубы
       // камера главного меню: между порталом и площадкой перед ним
       CAM.hub.target.set(px + nx * 2.6, 1.6, pz + nz * 2.6); }
     // реквизит палубы: готовые бочки, ящики, пушка (Kenney Pirate Kit) у бортов; вокруг них не ходим
@@ -281,12 +283,15 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   function tapWalk(e: PointerEvent) {
     const r = canvas.getBoundingClientRect();
     tapRay.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
-    tapPlane.constant = -ship.position.y;
-    if (!tapRay.ray.intersectPlane(tapPlane, tapHit)) return;
+    if (!deck || cutscene || pulling) return;                             // во время катсцены касания не двигают героя
+    // касание самого героя (луч попал в его модель) — он машет в ответ, Бит радуется
+    const wave = () => { if (!walk) { endActivity(true); fig.play('Waving', 1.1); mood = 'happy'; drawFace(); nextWander = clock.elapsedTime + 6; } };
+    if (tapRay.intersectObject(hero.g, true).length) { wave(); return; }
+    // точка на палубе: луч в корпус (нос приподнят над главной палубой), иначе — плоскость главной палубы
+    const dh = tapRay.intersectObject(deck.g, true).find(h => !/sail|flag/.test(h.object.name) && !h.object.userData.outline);
+    if (dh) tapHit.copy(dh.point); else { tapPlane.constant = -ship.position.y; if (!tapRay.ray.intersectPlane(tapPlane, tapHit)) return; }
     const p = ship.worldToLocal(tapHit.clone());
-    if (!deck) return;
-    // касание самого героя — он машет в ответ, Бит радуется
-    if (Math.hypot(hero.g.position.x - p.x, hero.g.position.z - p.z) < 0.9 && !walk && !cutscene) { endActivity(true); fig.play('Waving', 1.1); mood = 'happy'; drawFace(); nextWander = clock.elapsedTime + 6; return; }
+    if (Math.hypot(hero.g.position.x - p.x, hero.g.position.z - p.z) < 0.7) { wave(); return; }   // под ногами героя — тоже касание героя
     const q = deck.nearest(p.x, p.z); if (Math.hypot(q[0] - p.x, q[1] - p.z) > 3) return;   // мимо палубы
     const x = q[0], z = q[1];
     nextWander = Infinity;                                               // сам не уходит, пока идёт по касанию
@@ -442,6 +447,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   return {
     setEnergy(v, max) { energy = Math.max(0, Math.min(1, v / max)); },
     setMode(m) {
+      if (mode === 'map' && m !== 'map') map.abort();                   // ушли с карты: перелёт и катсцены не зависают
       const tiny = hero.g.scale.x < 0.99 || pulling;                  // после входа в портал герой уменьшен и висит в центре кольца
       if ((m === 'hub' || m === 'hero') && (mode !== m || tiny)) {
         walk = null; endActivity(true); hero.g.scale.setScalar(1); cutscene = pulling = focusPortal = false; portalP = null; cutToken++; portalOpen = false;
@@ -498,6 +504,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     mapSetup(isles, current) { map.setup(isles, current); },
     mapFocus(i) { map.focus(i); },
     mapTravel(i) { return map.travel(i); },
+    mapAbort() { map.abort(); },
     mapUnveil(i) { audio.play('portal'); return map.unveil(i); },
     onMapPick(cb) { map.onPick(cb); },
     mapLabels() { return map.labels(); },

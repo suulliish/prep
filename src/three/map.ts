@@ -157,13 +157,16 @@ export function createMap(d: Deps) {
     s = sTo = cur; look.copy(lookP(s)); placeCamera(1); // сразу на месте, без «влёта» из центра острова
   }
 
+  let travelRes: (() => void) | null = null;
   function travel(to: number): Promise<void> {
+    travelRes?.(); travelRes = null;                                      // прежний перелёт больше не ждём
     return new Promise(res => {
       if (to === cur || !curve) { res(); return; }
+      travelRes = res;
       const from = cur;
       const board = () => { phase = { k: 'walk', from: hero.g.position.clone(), to: dockAt(from).add(DECK), t: 0, dur: 0.7, next: fly }; };
       const fly = () => { heroOnShip = true; phase = { k: 'fly', a: from, b: to, t: 0, dur: Math.min(4.5, 1.2 + Math.abs(to - from) * 0.9), next: land }; };
-      const land = () => { heroOnShip = false; cur = to; phase = { k: 'walk', from: hero.g.position.clone(), to: standAt(to), t: 0, dur: 0.8, next: () => { phase = { k: 'idle' }; follow = null; res(); } }; };
+      const land = () => { heroOnShip = false; cur = to; phase = { k: 'walk', from: hero.g.position.clone(), to: standAt(to), t: 0, dur: 0.8, next: () => { phase = { k: 'idle' }; follow = null; travelRes = null; res(); } }; };
       board();
     });
   }
@@ -246,10 +249,18 @@ export function createMap(d: Deps) {
     });
   }
 
+  /** Ушли с карты: перелёт отменяется (корабль у текущего мира), катсцены доигрываются мгновенно, промисы завершаются. */
+  function abort() {
+    if (phase.k !== 'idle') { phase = { k: 'idle' }; heroOnShip = false; follow = null; placeAt(cur); }
+    const r = travelRes; travelRes = null; r?.();
+    for (let n = 0; n < 4 && fx.length; n++) for (let i = fx.length - 1; i >= 0; i--) if (!fx[i](999)) fx.splice(i, 1);
+  }
+
   return {
     scene, camera,
     setup,
     unveil,
+    abort,
     setLook(l: HeroLook) { fig.setLook(l); },
     setCape(c: { color: number; glow: boolean } | null) { fig.setCape(c); },
     travel,
