@@ -63,12 +63,13 @@
   });
 
   // Катсцена (GAME_LOOP.md 2): герой идёт в портал на палубе → вспышка → локация уровня
-  let entering = $state(false);
+  // Вспышка перехода — только после того, как героя затянуло в портал (раньше белый экран закрывал саму катсцену).
+  let entering = $state(false), warp = $state(false);
   async function portal(to: () => void) {
     if (entering) return;
     entering = true; audio.play('portal');
-    await Promise.race([W.world?.portalWalk() ?? Promise.resolve(), new Promise(r => setTimeout(r, 3500))]);
-    setTimeout(to, 250);
+    await Promise.race([W.world?.portalWalk() ?? Promise.resolve(), new Promise(r => setTimeout(r, 5000))]);
+    warp = true; setTimeout(to, 380);
   }
   function start(id: string) {
     audio.unlock(); audio.play('mission');
@@ -145,7 +146,7 @@
     {#if done}<p class="note center">Қосымша миссиялар: {rec.extraMissions} / {game.save.settings.extraMissionCap} · әрқайсысы +15 мин</p>{/if}
   {/if}
 
-  {#if entering}<div class="warp" aria-hidden="true"></div>{/if}
+  {#if entering}<div class="tapguard" aria-hidden="true"></div>{/if}{#if warp}<div class="warp" aria-hidden="true"></div>{/if}
 
   {#snippet footer()}
     <div class="stack">
@@ -189,8 +190,9 @@
   .quests li:has(.done) + li::before { border-left-style: solid; border-color: var(--ok); }
   .st { flex: none; display: inline-flex; gap: 1px; padding: 3px 6px; border-radius: 999px; background: #0b1030; border: 2px solid var(--outline); }
   .warp { position: fixed; inset: 0; z-index: 50; pointer-events: all; background: radial-gradient(circle at 70% 35%, #bff9ffcc, #3ff0ff66 30%, transparent 60%);
-    animation: warp 1.6s ease-in both; }
-  @keyframes warp { 0% { opacity: 0; } 55% { opacity: .2; } 100% { opacity: 1; background-color: #eaffff; } }
+    animation: warp .4s ease-in both; }
+  @keyframes warp { 0% { opacity: 0; } 100% { opacity: 1; background-color: #eaffff; } }
+  .tapguard { position: fixed; inset: 0; z-index: 49; pointer-events: all; }
   .quest { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; font: inherit; color: var(--ink); cursor: pointer;
     padding: 10px 12px; background: var(--deep); border: 3px solid var(--outline); border-radius: 16px; box-shadow: inset 0 -4px 0 #0c1a5a, 0 3px 0 var(--outline);
     transition: transform .08s; }

@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { Actor, createHero, createMonster, dress, type Monster, HERO_HEIGHT } from './actor';
 import { Kit } from './assets';
-import { createPortal } from './portal';
+import { createPortal, type Portal } from './portal';
 import { buildIsland, loadIslandKits } from './island3d';
 import { DEFAULT_LOOK, type HeroLook } from './looks';
 import { pickEnemy } from './roster';
@@ -225,6 +225,7 @@ export function createArena(d: Deps) {
 
   // действия боя идут строго по очереди: два одновременных удара не перебивают анимации друг друга и не зависают
   let chain: Promise<unknown> = Promise.resolve();
+  let arrivePortal: Portal | null = null;
   const seq = <T>(fn: () => Promise<T>): Promise<T> => { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; };
   /** Ждать не дольше s секунд (защита от вечного ожидания момента удара, если анимацию прервали). */
   const within = (p: Promise<unknown>, s: number) => Promise.race([p, new Promise(r => setTimeout(r, s * 1000))]);
@@ -257,7 +258,8 @@ export function createArena(d: Deps) {
       await wait(0.9);
       shot(new THREE.Vector3(HERO_X - 0.8, 1.8, Z0), 0.62, 0.3);
       // тот же портал, что на корабле (src/three/portal.ts), без основания — открывается в воздухе
-      const pf = createPortal({ radius: 1.05, base: false, light: 0.4 }), portal = pf.g; let open = true, pt = 0;
+      // один на всю игру: создаётся при первом прибытии и дальше переиспользуется (иначе шейдеры собираются заново — рывок кадра)
+      const pf = (arrivePortal ??= createPortal({ radius: 1.05, base: false, light: 0.4 })), portal = pf.g; let open = true, pt = 0;
       portal.position.copy(P); portal.rotation.y = 0.35; portal.scale.setScalar(0.01); scene.add(portal); pf.setPower(0.8);
       fx.push({ update: (dt: number) => { pt += dt; pf.update(dt, pt); return open; } });
       h.g.position.copy(P); h.g.rotation.y = Math.PI / 2;
@@ -267,7 +269,7 @@ export function createArena(d: Deps) {
       h.play('Spawn_Air', { speed: 1.1 });
       await jumpTo(HERO_X, Z0, 1.1, 0.6, P.y);
       sfx('land'); await land(true);
-      tween(0.3, u => portal.scale.setScalar(Math.max(0.01, 1 - u))).then(() => { scene.remove(portal); open = false; pf.dispose(); });
+      tween(0.3, u => portal.scale.setScalar(Math.max(0.01, 1 - u))).then(() => { scene.remove(portal); open = false; });
       shot(heroAt(1.4), 0.5, 0.22);
       await h.play('Interact', { speed: 1.3 });     // осматривается
       stance();

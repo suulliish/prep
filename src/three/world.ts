@@ -150,10 +150,10 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   const PORTAL_FACE = -0.35;                                   // поворот вокруг вертикали: 0 — лицом к правому борту (+z), −π/2 — к корме
   const portalFx = createPortal({ radius: 1.35 }), portal = portalFx.g;
   portal.rotation.y = PORTAL_FACE; portal.scale.setScalar(0.85); portal.position.set(4.6, 0, 0); ship.add(portal);
-  let energy = 0.3, portalOpen = false, pulling = false, portalStand: [number, number] = [3.5, 0];
+  let energy = 0.3, portalOpen = false, pulling = false, cutscene = false, focusPortal = false, cutToken = 0, portalP: Promise<void> | null = null, portalStand: [number, number] = [3.5, 0];
   const portalCenter = () => portal.localToWorld(new THREE.Vector3(0, portalFx.center, 0));
-  /** Покадровая анимация по времени (для катсцен на палубе). */
-  const anim = (dur: number, step: (u: number) => void) => new Promise<void>(res => { const t0 = performance.now(); const f = () => { const u = Math.min(1, (performance.now() - t0) / (dur * 1000)); step(u); if (u < 1) requestAnimationFrame(f); else res(); }; f(); });
+  /** Покадровая анимация по времени (для катсцен на палубе). Если катсцену отменили (смена режима — cutToken), шаги прекращаются. */
+  const anim = (dur: number, step: (u: number) => void, tok = cutToken) => new Promise<void>(res => { const t0 = performance.now(); const f = () => { if (tok !== cutToken) return res(); const u = Math.min(1, (performance.now() - t0) / (dur * 1000)); step(u); if (u < 1) requestAnimationFrame(f); else res(); }; f(); });
 
 
   // ---------- Герой ----------
@@ -167,8 +167,18 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     // портал — на открытой носовой палубе (перед фок-мачтой, чтобы парус не закрывал), герой встаёт перед ним
     const [px, pz] = d.nearest(d.bounds.maxX - 2.2, 0); portal.position.set(px, d.height(px, pz) ?? 0, pz);
     for (const k of [-1.3, -0.65, 0, 0.65, 1.3]) d.reserve(px + Math.cos(PORTAL_FACE) * k, pz - Math.sin(PORTAL_FACE) * k, 0.75);   // кольцо поперёк: сквозь камни не ходим
-    portalStand = d.nearest(px + Math.sin(PORTAL_FACE) * 1.5, pz + Math.cos(PORTAL_FACE) * 1.5);
-    CAM.portal.target.set(px - 0.5, 2.2, pz);
+    // место героя перед входом: прямо напротив центра кольца (с любой стороны — вихрь двусторонний), куда можно дойти с середины палубы
+    { const nx = Math.sin(PORTAL_FACE), nz = Math.cos(PORTAL_FACE), cand: [number, number, number][] = [];
+      for (let dx = -3.6; dx <= 3.6; dx += 0.3) for (let dz = -3.6; dz <= 3.6; dz += 0.3) {
+        const along = dx * nx + dz * nz, lat = dx * nz - dz * nx;       // вдоль нормали и вдоль кольца
+        if (Math.abs(along) < 1 || Math.abs(along) > 2.6 || Math.abs(lat) > 0.6 || !d.walkable(px + dx, pz + dz)) continue;
+        cand.push([Math.abs(along) + Math.abs(lat) * 2 + (along < 0 ? 0.3 : 0), px + dx, pz + dz]);
+      }
+      cand.sort((a, b) => a[0] - b[0]);
+      const ok = cand.find(c => d.path(d.stations.mid, [c[1], c[2]]).length > 0);
+      if (ok) portalStand = [ok[1], ok[2]];
+      // камера катсцены входа: со стороны, откуда подходит герой, чуть сбоку — видно и героя, и вихрь
+      CAM.portal.target.set(px, 1.9, pz); CAM.portal.theta = Math.atan2(portalStand[1] - pz, portalStand[0] - px) + 0.45; CAM.portal.phi = 1.18; }
     // реквизит палубы: готовые бочки, ящики, пушка (Kenney Pirate Kit) у бортов; вокруг них не ходим
     const k = await Kit.load('ship'), e = d.edges().sort((a, b) => a[0] - b[0]);
     const far = ([x, z]: [number, number]) => Object.values(d.stations).every(s => Math.hypot(s[0] - x, s[1] - z) > 2.2);
@@ -271,12 +281,14 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   // ---------- Анимации героя ----------
   // герой ходит по палубе по найденному пути (deck3d.ts: путь огибает мачты, поручни и реквизит)
-  type Walk = { path: [number, number][]; i: number; res: () => void };
+  type Walk = { path: [number, number][]; i: number; res: () => void; run: boolean };
   let walk: Walk | null = null;
-  const goTo = (x: number, z: number, res: () => void = () => {}) => {
+  /** Идти (run — бегом) по найденному пути. Нет пути (точка за порталом, отрезанный угол) — не идём напрямик сквозь препятствия, а стоим. */
+  const goTo = (x: number, z: number, res: () => void = () => {}, run = false) => {
     if (!deck) { res(); return; }
     const p = deck.path([hero.g.position.x, hero.g.position.z], [x, z]);
-    walk = { path: p.length ? p : [deck.nearest(x, z)], i: 0, res };
+    if (!p.length) { walk = null; res(); return; }
+    walk = { path: p, i: 0, res, run };
   };
   const spot = (k: 'bow' | 'stern' | 'mid' | 'port' | 'star'): [number, number] => deck?.stations[k] ?? [0, 0];
   const WANDER = ['bow', 'stern', 'mid', 'port', 'star'] as const;
@@ -289,7 +301,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     camera.aspect = w / h; camera.updateProjectionMatrix(); map.resize(w, h); arena.resize(w, h);
     const narrow = w / h < 0.8;
     const side = isSide(w, h);
-    if (!devLock) CAM.hub.radius = narrow ? 40 : side ? 30 : 33; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 12.5 : 9.5;   // целиком, со шлемом и оружием (скины)
+    if (!devLock) CAM.hub.radius = narrow ? 40 : side ? 30 : 33; CAM.portal.radius = narrow ? 17 : 11; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 12.5 : 9.5;   // целиком, со шлемом и оружием (скины)
     applyOffset();
   }
   // Раскладка экрана (та же, что в app.css): на широком экране панель справа — сцена сдвигается влево;
@@ -327,7 +339,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     portalFx.setPower(portalOpen ? 1.1 : 0.12 + energy * 0.75); portalFx.update(dt, t);
 
     // живой корабль: герой сам ходит между станциями палубы (нос у портала, корма, середина, борта)
-    if (mode === 'hub' && !walk && km === 1 && deck && t > nextWander) {
+    if (mode === 'hub' && !walk && !cutscene && km === 1 && deck && t > nextWander) {
       const st = spot(WANDER[Math.floor(Math.random() * WANDER.length)]);
       nextWander = t + 5 + Math.random() * 5;
       goTo(st[0], st[1], () => { if (Math.random() < 0.35) celebrateT = 0.5; });
@@ -337,12 +349,12 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     if (walk) {
       const tg = walk.path[walk.i], dx = tg[0] - hero.g.position.x, dz = tg[1] - hero.g.position.z, L = Math.hypot(dx, dz);
       if (L < 0.1) { if (++walk.i >= walk.path.length) { const r = walk.res; walk = null; hero.g.rotation.y = Math.PI / 2; r(); } }
-      else { walking = true; const st = Math.min(L, dt * 3.4); hero.g.position.x += dx / L * st; hero.g.position.z += dz / L * st;
+      else { walking = true; const st = Math.min(L, dt * (walk.run ? 7 : 3.4)); hero.g.position.x += dx / L * st; hero.g.position.z += dz / L * st;
         hero.g.rotation.y += Math.atan2(Math.sin(Math.atan2(dx, dz) - hero.g.rotation.y), Math.cos(Math.atan2(dx, dz) - hero.g.rotation.y)) * Math.min(1, dt * 12); }
     }
     if (deck && !pulling) { const hh = deck.height(hero.g.position.x, hero.g.position.z); if (hh != null) hero.g.position.y += (hh - hero.g.position.y) * Math.min(1, dt * 14); }
     // анимации героя настоящие: ходьба/стойка меняются сами, радость — разовая
-    fig.walking(walking); fig.update(dt);
+    fig.walking(walking, walking && !!walk?.run); fig.update(dt);
     if (celebrateT > 0) { celebrateT = 0; fig.play('Cheering', 1.1); }
     B.thrusters.forEach((th, i) => th.scale.setScalar(0.9 + Math.sin(t * 18 + i) * 0.15));
     B.flame.scale.set(1, 0.8 + Math.sin(t * 25) * 0.2, 1);
@@ -362,7 +374,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     }
 
     // камера плавно к режиму
-    const C = CAM[mode === 'map' ? 'hub' : mode];
+    const C = focusPortal && mode === 'hub' ? CAM.portal : CAM[mode === 'map' ? 'hub' : mode];
     idle += dt;
     // сам камера не облетает корабль по кругу (сзади паруса закрывают палубу), а покачивается у лучшего ракурса
     if (!dragging && idle > 2.5 && mode === 'hub' && km === 1 && !devLock) userTheta += (Math.sin(t * 0.08) * 0.45 - userTheta) * Math.min(1, dt * 0.3);
@@ -393,15 +405,15 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   return {
     setEnergy(v, max) { energy = Math.max(0, Math.min(1, v / max)); },
     setMode(m) {
-      if ((m === 'hub' || m === 'hero') && mode !== m) { walk = null; hero.g.scale.setScalar(1); if (m === 'hero' || hero.g.position.x > portalStand[0] - 1) { const s0 = spot('mid'); hero.g.position.set(s0[0], 0, s0[1]); } hero.g.rotation.y = Math.PI / 2; portalOpen = false; }
+      if ((m === 'hub' || m === 'hero') && (mode !== m || hero.g.scale.x < 0.99)) { walk = null; hero.g.scale.setScalar(1); cutscene = pulling = focusPortal = false; portalP = null; cutToken++; if (m === 'hero' || hero.g.position.x > portalStand[0] - 1) { const s0 = spot('mid'); hero.g.position.set(s0[0], 0, s0[1]); } hero.g.rotation.y = Math.PI / 2; portalOpen = false; }
       // из боя — герой возвращается через портал на палубу
       if (m === 'hub' && mode === 'battle') {
         // портал вспыхивает, герой вылетает из центра кольца и приземляется перед ним
-        const b0 = portalStand, gx = b0[0], gy = deck?.height(b0[0], b0[1]) ?? 0, c = ship.worldToLocal(portalCenter());
-        hero.g.scale.setScalar(0.01); hero.g.position.copy(c); hero.g.rotation.y = PORTAL_FACE; portalOpen = true; pulling = true;
-        setTimeout(() => { portalFx.pulse(); burst(portalCenter(), 0x3ff0ff, 50, 5);
-          anim(0.55, u => { const e = 1 - (1 - u) ** 3; hero.g.scale.setScalar(Math.max(0.01, e)); hero.g.position.set(c.x + (gx - c.x) * e, c.y + (gy - c.y) * u * u + Math.sin(u * Math.PI) * 0.6, c.z + (b0[1] - c.z) * e); })
-            .then(() => { pulling = false; hero.g.rotation.y = Math.PI / 2; const s1 = spot('mid'); goTo(s1[0], s1[1], () => { portalOpen = false; celebrateT = 0.6; }); });
+        const b0 = portalStand, gx = b0[0], gy = deck?.height(b0[0], b0[1]) ?? 0, c = ship.worldToLocal(portalCenter()), tok = cutToken;
+        hero.g.scale.setScalar(0.01); hero.g.position.copy(c); hero.g.rotation.y = PORTAL_FACE; portalOpen = true; pulling = cutscene = true;
+        setTimeout(() => { if (tok !== cutToken) return; portalFx.pulse(); burst(portalCenter(), 0x3ff0ff, 50, 5);
+          anim(0.55, u => { const e = 1 - (1 - u) ** 3; hero.g.scale.setScalar(Math.max(0.01, e)); hero.g.position.set(c.x + (gx - c.x) * e, c.y + (gy - c.y) * u * u + Math.sin(u * Math.PI) * 0.6, c.z + (b0[1] - c.z) * e); }, tok)
+            .then(() => { if (tok !== cutToken) return; hero.g.scale.setScalar(1); pulling = cutscene = false; nextWander = clock.elapsedTime + 8; hero.g.rotation.y = Math.PI / 2; const s1 = spot('mid'); goTo(s1[0], s1[1], () => { portalOpen = false; celebrateT = 0.6; }); });
         }, 350);
       }
       mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? (narrow ? 0.2 : 0.08) : narrow ? 0.24 : 0.12; applyOffset(); },
@@ -418,17 +430,22 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     clearMob() { arena.clear(); },
     openChest() { return arena.victory(); },
     portalWalk() {
-      return new Promise<void>(res => {
-        // герой подходит, портал разгорается, героя затягивает в центр вихря с поворотом — вспышка
+      if (portalP) return portalP;                                       // повторный вызов — та же катсцена
+      const tok = cutToken; cutscene = focusPortal = true; portalOpen = true; userTheta = userPhi = 0;          // портал разгорается, пока герой бежит
+      portalP = new Promise<void>(res => {
+        // герой бежит к порталу, тот вспыхивает, героя затягивает в центр вихря с поворотом — вспышка
         goTo(portalStand[0], portalStand[1], async () => {
+          if (tok !== cutToken) return res();
           hero.g.rotation.y = Math.atan2(portal.position.x - hero.g.position.x, portal.position.z - hero.g.position.z);   // лицом к порталу
-          portalOpen = true; portalFx.pulse(); fig.play('Cheering', 1.4);
-          await anim(0.5, () => {});
+          portalFx.pulse(); fig.play('Cheering', 1.6);
+          await anim(0.6, () => {}, tok);                                 // камера успевает подлететь, ребёнок видит героя у портала
           pulling = true; const p0 = hero.g.position.clone(), c = ship.worldToLocal(portalCenter()), r0 = hero.g.rotation.y;
-          await anim(0.6, u => { const e = u * u; hero.g.position.lerpVectors(p0, c, e); hero.g.rotation.y = r0 + e * Math.PI * 3; hero.g.scale.setScalar(Math.max(0.01, 1 - e)); });
-          portalFx.pulse(); burst(portalCenter(), 0x3ff0ff, 90, 7); pulling = false; res();
-        });
+          await anim(0.75, u => { const e = u * u; hero.g.position.lerpVectors(p0, c, e); hero.g.rotation.y = r0 + e * Math.PI * 3; hero.g.scale.setScalar(Math.max(0.01, 1 - e)); }, tok);
+          if (tok === cutToken) { portalFx.pulse(); burst(portalCenter(), 0x3ff0ff, 90, 7); }
+          res();
+        }, true);
       });
+      return portalP;
     },
     bitMood(m) { mood = m; drawFace(); },
     celebrate(color = 0x3ff0ff) { if (mode === 'battle') { arena.celebrate(); return; } celebrateT = 1.2; burst(worldPos(hero.g, 2.5), color, 50, 5); },

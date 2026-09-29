@@ -9,6 +9,7 @@ export class HeroFigure {
   actor: Actor | null = null;
   private token = 0;
   private moving = false;
+  private run = false;
   private busy = false;
   private cape: { color: number; glow: boolean } | null = null;
   /** Оружие в правой руке (для следа удара и т.п.). */
@@ -25,19 +26,20 @@ export class HeroFigure {
     if (this.actor) { this.g.remove(this.actor.g); this.actor.dispose(); }
     this.actor = a; a.g.scale.setScalar(this.height); this.g.add(a.g);
     this.weapon = a.bone('handslot.r')?.children.find(c => c.userData.gear) ?? null;
-    a.loop(this.moving ? 'Walking_A' : 'Idle_A', 0);
+    a.loop(this.clip(), 0);
   }
   setCape(c: { color: number; glow: boolean } | null) { this.cape = c; this.actor?.setCape(c); }
-  /** Идёт (ходьба) или стоит (дыхание). */
-  walking(v: boolean) {
-    if (v === this.moving) return; this.moving = v;
-    if (this.actor && !this.busy) this.actor.loop(v ? 'Walking_A' : 'Idle_A', 0.2);
+  private clip() { return this.moving ? (this.run ? 'Running_A' : 'Walking_A') : 'Idle_A'; }
+  /** Идёт (ходьба; run — бегом) или стоит (дыхание). */
+  walking(v: boolean, run = false) {
+    if (v === this.moving && run === this.run) return; this.moving = v; this.run = run;
+    if (this.actor && !this.busy) this.actor.loop(this.clip(), 0.2);
   }
   /** Разовая анимация (радость, взмах, удар); после неё возвращается к ходьбе/стойке. */
   async play(clip: string, speed = 1) {
     const a = this.actor; if (!a) return;
     this.busy = true; await a.play(clip, { speed }); this.busy = false;
-    a.loop(this.moving ? 'Walking_A' : 'Idle_A', 0.15);
+    a.loop(this.clip(), 0.15);
   }
   update(dt: number) { this.actor?.update(dt); }
 }
