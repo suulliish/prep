@@ -38,14 +38,31 @@
   }
   const known = (i: number) => stateOf(i) !== 'fog';
 
-  function build() {
-    W.world?.mapSetup(WORLDS.map((w, i) => ({ id: w.id, a: w.isle[0], b: w.isle[1], state: stateOf(i) })), curIdx);
+  /** hide — мир, который ещё показываем серым (до катсцены открытия). */
+  function build(hide = -1) {
+    W.world?.mapSetup(WORLDS.map((w, i) => ({ id: w.id, a: w.isle[0], b: w.isle[1], state: i === hide ? 'locked' : stateOf(i) })), curIdx);
   }
+  // Катсцена «жаңа әлем ашылды»: самый дальний открытый мир, которого ребёнок ещё не видел открытым.
+  // Что уже показано — отдельная запись в браузере (формат сохранения не трогаем); при первом визите запоминаем без катсцены.
+  const SEEN = 'razlom.mapSeen';
+  const openMax = () => WORLDS.reduce((m, _, i) => (worldOpen(i) ? i : m), 0);
+  function readSeen(): number | null { try { const v = localStorage.getItem(SEEN); return v == null ? null : +v; } catch { return null; } }
+  function writeSeen(v: number) { try { localStorage.setItem(SEEN, String(v)); } catch { /* приватный режим */ } }
 
   onMount(() => {
     W.dim = false; audio.setMood('map');
     sel = curIdx;
-    W.world?.setMode('map'); build();
+    W.world?.setMode('map');
+    const top = openMax(), seen = readSeen();
+    if (seen == null || top <= seen || top === curIdx) { build(); if (seen == null || top > seen) writeSeen(top); }
+    else {
+      build(top); flying = true; writeSeen(top);
+      setTimeout(async () => {
+        await W.world?.mapUnveil(top);
+        toast(`Жаңа әлем ашылды: ${WORLDS[top].kz}!`);
+        build(); sel = top; W.world?.mapFocus(top); flying = false;
+      }, 700);
+    }
     W.world?.onMapPick(i => { sel = i; audio.play('click'); });
     let lastFocus = curIdx;
     const tick = () => {
