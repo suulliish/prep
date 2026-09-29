@@ -37,10 +37,14 @@
   import MultipleHunt from '../widgets/MultipleHunt.svelte';
   import StarPicker from '../widgets/StarPicker.svelte';
   import SetSort from '../widgets/SetSort.svelte';
+  import FractionCircle from '../widgets/FractionCircle.svelte';
+  import FractionBar from '../widgets/FractionBar.svelte';
+  import NumberLine from '../widgets/NumberLine.svelte';
+  import FillOne from '../widgets/FillOne.svelte';
 
   // replay — пересмотр из альбома: без XP и без перехода к практике
   let { skill, replay = false }: { skill: string; replay?: boolean } = $props();
-  const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline, MultipleHunt, StarPicker, SetSort };
+  const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline, MultipleHunt, StarPicker, SetSort, FractionCircle, FractionBar, NumberLine, FillOne };
   const steps: any[] = (LESSONS as Record<string, any[]>)[skill] ?? [{ type: 'say', kz: 'Бұл тақырыптың сабағы әзірленуде. Бірден жаттығуға көшейік!' }];
   const goal = steps.find(s => s.type === 'goal');
   const target = goal?.title ?? skillTitle(skill).kz;

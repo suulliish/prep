@@ -1,14 +1,23 @@
 <script lang="ts">
-  // Крупная строка выкладки: [..] — подсвеченная часть, ▢ — пропуск (заполняется значением fill).
+  // Крупная строка выкладки: [..] — подсвеченная часть, ▢ — пропуск (заполняется значением fill),
+  // 3/4 и 2 3/4 — этажные дроби (Frac).
+  import Frac from '../ui/Frac.svelte';
+  import { splitFractions } from '../widgets/fracdraw';
   let { text, fill = null, big = false }: { text: string; fill?: string | null; big?: boolean } = $props();
   const parts = $derived(text.split(/(\[[^\]]+\]|▢)/).filter(Boolean));
 </script>
 
+{#snippet seg(s: string)}
+  {#each splitFractions(s) as x}
+    {#if x.t === 'frac'}<Frac whole={x.whole} n={x.n} d={x.d} />{:else}{x.s}{/if}
+  {/each}
+{/snippet}
+
 <span class="ml num" class:big>
   {#each parts as p}
     {#if p === '▢'}<b class="blank" class:filled={fill !== null}>{fill ?? '?'}</b>
-    {:else if p.startsWith('[')}<b class="hl">{p.slice(1, -1)}</b>
-    {:else}{p}{/if}
+    {:else if p.startsWith('[')}<b class="hl">{@render seg(p.slice(1, -1))}</b>
+    {:else}{@render seg(p)}{/if}
   {/each}
 </span>
 
