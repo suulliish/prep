@@ -13,7 +13,7 @@ export const HERO_CLIPS = {
   CombatMelee: ['Melee_1H_Attack_Chop', 'Melee_1H_Attack_Slice_Diagonal', 'Melee_1H_Attack_Slice_Horizontal', 'Melee_1H_Attack_Stab', 'Melee_1H_Attack_Jump_Chop',
     'Melee_2H_Attack_Spin', 'Melee_2H_Attack_Spinning', 'Melee_2H_Attack_Chop', 'Melee_2H_Idle', 'Melee_Block', 'Melee_Blocking', 'Melee_Block_Hit', 'Melee_Block_Attack'],
   CombatRanged: ['Ranged_Magic_Shoot', 'Ranged_Magic_Spellcasting', 'Ranged_Magic_Raise', 'Ranged_Magic_Summon', 'Ranged_Bow_Draw', 'Ranged_Bow_Release', 'Ranged_Bow_Aiming_Idle', 'Ranged_1H_Shoot'],
-  Simulation: ['Cheering', 'Waving'],
+  Simulation: ['Cheering', 'Waving', 'Sit_Floor_Down', 'Sit_Floor_Idle', 'Sit_Floor_StandUp', 'Push_Ups', 'Sit_Ups'],   // палуба: герой сидит, тренируется, машет
 };
 
 // клипы монстров: имена у Quaternius одинаковы внутри папки

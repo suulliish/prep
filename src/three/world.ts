@@ -283,6 +283,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     if (!tapRay.ray.intersectPlane(tapPlane, tapHit)) return;
     const p = ship.worldToLocal(tapHit.clone());
     if (!deck) return;
+    // касание самого героя — он машет в ответ, Бит радуется
+    if (Math.hypot(hero.g.position.x - p.x, hero.g.position.z - p.z) < 0.9 && !walk && !cutscene) { endActivity(true); fig.play('Waving', 1.1); mood = 'happy'; drawFace(); nextWander = clock.elapsedTime + 6; return; }
     const q = deck.nearest(p.x, p.z); if (Math.hypot(q[0] - p.x, q[1] - p.z) > 3) return;   // мимо палубы
     const x = q[0], z = q[1];
     nextWander = Infinity;                                               // сам не уходит, пока идёт по касанию
@@ -300,6 +302,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   /** Идти (run — бегом) по найденному пути. Нет пути (точка за порталом, отрезанный угол) — не идём напрямик сквозь препятствия, а стоим. */
   const goTo = (x: number, z: number, res: () => void = () => {}, run = false) => {
     if (!deck) { res(); return; }
+    endActivity(true);
     const p = deck.path([hero.g.position.x, hero.g.position.z], [x, z]);
     if (!p.length) { walk = null; res(); return; }
     walk = { path: p, i: 0, res, run };
@@ -308,6 +311,21 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   const WANDER = ['bow', 'stern', 'mid', 'port', 'star'] as const;
   let nextWander = 4;
   let celebrateT = 0;
+  // Жизнь на палубе в главном меню: дойдя до места, герой чем-то занят — стоит лицом к зрителю, сидит, тренируется, машет.
+  let activity: { until: number; exit: string | null } | null = null;
+  function startActivity(now: number) {
+    const r = Math.random();
+    if (r < 0.35) { nextWander = now + 5 + Math.random() * 4; return; }
+    if (r < 0.55) { fig.play('Sit_Floor_Down').then(() => { if (activity) fig.hold('Sit_Floor_Idle'); }); activity = { until: now + 9 + Math.random() * 5, exit: 'Sit_Floor_StandUp' }; }
+    else if (r < 0.7) { fig.hold('Push_Ups'); activity = { until: now + 5, exit: null }; }
+    else if (r < 0.8) { fig.hold('Sit_Ups'); activity = { until: now + 5, exit: null }; }
+    else { fig.play('Waving'); nextWander = now + 5; return; }
+    nextWander = Infinity;
+  }
+  function endActivity(quick = false) {
+    if (!activity) return; const ex = activity.exit; activity = null; fig.hold(null);
+    if (ex && !quick) fig.play(ex);
+  }
 
   function resize() {
     const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
@@ -353,10 +371,11 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     portalFx.setPower(portalOpen ? 1.1 : 0.12 + energy * 0.75); portalFx.update(dt, t);
 
     // живой корабль: герой сам ходит между станциями палубы (нос у портала, корма, середина, борта)
+    if (activity && t > activity.until) { endActivity(); nextWander = t + 2.5; }
     if (mode === 'hub' && !walk && !cutscene && km === 1 && deck && t > nextWander) {
       const st = home.length ? home[Math.floor(Math.random() * home.length)] : spot(WANDER[Math.floor(Math.random() * WANDER.length)]);   // в главном меню гуляет в кадре, у портала
       nextWander = t + 5 + Math.random() * 5;
-      goTo(st[0], st[1], () => { if (Math.random() < 0.35) celebrateT = 0.5; });
+      goTo(st[0], st[1], () => startActivity(t));
     }
     // герой
     let walking = false;
@@ -422,7 +441,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     setMode(m) {
       const tiny = hero.g.scale.x < 0.99 || pulling;                  // после входа в портал герой уменьшен и висит в центре кольца
       if ((m === 'hub' || m === 'hero') && (mode !== m || tiny)) {
-        walk = null; hero.g.scale.setScalar(1); cutscene = pulling = focusPortal = false; portalP = null; cutToken++; portalOpen = false;
+        walk = null; endActivity(true); hero.g.scale.setScalar(1); cutscene = pulling = focusPortal = false; portalP = null; cutToken++; portalOpen = false;
         if (m === 'hero') { const s0 = spot('mid'); hero.g.position.set(s0[0], 0, s0[1]); hero.g.rotation.y = Math.PI / 2; }
         else if (tiny) { hero.g.position.set(portalStand[0], 0, portalStand[1]); hero.g.rotation.y = PORTAL_FACE - 0.25; }
       }

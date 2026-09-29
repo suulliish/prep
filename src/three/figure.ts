@@ -10,6 +10,7 @@ export class HeroFigure {
   private token = 0;
   private moving = false;
   private run = false;
+  private holdClip: string | null = null;
   private busy = false;
   private cape: { color: number; glow: boolean } | null = null;
   /** Оружие в правой руке (для следа удара и т.п.). */
@@ -29,7 +30,10 @@ export class HeroFigure {
     a.loop(this.clip(), 0);
   }
   setCape(c: { color: number; glow: boolean } | null) { this.cape = c; this.actor?.setCape(c); }
-  private clip() { return this.moving ? (this.run ? 'Running_A' : 'Walking_A') : 'Idle_A'; }
+  private clip() { return this.moving ? (this.run ? 'Running_A' : 'Walking_A') : this.holdClip ?? 'Idle_A'; }
+  /** Долгая поза вместо стойки (сидит, отжимается); null — обычная стойка. На ходьбу не влияет. */
+  hold(name: string | null) { if (name === this.holdClip) return; this.holdClip = name; if (this.actor && !this.busy && !this.moving) this.actor.loop(this.clip(), 0.25); }
+  get holding() { return this.holdClip; }
   /** Идёт (ходьба; run — бегом) или стоит (дыхание). */
   walking(v: boolean, run = false) {
     if (v === this.moving && run === this.run) return; this.moving = v; this.run = run;
