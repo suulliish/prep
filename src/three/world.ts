@@ -259,7 +259,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     hub: { target: new THREE.Vector3(0, 1.6, 0), radius: 24, phi: 1.2, theta: HUB_THETA },
     battle: { target: new THREE.Vector3(0.2, 1.2, 0.6), radius: 11, phi: 1.12, theta: 1.62 },
     portal: { target: new THREE.Vector3(4.6, 2.2, 0), radius: 9, phi: 1.25, theta: 0.15 },
-    hero: { target: new THREE.Vector3(-2, 1.5, 0.6), radius: 11, phi: 1.3, theta: 0.55 }, // портрет героя на палубе
+    hero: { target: new THREE.Vector3(-2, 1.5, 0.6), radius: 11, phi: 1.32, theta: HUB_THETA + 0.25 }, // витрина: герой на площадке у портала, сияние портала за спиной; цель следует за героем
   };
   let mode: CamMode = 'hub', devLock = false;
   const cam = { target: CAM.hub.target.clone(), radius: CAM.hub.radius, phi: CAM.hub.phi, theta: CAM.hub.theta };
@@ -333,7 +333,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     camera.aspect = w / h; camera.updateProjectionMatrix(); map.resize(w, h); arena.resize(w, h);
     const narrow = w / h < 0.8;
     const side = isSide(w, h);
-    if (!devLock) CAM.hub.radius = narrow ? 26 : side ? 21 : 22; CAM.portal.radius = narrow ? 17 : 11; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 12.5 : 9.5;   // целиком, со шлемом и оружием (скины)
+    if (!devLock) CAM.hub.radius = narrow ? 26 : side ? 21 : 22; CAM.portal.radius = narrow ? 17 : 11; CAM.battle.radius = narrow ? 23 : side ? 14 : 13; CAM.hero.radius = narrow ? 10.5 : 7.5;   // целиком, со шлемом и оружием (скины)
     applyOffset();
   }
   // Раскладка экрана (та же, что в app.css): на широком экране панель справа — сцена сдвигается влево;
@@ -408,6 +408,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     }
 
     // камера плавно к режиму
+    if (mode === 'hero') { hero.g.getWorldPosition(CAM.hero.target); CAM.hero.target.y += 1.15; }
     const C = focusPortal && mode === 'hub' ? CAM.portal : CAM[mode === 'map' ? 'hub' : mode];
     idle += dt;
     // сам камера не облетает корабль по кругу (сзади паруса закрывают палубу), а покачивается у лучшего ракурса
@@ -442,7 +443,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       const tiny = hero.g.scale.x < 0.99 || pulling;                  // после входа в портал герой уменьшен и висит в центре кольца
       if ((m === 'hub' || m === 'hero') && (mode !== m || tiny)) {
         walk = null; endActivity(true); hero.g.scale.setScalar(1); cutscene = pulling = focusPortal = false; portalP = null; cutToken++; portalOpen = false;
-        if (m === 'hero') { const s0 = spot('mid'); hero.g.position.set(s0[0], 0, s0[1]); hero.g.rotation.y = Math.PI / 2; }
+        if (m === 'hero') { const s0 = home.length ? home[Math.floor(home.length / 2)] : spot('mid'); hero.g.position.set(s0[0], deck?.height(s0[0], s0[1]) ?? 0, s0[1]); hero.g.rotation.y = PORTAL_FACE + 0.2; }
         else if (tiny) { hero.g.position.set(portalStand[0], 0, portalStand[1]); hero.g.rotation.y = PORTAL_FACE - 0.25; }
       }
       // из боя — герой возвращается через портал на палубу
