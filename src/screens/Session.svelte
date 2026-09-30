@@ -18,7 +18,7 @@
   import { bankFor, bankToItem, templatesForBank } from '../engine/bank';
   import { recordAttempt, isDone } from '../engine/progress';
   import { isHonest, addMasteryBonus, settleDay, taught, sequenceSlots } from '../engine/planner';
-  import { RUSH, RUSH_SAY, stemChars, isTooFast, rushAction, nextStreak, twinSlot, changedMarkup, varyAnswerPos, miniCheck, type Seg, type MiniCheck } from '../engine/rush';
+  import { RUSH, RUSH_SAY, stemChars, isTooFast, rushAction, nextStreak, twinSlot, pickRevengeTpl, changedMarkup, varyAnswerPos, miniCheck, type Seg, type MiniCheck } from '../engine/rush';
   import { GLITCH_SAY, buildGlitch, glitchAllowed, firstGlitchAt, nextGlitchAt, shortMistake, type GlitchTurn as GlitchData } from '../engine/glitchturn';
   import type { Attempt } from '../engine/types';
   import { showReward, queueReward } from '../lib/reward.svelte';
@@ -172,6 +172,7 @@
   let streak = 0;                                          // быстрых ответов подряд
   let rushTwin: { skill: string; tpl: string | null; at: number; kz: string } | null = null;   // «егіз»: тот же шаблон, новые числа
   let checkNext = false, wasCheck = false;
+  const shownTpl: (string | null)[] = [];                  // шаблоны показанных вопросов по порядку (реванш не ставит третий одинаковый подряд)
   let chk = $state<{ mc: MiniCheck | null; phase: 'calm' | 'ask'; wrong: number[] } | null>(null);
   let chkTimer = 0;
   let bitEl = $state<HTMLElement>();
@@ -189,7 +190,10 @@
     const due = !twin && rushTwin && idx >= rushTwin.at ? rushTwin : null;   // «егіз» занимает место вопроса; реванш идёт раньше
     let fresh: Item | null = null;
     if (due) { rushTwin = null; fresh = makeItem(due.skill, { tpl: due.tpl ?? undefined, avoidKz: prev?.kz }); }
-    else if (twin && prev) fresh = makeItem(prev.skill, { tpl: isTemplateId(prev.source) ? prev.source : templatesForBank(prev.source)[0], avoidKz: prev.kz });   // реванш: тот же шаблон, новые числа
+    else if (twin && prev) {   // реванш: тот же шаблон, новые числа (третий одинаковый подряд не ставим: тогда другой шаблон темы)
+      const t0 = isTemplateId(prev.source) ? prev.source : templatesForBank(prev.source)[0];
+      fresh = makeItem(prev.skill, { tpl: t0 ? pickRevengeTpl(shownTpl, t0, templatesOf(prev.skill), seq[idx + 1]?.tpl ?? null) : undefined, avoidKz: prev.kz });
+    }
     if (!fresh) {
       const slot = seq[idx] ?? { skill: skills[idx % Math.max(1, skills.length)], tpl: null };
       const fromBank = BANK_SLOTS[block]?.includes(idx) && bankQueue.length ? bankQueue.shift() : null;
@@ -197,6 +201,7 @@
     }
     if (fresh && !fresh.real) fresh = varyAnswerPos(fresh, prevPos);   // верный ответ не на том же месте, что в прошлом вопросе
     item = fresh; isRushTwin = !!due;
+    if (fresh) shownTpl.push(isTemplateId(fresh.source) ? fresh.source : null);
     // «егіз» сравниваем с исходной задачей (что в ней стало другим), остальные — с прошлым вопросом
     if (fresh) { hlLines = changedMarkup(fresh.kz.split('\n').map(nb), due ? due.kz : prevKz); prevKz = fresh.kz; prevPos = fresh.answer; }
     qKey++;
@@ -205,7 +210,7 @@
     // после 3 быстрых подряд в этом вопросе — пауза и мини-проверка «Сұрақ не туралы?»; ответ на него лесенку обнуляет
     wasCheck = checkNext; checkNext = false; clearTimeout(chkTimer);
     chk = wasCheck && fresh ? { mc: miniCheck(fresh.kz), phase: 'calm', wrong: [] } : null;
-    glitch = null; glPick = null;
+    glitch = null; glPick = null; glSoft = [];
     if (fresh && !chk && (forceGlitch ? !twin && !due && !fresh.real : glitchAllowed({
       idx, total, at: glAt, attempts: game.save.attempts.filter(a => a.skill === fresh.skill).length, block, lastWave: isLastWave(), mobHp,
       revenge: twin, rushTwin: !!due, check: !!chk, real: !!fresh.real,
@@ -221,6 +226,7 @@
   // «Глитчтің қатесі» (D8, docs/GAME_LOOP.md 16): вместо вопроса Глитч «решил» задачу, ребёнок нажимает первую неверную строку
   let glitch = $state<GlitchData | null>(null);
   let glPick = $state<number | null>(null);
+  let glSoft = $state<number[]>([]);   // строки-следствия, на которые уже нажали: мягкая отметка, не наказание
   let glAt = firstGlitchAt();   // с какого вопроса ход «созрел»
   // только в разработке: ?glitch=1 — ход на каждом вопросе, где его можно собрать (для скриншотов и проверки)
   const forceGlitch = import.meta.env.DEV && new URLSearchParams(location.search).get('glitch') === '1';
@@ -355,24 +361,30 @@
     persist(); showBit();
   }
 
-  // Ход «Глитчтің қатесі»: одно касание решает ход. Верно — контрудар; неверно — атака врага, неверная строка открыта.
-  // Идёт в модель знаний как обычная попытка навыка (флаг kind: 'glitch'); в мастерскую не попадает: это разбор чужой ошибки, а не своё решение.
+  // Ход «Глитчтің қатесі»: вопрос «где ошибка началась?». Верно — контрудар; строка после ошибки (следствие) — не наказание:
+  // Бит говорит, что ошибка раньше, строка получает мягкую отметку, есть ещё одна попытка; верная строка после неё и любая другая (дальше или дважды промахнулся) — неверно.
+  // Идёт в модель знаний как обычная попытка навыка (флаг kind: 'glitch'); ответ со второй попытки — с подсказкой (hintLevel 1). В мастерскую не попадает: это разбор чужой ошибки, а не своё решение.
   async function glitchTap(k: number, ev?: MouseEvent) {
-    if (!glitch || !item || glPick !== null || locked || busy || phase !== 'answer') return;
+    if (!glitch || !item || glPick !== null || locked || busy || phase !== 'answer' || glSoft.includes(k)) return;
     const g = glitch, sk = item.skill;
+    if (g.follows.includes(k) && !glSoft.length) {
+      glSoft = [k]; audio.play('click'); bitText = GLITCH_SAY.followTry; bitMood = 'think'; showBit();
+      return;
+    }
+    const tried = glSoft.length > 0, hint = tried ? 1 : 0;
     const timeMs = performance.now() - startAt;
     const correct = k === g.bad;
     const follow = g.follows.includes(k);
     glPick = k; phase = 'feedback'; lastCorrect = correct;
-    const honest = isHonest(timeMs, 0);
+    const honest = isHonest(timeMs, hint);
     // читать нужно и условие, и все строки: порог «слишком быстро» растёт с их длиной
-    const fast = isTooFast(timeMs, stemChars(item.kz) + g.lines.join('').length, 0);
+    const fast = isTooFast(timeMs, stemChars(item.kz) + g.lines.join('').length, hint);
     streak = nextStreak(streak, fast);
     const act = fast ? rushAction(streak) : 'none';
     answered++; firstTries++; if (correct) firstRight++;
     if (!honest) { honestAll = false; guessed++; }
     const rec: Attempt & { kind: 'glitch' } = {
-      at: Date.now(), day: game.day, skill: sk, source: item.source, correct, hintLevel: 0, honest, timeMs: Math.round(timeMs),
+      at: Date.now(), day: game.day, skill: sk, source: item.source, correct, hintLevel: hint, honest, timeMs: Math.round(timeMs),
       ...(fast ? { fast: true } : {}), tag: correct ? 'correct' : follow ? g.tag : 'glitch_miss', mode: MODE, kind: 'glitch',
     };
     const events = recordAttempt(game.save, rec);
@@ -380,13 +392,13 @@
     const at = ev?.currentTarget ? centerOf(ev.currentTarget as HTMLElement) : sceneCenter(0.5);
     if (correct) {
       combo++;
-      const xp = 10 + Math.min(combo - 1, 5) * 2;
+      const xp = tried ? 4 : 10 + Math.min(combo - 1, 5) * 2;
       game.save.xp += xp;
       audio.play('crit'); if (combo > 1) audio.play('combo', { combo });
       if (combo === 3 || combo === 6) react('combo'); else react('correct', 0.4);
       sparksAt(at.x, at.y, ['#ff6fc6', '#3ff0ff', '#ffc94a'], 50);
       floatText(`+${xp} XP`, at.x, at.y - 20, '#ffc94a', true);
-      earn(answerCoins({ correct, tries: 1, hintLevel: 0, fast }), { x: at.x, y: at.y - 30 });
+      earn(answerCoins({ correct, tries: tried ? 2 : 1, hintLevel: hint, fast }), { x: at.x, y: at.y - 30 });
       if (combo >= 3) floatText(`КОМБО ×${combo}`, sceneCenter(0.25).x, sceneCenter(0.25).y, '#3ff0ff', true);
       bitText = (!honest && !fast ? 'Дұрыс, бірақ тым жылдам! Асықпа. ' : '') + `${GLITCH_SAY.right} ${shortMistake(g.tag)}`;
       bitMood = combo >= 3 ? 'wow' : 'happy';
@@ -415,8 +427,9 @@
     const last = idx >= total - 1;
     let msg: string = RUSH_SAY.nudgeRight;
     if (act === 'twin') {
-      const at = twinSlot(idx, total);
-      if (at !== null && !rushTwin && item) rushTwin = { skill: item.skill, tpl: isTemplateId(item.source) ? item.source : templatesForBank(item.source)[0] ?? null, at, kz: item.kz };
+      const tpl = item ? (isTemplateId(item.source) ? item.source : templatesForBank(item.source)[0] ?? null) : null;
+      const at = twinSlot(idx, total, seq.map(x => x.tpl), tpl);   // слот, где соседи — другой шаблон (АБАБ: не рядом с тем же)
+      if (at !== null && !rushTwin && item) rushTwin = { skill: item.skill, tpl, at, kz: item.kz };
       msg = at !== null ? RUSH_SAY.twinLater : RUSH_SAY.twinNoSlot;
     } else if (act === 'check' && !last) { checkNext = true; msg = RUSH_SAY.checkNext; }
     if (correct) { bitText = msg; bitMood = 'think'; }
@@ -557,7 +570,7 @@
   {:else if item}
     {@const maxLen = Math.max(...item.choices.map(c => c.text.length))}
     {@const chunk = Math.max(...item.choices.map(c => longestChunk(c.text)))}
-    <div class="qa" class:fit={phase !== 'feedback' && !gapOpen}>
+    <div class="qa" class:fit={phase !== 'feedback' && !gapOpen && !glitch} class:gl={!!glitch}>
     <div class="q-sticky">
       {#key qKey}
         <div class="paper q" class:locked bind:this={cardEl}>
@@ -583,7 +596,7 @@
         {/if}
       </div>
     {:else if glitch}
-      <GlitchTurn turn={glitch} {locked} picked={glPick} onpick={glitchTap} />
+      <GlitchTurn turn={glitch} {locked} picked={glPick} soft={glSoft} onpick={glitchTap} />
     {:else}
     <div class="choices" class:long={maxLen > 5} class:xlong={maxLen > 24 || chunk > 11} class:wide={chunk >= 10} class:xxlong={maxLen > 60} class:locked>
       {#each item.choices as c, i}
@@ -709,6 +722,9 @@
   .qa.fit .q-sticky { flex: 0 1 auto; min-height: min(96px, 34%); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
   .qa .choices { flex: none; }
   .q-sticky { min-width: 0; }
+  /* ход «Глитчтің қатесі»: условие читается целиком (без своей прокрутки), строки Глитча идут ниже; не влезло — прокручивается вся панель, подсказка-стрелка та же */
+  .qa.gl { gap: 6px; }
+  .qa.gl .q { font-size: 15px; padding: 8px 12px; gap: 4px; } .qa.gl .q p { line-height: 1.32; } .qa.gl .formula { font-size: 17px; margin-top: 2px; }
   .q { animation: flipIn .45s var(--ease-out) both; }
   @keyframes flipIn { from { transform: perspective(700px) rotateX(-70deg) translateY(-10px); opacity: 0; } to { transform: none; opacity: 1; } }
   .choices.locked .ans { animation: pop-in .3s var(--ease-out) both; }
@@ -767,6 +783,7 @@
   /* телефон в горизонтали: колонка справа низкая (≈ 240 px под задачу) — всё чуть компактнее */
   @media (max-width: 999.98px) and (max-height: 560px) and (min-aspect-ratio: 23/20) {
     .q { font-size: 16px; padding: 8px 12px; gap: 6px; } .formula { font-size: 18px; margin-top: 2px; }
+    .qa.gl .q { font-size: 14px; padding: 6px 10px; } .qa.gl .formula { font-size: 16px; }
     .qa { gap: 6px; } .choices { gap: 5px; }
     .choices .ans { min-height: 38px; padding: 3px 8px; font-size: clamp(14px, 2.2vw, 16px); }
     .choices .ans .l { width: 22px; height: 22px; font-size: 12px; }

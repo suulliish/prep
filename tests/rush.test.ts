@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { RUSH, stemChars, tooFastMs, isTooFast, rushAction, nextStreak, twinSlot, changedMarkup, varyAnswerPos, canReorder, askKind, miniCheck } from '../src/engine/rush';
+import { RUSH, stemChars, tooFastMs, isTooFast, rushAction, nextStreak, twinSlot, pickRevengeTpl, changedMarkup, varyAnswerPos, canReorder, askKind, miniCheck } from '../src/engine/rush';
+import { sequenceSlots } from '../src/engine/planner';
+import { templatesOf, makeItem } from '../src/engine/items';
+// @ts-ignore
+import { skillById as SKILLS } from '../content/skills.mjs';
 import { nb } from '../src/ui/text';
 // @ts-ignore
 import { templates } from '../content/templates/index.mjs';
@@ -50,6 +54,63 @@ describe('лесенка быстрых ответов', () => {
     expect(twinSlot(7, 10)).toBe(9);
     expect(twinSlot(8, 10)).toBe(9);
     expect(twinSlot(9, 10)).toBeNull();
+  });
+  it('чередование АБАБ: «егіз» встаёт в ближайший слот ≥ 3 вперёд, где соседи — другой шаблон (не ААА)', () => {
+    const abab = ['A', 'B', 'A', 'B', 'A', 'B', 'A', 'B'];
+    expect(twinSlot(0, 8, abab, 'A')).toBe(4);   // слот 3 — B, но рядом A (слот 2): стык; слот 4 — A между двумя B
+    expect(twinSlot(1, 8, abab, 'B')).toBe(5);
+    expect(twinSlot(2, 8, abab, 'A')).toBe(6);
+    expect(twinSlot(3, 8, abab, 'B')).toBe(7);   // конец боя: справа соседа нет, слева A
+    expect(twinSlot(4, 8, abab, 'A')).toBe(6);   // слот 7 стыкуется с A (слот 6); ближе, но без стыка — 6 (между B и B)
+  });
+  it('без шаблонов очереди — как раньше; свободного слота нет (тема из одного шаблона) — как раньше', () => {
+    expect(twinSlot(1, 10, undefined, 'A')).toBe(4);
+    expect(twinSlot(1, 10, Array(10).fill('A'), 'A')).toBe(4);
+    expect(twinSlot(6, 8, ['A', 'B', 'A', 'B', 'A', 'B', 'A', 'B'], 'A')).toBe(7);   // единственный слот, стык с A слева неизбежен
+    expect(twinSlot(7, 8, ['A', 'B', 'A', 'B', 'A', 'B', 'A', 'B'], 'B')).toBeNull();
+  });
+});
+
+describe('«егіз» и реванш на реальной очереди: красная команда (frac.concept — 2 шаблона, АБАБ)', () => {
+  const ids: string[] = Object.keys(SKILLS as any).filter(id => templatesOf(id).length > 1);
+  it('бой из 8 вопросов по одной теме: «егіз» рядом с тем же шаблоном только там, где иначе нельзя (раньше ≈85 стыков из 126 «егіз», теперь 18 неизбежных)', () => {
+    let bad = 0, unavoidable = 0, all = 0;
+    for (const id of ids) {
+      const seq = sequenceSlots([id], 8, templatesOf);
+      const tpls = seq.map(x => x.tpl);
+      for (let i = 0; i < 8; i++) {
+        const at = twinSlot(i, 8, tpls, tpls[i]);
+        if (at === null) continue;
+        all++;
+        const clash = (s: number) => tpls[s - 1] === tpls[i] || tpls[s + 1] === tpls[i];
+        if (clash(at)) { bad++; if (![...Array(8).keys()].some(s => s >= i + 2 && !clash(s))) unavoidable++; }
+      }
+    }
+    expect(all).toBeGreaterThan(100);
+    expect(bad).toBe(unavoidable);          // стык только там, где свободного слота не осталось (последний слот, хвост боя)
+    expect(bad / all).toBeLessThan(0.2);   // 18 из 126: «егіз» от предпоследнего вопроса, слот один
+  });
+  it('frac.concept: 4:part, 5*ЕГІЗ:part → егіз уходит на слот с другими соседями, и реванш после неверного егіз не даёт три подряд', () => {
+    const seq = sequenceSlots(['frac.concept'], 8, templatesOf);
+    const tpls = seq.map(x => x.tpl), all = templatesOf('frac.concept');
+    for (let i = 0; i < 6; i++) {
+      const at = twinSlot(i, 8, tpls, tpls[i])!;
+      const shown = tpls.map((t, k) => (k === at ? tpls[i] : t));
+      // реванш после неверного «егіз»
+      const before = shown.slice(0, at + 1);
+      const rev = pickRevengeTpl(before, tpls[i]!, all, tpls[at + 1] ?? null);
+      const line = [...before, rev, ...shown.slice(at + 1)];
+      const triple = line.some((t, k) => k >= 2 && t === line[k - 1] && t === line[k - 2]);
+      expect(triple, `${i} → ${at}: ${line.join(',')}`).toBe(false);
+    }
+  });
+  it('pickRevengeTpl: два одинаковых подряд — другой шаблон темы (не следующий в очереди); иначе тот же', () => {
+    expect(pickRevengeTpl(['A', 'B'], 'B', ['A', 'B'])).toBe('B');
+    expect(pickRevengeTpl(['B', 'B'], 'B', ['A', 'B'])).toBe('A');
+    expect(pickRevengeTpl(['B', 'B'], 'B', ['A', 'B', 'C'], 'A', () => 0)).toBe('C');
+    expect(pickRevengeTpl(['B', 'B'], 'B', ['A', 'B'], 'A')).toBe('A');   // другого нет — берём хоть его
+    expect(pickRevengeTpl(['B', 'B'], 'B', ['B'])).toBe('B');
+    expect(pickRevengeTpl(['B'], 'B', ['A', 'B'])).toBe('B');
   });
 });
 
@@ -167,6 +228,28 @@ describe('мини-проверка «Сұрақ не туралы?» (D2)', () 
       expect(mc.options).toHaveLength(3);
       expect(new Set(mc.options).size).toBe(3);
       expect(mc.options[mc.answer]).toBe('Пайыз');
+    }
+  });
+  it('масса с падежным суффиксом: «неше грамға», «массаны» → «Масса»; «аптаның қай күні» → «Уақыт»', () => {
+    expect(askKind('1, 2, 4 г гір бар. Ең көбі неше грамға дейінгі әр массаны өлшеуге болады?')?.label).toBe('Масса');
+    expect(askKind('Қанша килограмға жетеді?')?.label).toBe('Масса');
+    expect(askKind('Қапта неше кг бар?')?.label).toBe('Масса');
+    expect(askKind('Асан әр 6 күн сайын бассейнге барады. Аптаның қай күні ол 4-ші рет барады?')?.label).toBe('Уақыт');
+    expect(askKind('Ұзындығы неше гектар?')?.label).not.toBe('Масса');
+    expect(askKind('Қай сан жай сан?')?.id).toBe('which');
+  });
+  it('logic.weighing_range и logic.every_k_days: верный вид распознан во всех задачах или «оқыдым», чужой «Масса»/«Уақыт» верным не подсовывается', () => {
+    for (const [sid, tpl, label] of [['logic.weighing', 'logic.weighing_range', 'Масса'], ['logic.calendar', 'logic.every_k_days', 'Уақыт']] as const) {
+      let n = 0, right = 0, wrongDistractor = 0;
+      for (let k = 0; k < 300; k++) {
+        const it = makeItem(sid, { tpl }); if (!it || it.source !== tpl) continue;
+        const mc = miniCheck(it.kz); n++; if (!mc) continue;
+        if (mc.options[mc.answer] === label) right++;
+        else if (mc.options.includes(label)) wrongDistractor++;   // красная команда: 75/400 и 73/400
+      }
+      expect(n).toBeGreaterThan(200);
+      expect(wrongDistractor, tpl).toBe(0);
+      expect(right / n, tpl).toBeGreaterThan(0.95);
     }
   });
   it('ratio и part не соседствуют среди вариантов (оба «доля»)', () => {

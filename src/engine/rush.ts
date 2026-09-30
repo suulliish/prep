@@ -22,16 +22,32 @@ export const rushAction = (streak: number): RushAction => (streak <= 0 ? 'none' 
 /** Серия быстрых ответов подряд: быстрый — растёт, обычный — обнуляется. */
 export const nextStreak = (streak: number, fast: boolean) => (fast ? streak + 1 : 0);
 
-/** В каком по счёту вопросе вернётся «егіз»: через RUSH.twinGap вопросов; в конце боя — на последнем; после последнего не возвращается. */
-export function twinSlot(idx: number, total: number): number | null {
+/** В каком по счёту вопросе вернётся «егіз»: через RUSH.twinGap вопросов; в конце боя — на последнем; после последнего не возвращается.
+ *  Если известны шаблоны очереди (`tpls`) и шаблон «егіз» (`tpl`), берётся ближайший слот не раньше, чем через 3, где соседи — другой шаблон (или конец боя):
+ *  иначе при чередовании АБАБ «егіз» встал бы рядом с тем же шаблоном (ААА). Свободного слота нет — ближайший из ближе, чем через 3, но без стыка; и такого нет — как раньше. */
+export function twinSlot(idx: number, total: number, tpls?: (string | null)[], tpl?: string | null): number | null {
   if (idx >= total - 1) return null;
-  return Math.min(idx + RUSH.twinGap, total - 1);
+  const first = Math.min(idx + RUSH.twinGap, total - 1);
+  if (!tpls || !tpl) return first;
+  const clash = (s: number) => (tpls[s - 1] === tpl ? 1 : 0) + (tpls[s + 1] === tpl ? 1 : 0);
+  for (let s = first; s < total; s++) if (!clash(s)) return s;
+  for (let s = first - 1; s > idx + 1; s--) if (!clash(s)) return s;
+  return first;
+}
+
+/** Реванш берёт шаблон ошибки; если два последних показанных вопроса уже этого шаблона (был «егіз» или реванш подряд), третий такой же не ставим:
+ *  берём другой шаблон той же темы (не тот, что стоит в очереди следующим), нет другого — тот же. `recent` — показанные шаблоны по порядку. */
+export function pickRevengeTpl(recent: (string | null)[], tpl: string, all: string[], avoid: string | null = null, rand: () => number = Math.random): string {
+  if (!(recent.length >= 2 && recent[recent.length - 1] === tpl && recent[recent.length - 2] === tpl)) return tpl;
+  const other = all.filter(t => t !== tpl);
+  const alt = other.filter(t => t !== avoid).length ? other.filter(t => t !== avoid) : other;
+  return alt.length ? alt[Math.floor(rand() * alt.length)] : tpl;
 }
 
 // ---------- Реплики Бита (казахский, добрые) ----------
 export const RUSH_SAY = {
   nudgeRight: 'Дұрыс! Бірақ асықпа — сұрақты соңына дейін оқып көр.',
-  twinLater: 'Тағы асықтың. Бұл есеп 3 сұрақтан кейін «егіз» болып қайта келеді — сандары басқа. Асықпай оқы!',
+  twinLater: 'Тағы асықтың. Бұл есеп бірнеше сұрақтан кейін «егіз» болып қайта келеді — сандары басқа. Асықпай оқы!',
   twinNoSlot: 'Тағы асықтың. Асықпа — сұрақты соңына дейін оқы, есептің кілті сонда.',
   twinArrive: 'Міне, «егіз» есеп! Сандары басқа. Бұл жолы асықпа.',
   checkNext: 'Үш есеп қатарынан тез болды. Келесі есепте бірге дем аламыз.',
@@ -138,9 +154,9 @@ const ASK_MARK = /неше|қанша|қандай|қайсы|нешінші|т�
 export const ASK_KINDS: { id: string; re: RegExp; label: string }[] = [
   { id: 'ratio', re: /қатынас/, label: 'Қатынас' },
   { id: 'percent', re: /пайыз|концентрация/, label: 'Пайыз' },
-  { id: 'time', re: /неше\s+(сағат|минут|күн|апта|жыл|секунд)|қанша\s+уақыт|қандай\s+уақыт/, label: 'Уақыт' },
+  { id: 'time', re: /неше\s+(сағат|минут|күн|апта|жыл|секунд)|қанша\s+уақыт|қандай\s+уақыт|қай\s+(күн|апта|жыл|ай|сағат|уақыт)/, label: 'Уақыт' },
   { id: 'speed', re: /жылдамдығ[ыы]/, label: 'Жылдамдық' },
-  { id: 'mass', re: /(неше|қанша)\s+(кг|килограмм|грамм|г)(?![\p{L}])|массас|салмағ/u, label: 'Масса' },
+  { id: 'mass', re: /(неше|қанша)\s+(?:килограмм?\p{L}*|грамм?\p{L}*|кг|г)(?![\p{L}])|масса|салмағ|салмақ/u, label: 'Масса' },
   { id: 'money', re: /(неше|қанша)\s+теңге|теңге\s*жұмса/, label: 'Ақша' },
   { id: 'geom', re: /ұзындығ|ауданын|периметр|бұрыш|радиус|шеңбер/, label: 'Ұзындық, аудан не бұрыш' },
   { id: 'part', re: /қандай\s+бөлігі|бөлігі\s+қалды|қандай\s+бөлік|қандай\s+үлес|бөлшегінің\s+(бөлімі|алымы)/, label: 'Бөлшек, бөлік' },
@@ -165,6 +181,7 @@ export function askKind(stem: string): { id: string; label: string } | null {
   if (hit.length === 1) return hit[0];
   const ratio = hit.find(k => k.id === 'ratio');   // «жылдамдығының … жылдамдығына қатынасы» — спрашивается отношение, а не скорость
   if (ratio) return ratio;
+  if (hit.length === 2 && hit.some(k => k.id === 'which') && hit.some(k => k.id === 'time')) return hit.find(k => k.id === 'time')!;   // «аптаның қай күні» — уақыт, а не «какой из вариантов»
   if (hit.length === 0 && COUNT.re.test(tail)) return COUNT;
   return null;
 }
