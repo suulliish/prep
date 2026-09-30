@@ -159,7 +159,7 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
         if (along > 1 && d.walkable(q[0], q[1]) && Math.hypot(dx, dz) > 0.9 && d.path(portalStand, q).length) home.push(q);
       }
       home.push(portalStand);
-      if (mode === 'hub' || mode === 'hero') { const h0 = home[Math.floor(home.length / 2)]; hero.position.set(h0[0], d.height(h0[0], h0[1]) ?? 0, h0[1]); hero.rotation.y = mode === 'hero' ? PORTAL_FACE + 0.2 : PORTAL_FACE - 0.25; }   // «Кейіпкер» мог открыться до загрузки палубы
+      if (mode === 'hub' || mode === 'hero') { const h0 = home[Math.floor(home.length / 2)]; hero.position.set(h0[0], d.height(h0[0], h0[1]) ?? 0, h0[1]); hero.rotation.y = mode === 'hero' ? PORTAL_FACE + 0.2 : PORTAL_FACE - 0.25; if (mode === 'hero') frameHero(); }   // «Кейіпкер» мог открыться до загрузки палубы
       // камера главного меню: между порталом и площадкой перед ним
       views.hub.target.set(px + nx * 2.6, 1.6, pz + nz * 2.6); }
     // украшения мастерской: места считаются по палубе. Площадка у портала и места героя свободны, палуба остаётся связной (connGuard): корма, середина и площадка достижимы друг от друга
@@ -207,6 +207,63 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     burst(worldPos(hero, 0.9), 0x3ff0ff, 16, 2.2);
   };
   const spot = (k: 'bow' | 'stern' | 'mid' | 'port' | 'star'): [number, number] => deck?.stations[k] ?? [0, 0];
+
+  // «Кейіпкер»: герой встаёт туда и камера берёт тот угол, где между ней и героем ничего нет (борт, мачта, бочки, украшения):
+  // перебор мест прогулки и углов, лучи от камеры к ногам, груди и голове героя. Попадания у самого героя (он сам, питомец) не считаются.
+  const rc = new THREE.Raycaster(), eyeV = new THREE.Vector3(), aimV = new THREE.Vector3(), dirV = new THREE.Vector3(), baseV = new THREE.Vector3();
+  function frameHero() {
+    if (!deck) return;
+    const d = deck, v = views.hero, r = v.radius, mid = home.length ? home[Math.floor(home.length / 2)] : spot('mid');
+    const spots = [mid, ...home.filter((_, i) => i % 3 === 0), portalStand, spot('mid')].filter(q => d.walkable(q[0], q[1])).slice(0, 10);
+    const T0 = HUB_THETA + 0.25, ks = [0, 0.3, -0.3, 0.6, -0.6, 0.9, -0.9, 1.3, -1.3];
+    ship.updateMatrixWorld(true);
+    // только обычные меши: спрайтам лучу нужна камера, а скиннинг (герой, питомец) не заслоняет — это они сами
+    const solid: THREE.Object3D[] = []; ship.traverse(o => { if ((o as THREE.Mesh).isMesh && !(o as THREE.SkinnedMesh).isSkinnedMesh && o.visible) solid.push(o); });
+    // строгий проход: ещё и перед камерой пусто (лучи к палубе на трети и середине пути до героя не упираются раньше — нет досок кормы у самого объектива); не нашлось — без этого условия
+    for (const strict of [true, false]) for (const phi of [1.3, 1.16, 1.02]) for (const q of spots) for (const k of ks) {
+      const th = T0 + k;
+      baseV.set(q[0], d.height(q[0], q[1]) ?? 0, q[1]); ship.localToWorld(baseV);
+      eyeV.set(baseV.x + r * Math.sin(phi) * Math.cos(th), baseV.y + 1.15 + r * Math.cos(phi), baseV.z + r * Math.sin(phi) * Math.sin(th));
+      // лучи к герою по всей его ширине (ось ± плечи), не только по оси: иначе мачта в полуметре закрывает полфигуры
+      const sx = -Math.sin(th) * 0.55, sz = Math.cos(th) * 0.55;
+      const clear = [0.3, 1.1, 1.9].every(h => [-1, 0, 1].every(w => {
+        aimV.set(baseV.x + sx * w, baseV.y + h, baseV.z + sz * w); dirV.copy(aimV).sub(eyeV); const L = dirV.length(); dirV.normalize();
+        rc.set(eyeV, dirV); rc.far = L;
+        return !rc.intersectObjects(solid, false).some(x => Math.hypot(x.point.x - baseV.x, x.point.z - baseV.z) > 0.9);
+      }));
+      if (!clear) continue;
+      // нижняя часть кадра (там, где на экране низ окна сцены): лучи из камеры под углом вниз и в стороны от взгляда на героя
+      // не должны упираться во что-то у самого объектива (доски кормы, двигатель) — иначе пол-кадра занимает одна доска
+      if (strict) {
+        const fwd = aimV.set(baseV.x, baseV.y + 1.15, baseV.z).sub(eyeV).normalize().clone(), right = dirV.crossVectors(fwd, THREE.Object3D.DEFAULT_UP).normalize().clone(), upv = new THREE.Vector3().crossVectors(right, fwd);
+        const near = [[0, 0.2], [0, 0.34], [-0.3, 0.3], [0.3, 0.3], [-0.45, 0.1], [0.45, 0.1], [0, 0.5], [-0.4, 0.5], [0.4, 0.5], [0, 0.75]].some(([yaw, pitch]) => {
+          dirV.copy(fwd).addScaledVector(right, Math.tan(yaw)).addScaledVector(upv, -Math.tan(pitch)).normalize();
+          // где луч лёг бы на палубу на уровне ног героя; упёрся заметно раньше — у объектива что-то высокое (доски кормы, борт, двигатель)
+          const flat = dirV.y < -0.02 ? (eyeV.y - baseV.y) / -dirV.y : r * 1.5;
+          rc.set(eyeV, dirV); rc.far = flat * 0.72;
+          return rc.intersectObjects(solid, false).length > 0;
+        });
+        if (near) continue;
+        // по сторонам от героя (мачта, ванты) — ничего ближе, чем в 1.5 м перед героем: кадр чистый не только на самом герое
+        const L0 = eyeV.distanceTo(aimV.set(baseV.x, baseV.y + 1.15, baseV.z));
+        const side = [-0.4, -0.25, 0.25, 0.4].some(yaw => [0.12, -0.12].some(pitch => {
+          dirV.copy(fwd).addScaledVector(right, Math.tan(yaw)).addScaledVector(upv, pitch).normalize();
+          rc.set(eyeV, dirV); rc.far = L0 - 1.5; return rc.intersectObjects(solid, false).length > 0;
+        }));
+        if (side) continue;
+        // камера не висит над самой доской или бортом: ничего ближе 1.6 м вокруг объектива (снизу и по бокам)
+        const tight = [[0, -1, 0], [1, -0.6, 0], [-1, -0.6, 0], [0, -0.6, 1], [0, -0.6, -1], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]].some(([x, y, z]) => {
+          rc.set(eyeV, dirV.set(x, y, z).normalize()); rc.far = 1.6; return rc.intersectObjects(solid, false).length > 0;
+        });
+        if (tight) continue;
+      }
+      hero.position.set(q[0], d.height(q[0], q[1]) ?? 0, q[1]);
+      v.phi = phi; v.theta = th;
+      // герой вполоборота к камере (3/4): видно и лицо, и оружие
+      const le = ship.worldToLocal(eyeV.clone()); hero.rotation.y = Math.atan2(le.x - q[0], le.z - q[1]) + 0.35;
+      return;
+    }
+  }
   const WANDER = ['bow', 'stern', 'mid', 'port', 'star'] as const;
   /** Место прогулки героя: только то, куда ещё можно встать (предмет мог занять клетку). */
   const anyHome = () => { const ok = home.filter(h => deck?.walkable(h[0], h[1])); return ok.length ? ok[Math.floor(Math.random() * ok.length)] : spot('mid'); };
@@ -338,7 +395,7 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
       const tiny = hero.scale.x < 0.99 || pulling;                  // после входа в портал герой уменьшен и висит в центре кольца
       if ((m === 'hub' || m === 'hero') && (mode !== m || tiny)) {
         walk = null; endActivity(true); hero.scale.setScalar(1); cutscene = pulling = focusPortal = false; portalP = null; cutToken++; portalOpen = false;
-        if (m === 'hero') { const s0 = home.length ? home[Math.floor(home.length / 2)] : spot('mid'); hero.position.set(s0[0], deck?.height(s0[0], s0[1]) ?? 0, s0[1]); hero.rotation.y = PORTAL_FACE + 0.2; }
+        if (m === 'hero') { const s0 = home.length ? home[Math.floor(home.length / 2)] : spot('mid'); hero.position.set(s0[0], deck?.height(s0[0], s0[1]) ?? 0, s0[1]); hero.rotation.y = PORTAL_FACE + 0.2; frameHero(); }
         else if (tiny) { hero.position.set(portalStand[0], 0, portalStand[1]); hero.rotation.y = PORTAL_FACE - 0.25; }
       }
       // из боя — герой возвращается через портал на палубу

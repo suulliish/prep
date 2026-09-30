@@ -5,7 +5,7 @@ import { W } from './world.svelte';
 import { WORLDS as WS, OUTFITS as OS, STAR_REWARDS as SR, codeEnergy } from '../../content/worlds.mjs';
 
 export interface WorldDef { id: string; kz: string; ru: string; need: number; sky: number[][]; fog: number; mob: number; isle: string[]; arena?: boolean }
-export interface Outfit { id: string; kz: string; need: number; jacket: number; dark: number; visor: number; gear?: string }  // gear — экипировка скина (src/three/gear.ts)
+export interface Outfit { id: string; kz: string; need: number; jacket: number; dark: number; visor: number; gear?: string }  // gear — подпись снаряжения на карточке, по src/three/looks.ts
 export const WORLDS = WS as WorldDef[];
 export const OUTFITS = OS as Outfit[];
 export interface StarReward { id: string; kind: 'trail' | 'cape'; need: number; kz: string; color: number; glow?: boolean; rainbow?: boolean }
