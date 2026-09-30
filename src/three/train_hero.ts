@@ -53,7 +53,8 @@ export type ShotKind = 'bow' | 'throw' | 'magic';
 
 export function createTrainHero(env: TrainEnv) {
   const calm = env.km < 1;
-  let tok = mkTok(), gen = 0;
+  // tok — фоновое действие (обрывается любым следующим), genTok — всё, что ждёт снаряд или выстрел (обрывается уходом с урока сразу)
+  let tok = mkTok(), genTok = mkTok(), gen = 0;
   let pose: Pose = '', stepKind = '', arrived = false, warmed = false;
   let bowP: Promise<Bow> | null = null;
   const orbGeo = new THREE.SphereGeometry(0.28, 12, 10);
@@ -141,7 +142,18 @@ export function createTrainHero(env: TrainEnv) {
     else if (kind === 'goal' && !warmed && !pose) void warmup();
     else if (kind !== 'example' && kind !== 'goal') cancelBg();
   }
-  function onArrived() { arrived = true; setStep(stepKind); }
+  function onArrived() { arrived = true; setStep(stepKind); warm(); }
+  /** Прогрев: лук, стрела, светящийся шар и клипы выстрелов создаются заранее (на один-два кадра, микроскопическими), первый выстрел не подтормаживает. */
+  function warm() {
+    const my = gen, h = env.hero();
+    (bowP ??= bowLoadout()).then(L => {
+      if (gen !== my) return;
+      const g = new THREE.Group(); g.scale.setScalar(0.001); g.position.set(HERO_X, 1.2, Z0 + 0.5); g.add(L.bow, L.arrow, L.flying()); env.scene.add(g);
+      orb(0x35e6ff, 0.001, g.position, g.position, 0.05, 0, my, () => {});
+      let n = 0; env.fx(() => { if (++n < 4 && gen === my) return true; env.scene.remove(g); return false; });
+      h?.prime(['Ranged_Bow_Draw', 'Ranged_Bow_Release', 'Ranged_Magic_Shoot', 'Throw']);
+    }).catch(() => { bowP = null; });
+  }
 
   // ---------- «приём освоен» ----------
   function mastered(color: number) {
@@ -257,7 +269,7 @@ export function createTrainHero(env: TrainEnv) {
   async function shoot(miss: boolean, onLand: () => void): Promise<void> {
     const h = env.hero(); if (!h) return;
     let kind = ORDER[(miss ? missN++ : shotN++) % 3];
-    const my = gen;
+    const my = gen, gt = genTok;
     // лук не загрузился (нет набора items): вместо него бросок, мишень всё равно падает
     let bow: Bow | null = null;
     if (kind === 'bow') { try { bow = await (bowP ??= bowLoadout()); } catch { bowP = null; kind = 'throw'; } if (my !== gen) return; }
@@ -267,16 +279,17 @@ export function createTrainHero(env: TrainEnv) {
     let landed: () => void = () => {}; const flight = new Promise<void>(r => (landed = r));
     const hand = (slot: string) => { const v = new THREE.Vector3(); (h.bone(slot) ?? h.model).getWorldPosition(v); return v; };
     const hit = () => { if (miss) { env.vfx.dust(new THREE.Vector3(tp.x, 0, tp.z), 0.8, 0xe6cf98); env.sfx('land'); } else { env.vfx.hitSpark(tp, 0xffcb2e, 0.8); onLand(); } landed(); };
-    // ожидания по игровому времени (замедление и пауза кадров их не обгоняют)
-    const within = (p: Promise<unknown>, s: number) => Promise.race([p, env.tween(s, () => {})]);
-    const pause = (s: number) => env.tween(s, () => {});
+    // ожидания по игровому времени (замедление и пауза кадров их не обгоняют); уход с урока (reset) обрывает их сразу
+    const within = (p: Promise<unknown>, s: number) => until(gt, Promise.race([p, env.tween(s, () => {}, () => gt.dead)]));
+    const pause = (s: number) => until(gt, env.tween(s, () => {}, () => gt.dead));
     if (kind === 'bow') {
       const L = bow!;
       holdBow(h, L, false);
       try {
-        await h.play('Ranged_Bow_Draw', { speed: 1.7, hold: true, marks: [{ at: 0.3, fn: () => holdBow(h, L, true) }] });
+        await until(gt, h.play('Ranged_Bow_Draw', { speed: 1.7, hold: true, marks: [{ at: 0.3, fn: () => { if (gen === my) holdBow(h, L, true); } }] })); if (gen !== my) return;
         let launched: () => void = () => {}; const rel = new Promise<void>(r => (launched = r));
         void h.play('Ranged_Bow_Release', { speed: 2, marks: [{ at: 0.12, fn: () => {
+          if (gen !== my) return;
           holdBow(h, L, false); env.sfx('slash');
           const from = hand('handslot.l'), dir = new THREE.Vector3().subVectors(tp, from).normalize(), a = L.flying();
           a.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir); env.scene.add(a);
@@ -292,10 +305,11 @@ export function createTrainHero(env: TrainEnv) {
         } }] });
         await within(rel, 2); await within(flight, 2);
         await pause(h.length('Ranged_Bow_Release', 2) * 0.4);
-      } finally { h.carry([]); }
+      } finally { if (gen === my) h.carry([]); }
     } else if (kind === 'magic') {
       let launched: () => void = () => {}; const rel = new Promise<void>(r => (launched = r));
       void h.play('Ranged_Magic_Shoot', { speed: 1.4, marks: [{ at: 0.3, fn: () => {
+        if (gen !== my) return;
         env.sfx('crystal'); const from = hand('handslot.r'); env.vfx.glow(from, 0x7ff0ff, 2, 0.3);
         orb(0x35e6ff, 0.75, from, tp, Math.max(0.3, from.distanceTo(tp) / 14), 0.25, my, hit); launched();
       } }] });
@@ -304,6 +318,7 @@ export function createTrainHero(env: TrainEnv) {
     } else {
       let launched: () => void = () => {}; const rel = new Promise<void>(r => (launched = r));
       void h.play('Throw', { speed: 1.6, marks: [{ at: 0.4, fn: () => {
+        if (gen !== my) return;
         env.sfx('slash'); const from = hand('handslot.r');
         orb(0xffcb2e, 0.6, from, tp, 0.3, 0.5, my, hit); launched();
       } }] });
@@ -322,8 +337,10 @@ export function createTrainHero(env: TrainEnv) {
   /** Стойка после боя с тенью и любого прочего: предметы в руках убраны. */
   function reset() {
     cancelBg(); gen++; volleyOn = false; volleyGen++;
+    { const t = genTok; genTok = mkTok(); t.dead = true; t.waiters.forEach(f => f()); t.waiters.clear(); }
     const h = env.hero(); pose = ''; stepKind = ''; arrived = false; warmed = false; dodgeN = 0; shotN = 0; missN = 0;
-    if (h) { h.carry([]); h.g.scale.setScalar(1); h.play('Idle_A', { loop: true, fade: 0.1 }); }
+    // сначала обрыв клипа (несработавшие метки выстрела уже видят новое поколение и молчат), потом предметы из рук
+    if (h) { h.play('Idle_A', { loop: true, fade: 0.1 }); h.carry([]); h.g.scale.setScalar(1); }
   }
   /** Модель героя заменили (смена костюма): позы и предметы прежней модели больше нет. */
   function heroReplaced() { cancelBg(); pose = ''; }

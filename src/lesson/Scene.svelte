@@ -32,13 +32,16 @@
   const norm = (t: string) => t.replace(/[\s\u00a0\u202f]/g, '');
   function veil(el: HTMLElement, h: string | null) {
     let want = h ? norm(h) : '';
+    // что стояло в спрятанных местах: когда ребёнок вписал число (hide → null), картинка показывает его снова
+    const orig = new Map<Text, string>();
     const sweep = () => {
       if (!want) return;
       const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-      for (let n = w.nextNode(); n; n = w.nextNode()) if (norm(n.nodeValue ?? '') === want) n.nodeValue = '?';
+      for (let n = w.nextNode() as Text | null; n; n = w.nextNode() as Text | null) if (norm(n.nodeValue ?? '') === want) { orig.set(n, n.nodeValue ?? ''); n.nodeValue = '?'; }
     };
+    const restore = () => { for (const [n, v] of orig) if (n.isConnected && n.nodeValue === '?') n.nodeValue = v; orig.clear(); };
     const mo = new MutationObserver(sweep); mo.observe(el, { subtree: true, childList: true, characterData: true }); sweep();
-    return { update(h2: string | null) { want = h2 ? norm(h2) : ''; sweep(); }, destroy() { mo.disconnect(); } };
+    return { update(h2: string | null) { const next = h2 ? norm(h2) : ''; if (next !== want) { mo.disconnect(); restore(); want = next; sweep(); mo.observe(el, { subtree: true, childList: true, characterData: true }); } }, destroy() { mo.disconnect(); } };
   }
   const Comp = $derived(MAP[name]);
   const prev = untrack(() => { const p = live && last && last.name === name ? last.s : null; last = live ? { name, s } : null; return p; });

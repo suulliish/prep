@@ -189,3 +189,16 @@ describe('damage3d: починка с задержкой (молоток гер�
     run(d, 3, 1 / 30, t + 0.5); await Promise.resolve(); expect(done).toBe(true);
   });
 });
+
+describe('damage3d: сколько поломок помещается', () => {
+  it('capacity = число найденных мест (не больше 6); показывается не больше него', () => {
+    const { d } = make(); expect(d.capacity).toBe(d.spots.filter(x => Number.isFinite(x.x)).length); expect(d.capacity).toBeLessThanOrEqual(MAX_DAMAGE);
+    d.set(MAX_DAMAGE); run(d, 2); expect(d.stats().visible).toBe(d.capacity);
+  });
+  it('тесная палуба: мест меньше шести, capacity это учитывает и лишние поломки не рисуются', () => {
+    const tight: [number, number, number][] = [-9, -6.5, -4, -1.5, 1, 3.5, 6, 8.5, 10].map(x => [x, 0, 2.9]);
+    // палуба почти вся занята: мест остаётся меньше шести (плюс сторож: остальные условия не ослабляются)
+    const { d } = make({ avoid: tight }); expect(d.capacity).toBeLessThan(MAX_DAMAGE);
+    d.set(MAX_DAMAGE); run(d, 2); expect(d.stats().visible).toBe(d.capacity);
+  });
+});

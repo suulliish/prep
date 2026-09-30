@@ -30,14 +30,14 @@ const HALF_BEAM = 2.6;
 // поломки разнесены: не ближе 1 м друг от друга (видимая из меню часть палубы невелика)
 const SPREAD = 1.0;
 /** Шесть мест: раскладка зависит только от палубы и avoid (не от порядка вызовов). Основание не ближе 0.1 м к кругу avoid; nav — сетка ходьбы: объёмные ставим за её краем (не передан — как плоские).
- *  Если места по всем условиям нет, условия ослабляются по одному: сначала «за краем ходьбы», потом расстояние между поломками; совсем нет места — x = NaN, такая поломка не показывается. */
+ *  Если места по всем условиям нет, условия ослабляются по одному: сначала «за краем ходьбы», потом расстояние между поломками и размер основания; совсем нет места — x = NaN, такая поломка не показывается. */
 export function planDamage(s: Surface, avoid: Avoid, nav?: Nav): DamageSpot[] {
   const cache = new Map<number, [number, number][]>(), taken: [number, number][] = [], out: DamageSpot[] = [];
   const cells = (r: number) => { if (!cache.has(r)) cache.set(r, flatCells(s, 0, r).filter(c => Math.abs(c[1]) < HALF_BEAM - r * 0.3)); return cache.get(r)!; };
   for (const sl of SLOTS) {
     let best: [number, number] | null = null;
     // условия по убыванию строгости: (объёмная за краем ходьбы, разнос 1 м) → (любое место, 1 м) → (любое место, 0.8 м) → (малое основание, 0.7 м)
-    for (const [strict, spread, r] of [[sl.solid && !!nav, SPREAD, sl.r], [false, SPREAD, sl.r], [false, 0.8, sl.r], [false, 0.7, 0.3]] as const) {
+    for (const [strict, spread, r] of [[sl.solid && !!nav, SPREAD, sl.r], [false, SPREAD, sl.r], [false, 0.8, sl.r], [false, 0.7, 0.3], [false, 0.55, 0.22], [false, 0.4, 0.15]] as const) {
       let bd = Infinity;
       for (const c of cells(r)) {
         if (avoid.some(a => Math.hypot(c[0] - a[0], c[1] - a[1]) < a[2] + sl.r * 0.5 + 0.1) || taken.some(t => Math.hypot(c[0] - t[0], c[1] - t[1]) < spread)) continue;
@@ -252,6 +252,8 @@ export interface Damage {
   visible(): number[];
   /** 6 мест и видов поломок (в системе корабля). */
   readonly spots: DamageSpot[];
+  /** Сколько поломок реально помещается на этой палубе (места, которые нашлись): хаб показывает не больше и считает «ошибок больше, чем мест» от этого числа. */
+  readonly capacity: number;
   /** Для проверок: сколько частиц живо (дым, искры) и сколько поломок видно. */
   stats(): { particles: number; visible: number };
   dispose(): void;
@@ -332,7 +334,7 @@ export function createDamage(ship: THREE.Object3D, deck: Deck, opts: DamageOpts)
 
   let seen = false, disposed = false, live = 0;
   const api: Damage = {
-    spots,
+    spots, capacity: spots.filter(x => !Number.isNaN(x.x)).length,
     set(n, delay = 0) {
       if (disposed) return;
       // самый первый показ — без анимации (загрузка экрана)

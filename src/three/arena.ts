@@ -226,6 +226,8 @@ export function createArena(d: Deps) {
   const faceAngle = (x: number, z: number) => Math.atan2(x - H().g.position.x, z - H().g.position.z);
   async function walkTo(x: number, z: number, dur: number, run = false, stop?: () => boolean) {
     const h = H(), x0 = h.g.position.x, z0 = h.g.position.z;
+    // «уменьшить движение» на тренировке: к манекену, к доске и домой шагом (Walking_A), а не бегом
+    if (run && d.km < 1 && training) { run = false; dur = Math.max(dur, Math.hypot(x - x0, z - z0) / 3.4); }
     // жест или поза (радость, сидение) обрываются сразу: меч и щит появляются с первым шагом, а не через долю секунды
     h.settle();
     h.g.rotation.y = faceAngle(x, z); h.loop(run ? 'Running_A' : 'Walking_A', 0.12, run ? 1.25 : 1);

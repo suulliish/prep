@@ -29,14 +29,15 @@ vi.mock('../src/three/vfx', () => {
 
 import { createArena } from '../src/three/arena';
 import { HERO_X } from '../src/three/attacks';
+import { Actor } from '../src/three/actor';
 
 beforeAll(() => {
   const ctx: any = new Proxy({}, { get: (_, k) => (k === 'measureText' ? () => ({ width: 10 }) : () => ctx), set: () => true });
   vi.stubGlobal('document', { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) });
 });
 
-const make = () => {
-  const arena = createArena({ skyMat: new THREE.MeshBasicMaterial(), starGeo: new THREE.BufferGeometry(), starMat: new THREE.PointsMaterial(), km: 1, shadows: false });
+const make = (km = 1) => {
+  const arena = createArena({ skyMat: new THREE.MeshBasicMaterial(), starGeo: new THREE.BufferGeometry(), starMat: new THREE.PointsMaterial(), km, shadows: false });
   arena.theme(0, '#5ce39c', '#000'); arena.spot('k1');
   return arena;
 };
@@ -162,3 +163,21 @@ describe('герой на тренировке: действия по шагам
     await frames(b, 3); expect(pose(b)).toBe(''); a.clear();
   });
 });
+
+describe('тренировка: «уменьшить движение» и выход посреди выстрела', () => {
+  it('km < 1: к манекену и домой шагом (Walking_A), без бега; при km = 1 бег остаётся', async () => {
+    for (const [km, want, no] of [[0.3, 'Walking_A', 'Running_A'], [1, 'Running_A', 'Walking_A']] as const) {
+      const loops: string[] = []; const spy = vi.spyOn(Actor.prototype, 'loop').mockImplementation(function (this: Actor, n: string) { loops.push(n); });
+      const a = make(km); await until(a, a.setTraining(true)); await frames(a, 1);
+      await until(a, a.trainStrike('light')); a.clear(); spy.mockRestore();
+      expect(loops, 'km ' + km).toContain(want); expect(loops, 'km ' + km).not.toContain(no);
+    }
+  });
+  it('уход посреди выстрела: очередь сразу свободна, лук и снаряды убраны, следующее действие не ждёт', async () => {
+    const a = make(); await until(a, a.setTraining(true)); await frames(a, 1.2);
+    void a.trainTargetHit(); await frames(a, 0.5); a.clear();
+    const t = await until(a, a.spawn(3)); expect(t).toBeLessThan(3); expect(a.trainPose().pose).toBe('');
+    a.clear();
+  });
+});
+

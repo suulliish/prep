@@ -35,6 +35,8 @@ export class Actor {
     });
   }
   has(name: string) { return this.clips.has(name); }
+  /** Заранее создать и привязать действия клипов (первый настоящий запуск не тратит время на привязку костей). */
+  prime(names: string[]) { for (const n of names) { const a = this.has(n) ? this.act(n) : null; if (a) { a.setEffectiveWeight(0); a.play(); a.stop(); } } }
   addClips(cs: THREE.AnimationClip[]) { for (const c of cs) if (!this.clips.has(c.name)) this.clips.set(c.name, c); }
   duration(name: string) { return this.clips.get(name)?.duration ?? 0; }
   private act(name: string) {
