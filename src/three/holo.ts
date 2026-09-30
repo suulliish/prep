@@ -17,10 +17,10 @@ export interface HoloEnv { screenH: number; hero?: THREE.Vector3 | null }
 
 // Те же координаты, что в arena.ts (HERO_X, ENEMY_X, Z0): голограмма висит между героем и врагом
 const HERO_X = -2.6, Z0 = 0.4;
-// Где висит панель. «Полоса» (текст, полоски) — над головами бойцов: широкая и невысокая. «Колонна» (пицца) — в промежутке между
-// героем и врагом от земли до верха кадра: узкая и высокая. maxW/maxH — сколько мировых единиц можно занять, не закрыв лица.
-// Полоса прижата верхней кромкой к низу шапки экрана (мировая высота ≈ 3.95); если она уже 4.4 ед., до бойцов по бокам далеко и можно выше.
-const BAND = { x: 0.0, top: 3.95, maxW: 5.6, maxH: 1.4, narrowW: 4.4, narrowH: 2.3 }, COLUMN = { x: -0.3, y: 2.15, maxW: 3.5, maxH: 3.3 };
+// Где висит панель: всегда одна «полоса» по центру между бойцами, верхней кромкой у низа шапки экрана (мировая высота ≈ 3.95) —
+// у текста, полосок и пиццы одно место, панель не прыгает между кадрами и не заслоняет героя. maxW/maxH — сколько мировых единиц
+// можно занять, не закрыв лица; если панель уже 4.4 ед., до бойцов по бокам далеко и можно выше (пицца).
+const BAND = { x: 0.0, top: 3.95, maxW: 5.6, maxH: 1.4, narrowW: 4.4, narrowH: 2.3 };
 const TEXT_CV = { w: 1024, h: 384 }, PX = 0.0037;   // мировых единиц на пиксель канваса текста
 
 const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
@@ -172,14 +172,13 @@ export function createHolo(d: HoloDeps) {
     glitch = Math.max(0, glitch - dt * 2.6); tintK = Math.max(0, tintK - dt * 1.7);
 
     // масштаб: на телефоне пикселей на единицу мира мало — панель крупнее (но не так, чтобы закрыть бойцов)
-    const cam = d.camera, column = shape === 'frac:r';
+    const cam = d.camera;
     size.lerp(sizeT, 1 - Math.exp(-dt * 9));
     const dist = cam.position.distanceTo(root.position);
     const ppu = env.screenH / (2 * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * dist);
     const want = Math.min(1.75, Math.max(1, 44 / ppu));
-    S = column ? Math.min(want, COLUMN.maxW / size.x, COLUMN.maxH / size.y)
-      : Math.min(want, Math.max(Math.min(BAND.maxW / size.x, BAND.maxH / size.y), Math.min(BAND.narrowW / size.x, BAND.narrowH / size.y)));
-    const ty = column ? COLUMN.y : BAND.top - (size.y * S) / 2, tx = column ? COLUMN.x : BAND.x;
+    S = Math.min(want, Math.max(Math.min(BAND.maxW / size.x, BAND.maxH / size.y), Math.min(BAND.narrowW / size.x, BAND.narrowH / size.y)));
+    const ty = BAND.top - (size.y * S) / 2, tx = BAND.x;
     if (a < 0.02) anchor.set(tx, ty, Z0 + 0.6); else anchor.lerp(tmp.set(tx, ty, Z0 + 0.6), 1 - Math.exp(-dt * 8));
     root.position.copy(anchor);
     root.quaternion.copy(cam.quaternion);
@@ -202,8 +201,9 @@ export function createHolo(d: HoloDeps) {
       tmp3.copy(bp).y -= 0.22;
       const len = tmp3.distanceTo(tmp2); tmp.copy(tmp3).sub(tmp2).normalize();
       beam.position.copy(tmp2).addScaledVector(tmp, len / 2); beam.quaternion.setFromUnitVectors(up, tmp);
-      const br = Math.max(0.05, size.x * S * 0.13 * au); beam.scale.set(br, len, br);
-      (beam.material as THREE.MeshBasicMaterial).opacity = alpha * (0.4 + (km === 1 ? Math.sin(t * 9) * 0.1 : 0));
+      // тонкий пучок: широкий конус рисовал световой треугольник через всю сцену
+      const br = 0.07 * au; beam.scale.set(br, len, br);
+      (beam.material as THREE.MeshBasicMaterial).opacity = alpha * (0.3 + (km === 1 ? Math.sin(t * 9) * 0.06 : 0));
       if (lens) { lens.position.copy(tmp3); lens.scale.setScalar(0.9 + (km === 1 ? Math.sin(t * 6) * 0.15 : 0)); (lens.material as THREE.SpriteMaterial).opacity = alpha; }
     }
   }

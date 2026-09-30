@@ -52,7 +52,7 @@ export function createFrac(fillMat: THREE.Material, labelMat: (tex: THREE.Textur
   const size = { w: 3.4, h: 1.8 };
   let round = true, stage = 0, guideOn = false, broken = false;
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), scl = new THREE.Vector3(), eul = new THREE.Euler(), col = new THREE.Color();
-  const BAR_W = 2.9, BAR_H = 0.42, BAR_GAP = 0.8;
+  const BAR_W = 2.9, BAR_H = 0.48, BAR_GAP = 0.85;
 
   function makeRow(r: HoloRow, k: number, spec: FracSpec): Row {
     const geo = spec.round ? wedgeGeo(r.d) : barGeo();
@@ -76,11 +76,13 @@ export function createFrac(fillMat: THREE.Material, labelMat: (tex: THREE.Textur
   function layout(m: number) {
     if (round) {
       const R = Math.max(0.36, Math.min(0.9, 3.1 / (m * 2.35)));
-      rows.forEach((row, k) => { row.tr = R; row.tx = (k - (m - 1) / 2) * R * 2.36; row.ty = stage >= 3 ? 0.42 : 0; });
-      size.w = Math.max(2.1, m * R * 2.36 + 0.3); size.h = stage >= 3 ? R * 2 + 0.9 : R * 2 + 0.3;
+      // одна пицца: подпись справа от неё (панель шире, а не выше — в полосе над бойцами она тогда крупнее); несколько — подписи снизу
+      const side = m === 1 && stage >= 3;
+      rows.forEach((row, k) => { row.tr = R; row.tx = side ? -0.8 : (k - (m - 1) / 2) * R * 2.36; row.ty = stage >= 3 && !side ? 0.55 : 0; });
+      size.w = Math.max(2.1, m * R * 2.36 + 0.3) + (side ? 1.6 : 0); size.h = stage >= 3 && !side ? R * 2 + 1.15 : R * 2 + 0.3;
     } else {
-      rows.forEach((row, k) => { row.tr = BAR_W / 2; row.tx = stage >= 3 ? 0.65 : 0; row.ty = ((m - 1) / 2 - k) * BAR_GAP; });
-      size.w = BAR_W + (stage >= 3 ? 1.65 : 0.3); size.h = m * BAR_GAP - 0.1;
+      rows.forEach((row, k) => { row.tr = BAR_W / 2; row.tx = stage >= 3 ? 0.62 : 0; row.ty = ((m - 1) / 2 - k) * BAR_GAP; });
+      size.w = BAR_W + (stage >= 3 ? 1.55 : 0.3); size.h = m * BAR_GAP - 0.1;
     }
   }
 
@@ -186,10 +188,13 @@ export function createFrac(fillMat: THREE.Material, labelMat: (tex: THREE.Textur
       const L = row.label;
       if (L && L.mesh.visible) {
         L.born = Math.min(1, L.born + dt * 3);
-        const s = easeBack(L.born), lw = round ? Math.min(1.1, R * 1.4) : 1.35, lh = lw * 0.625;
+        // подпись полоски — ровно в высоту строки (выше — налезает на соседнюю); подпись одной пиццы — справа, крупно
+        const side = round && rows.length === 1;
+        const lw = side ? 2.6 : round ? Math.min(1.5, R * 1.7) : BAR_GAP * 0.98 * 1.6, lh = lw * 0.625, s = easeBack(L.born);
         L.mesh.scale.set(lw * s, lh * s, 1);
-        if (round) L.mesh.position.set(row.x, row.y - R - 0.1 - lh / 2, 0.3);
-        else L.mesh.position.set(row.x - BAR_W / 2 - 0.82, row.y, 0.3);
+        if (side) L.mesh.position.set(row.x + R + 0.75, row.y, 0.3);
+        else if (round) L.mesh.position.set(row.x, row.y - R - 0.1 - lh / 2, 0.3);
+        else L.mesh.position.set(row.x - BAR_W / 2 - 0.72, row.y, 0.3);
       }
     };
     rows.forEach((row, k) => drawRow(row, k, 1));
