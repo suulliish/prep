@@ -3,6 +3,8 @@
 import * as THREE from 'three';
 import type { Palette } from '../worlds3d';
 import { drift, dotTexture, paintNormal, recolorGround, tintMul } from './_fx789';
+import { birds, fireflies } from '../ambient_fx';
+import { spotTime } from '../spots';
 
 const K = 'giants', H = 'hexcore';
 
@@ -56,6 +58,9 @@ export const palette: Palette = {
     footprint(g, -9.6, 4.8, 0.5, 1.0); footprint(g, 9.2, 6.4, -0.3, 1.1);
     // пыль в воздухе и тёплое солнечное пятно на заднем плане
     drift(g, { n: 50, area: [-14, 14, -13, 8], height: 7, speed: [0.05, 0.25], sway: 0.6, size: 0.5, colors: [0xf3d9a4, 0xe8c58a], seed: layout + 5, blending: THREE.NormalBlending, opacity: 0.28 });
+    // пыльца: тёплые золотые пылинки блуждают над песком; вдали кружат птицы
+    fireflies(g, { n: 38, area: [-13, 13, 0.5, 5, -12, 6], colors: [0xfff2a0, 0xffe08a, 0xffffff], size: 0.17, wander: 0.9, pulse: 0.25, speed: 0.7, opacity: 0.9, seed: layout + 6 });
+    if (spotTime(layout) !== 2) birds(g, { n: 3, color: 0x4a2a1a, seed: layout + 7 });
     const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTexture(), color: 0xffd58a, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     sun.scale.set(26, 20, 1); sun.position.set(5, 12, -28); g.add(sun);
   },

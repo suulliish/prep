@@ -16,8 +16,10 @@ import { WEEK5 as W5 } from '../content/lessons_week5.mjs';
 import { WEEK6 as W6 } from '../content/lessons_week6.mjs';
 // @ts-ignore
 import { WEEK7 as W7 } from '../content/lessons_week7.mjs';
-const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>, WEEK3 = W3 as Record<string, any[]>, WEEK4 = W4 as Record<string, any[]>, WEEK5 = W5 as Record<string, any[]>, WEEK6 = W6 as Record<string, any[]>, WEEK7 = W7 as Record<string, any[]>;
-const FULL = { ...WEEK1, ...WEEK2, ...WEEK3, ...WEEK4, ...WEEK5, ...WEEK6, ...WEEK7 };
+// @ts-ignore
+import { WEEK8 as W8 } from '../content/lessons_week8.mjs';
+const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>, WEEK3 = W3 as Record<string, any[]>, WEEK4 = W4 as Record<string, any[]>, WEEK5 = W5 as Record<string, any[]>, WEEK6 = W6 as Record<string, any[]>, WEEK7 = W7 as Record<string, any[]>, WEEK8 = W8 as Record<string, any[]>;
+const FULL = { ...WEEK1, ...WEEK2, ...WEEK3, ...WEEK4, ...WEEK5, ...WEEK6, ...WEEK7, ...WEEK8 };
 // @ts-ignore
 import { skillById } from '../content/skills.mjs';
 // @ts-ignore
@@ -54,7 +56,7 @@ describe('уроки', () => {
   }
 });
 
-describe('недели 1–7 — полный сценарий', () => {
+describe('недели 1–8 — полный сценарий', () => {
   for (const [id, steps] of Object.entries(FULL) as [string, any[]][]) {
     it(`${id}: цель → … → возврат к цели`, () => {
       const t = steps.map(s => s.type);
@@ -332,9 +334,9 @@ describe('недели 1–7 — полный сценарий', () => {
     for (const kd of ['line', 'top', 'code', 'first', 'rev', 'home', 'games']) expect(kinds.has(kd), kd).toBe(true);
     function got_(x: any) { return x.choices[x.answer]; }
   });
-  it('неделя 7: голосовые реплики без латиницы и знака ×, у мини-игр по 3–4 варианта', () => {
+  it('недели 7–8: голосовые реплики без латиницы и знака ×, у мини-игр по 3–4 варианта', () => {
     const r = rng(9);
-    for (const [id, steps] of Object.entries(WEEK7)) {
+    for (const [id, steps] of Object.entries({ ...WEEK7, ...WEEK8 })) {
       steps.forEach((s: any, i: number) => {
         const voiced = ['goal', 'widget', 'say'].includes(s.type) ? [s.kz] : s.type === 'example' ? s.frames.map((f: any) => f.kz) : [];
         for (const t of voiced) expect(t, `${id}_${i}`).not.toMatch(/[A-Za-z×²³]/);
@@ -344,10 +346,78 @@ describe('недели 1–7 — полный сценарий', () => {
       for (let k = 0; k < 200; k++) expect(b.make(r).choices.length, id).toBeGreaterThanOrEqual(3);
     }
   });
+  it('мини-игра недели 8 (ребусы) считает правильно: ответ единственный, пересчитан независимым перебором', () => {
+    const r = rng(88), b = WEEK8['logic.cryptarithm'].find((s: any) => s.type === 'blitz')!;
+    type A = Record<string, number>;
+    const brute = (words: string[], sum: string): A[] => {
+      const ls = [...new Set([...words, sum].join(''))], lead = new Set([...words, sum].filter(w => w.length > 1).map(w => w[0]));
+      const out: A[] = [], a: A = {}, used = Array(10).fill(false);
+      const val = (w: string) => { let n = 0; for (const c of w) n = n * 10 + a[c]; return n; };
+      (function rec(i: number) {
+        if (i === ls.length) { if (words.reduce((s, w) => s + val(w), 0) === val(sum)) out.push({ ...a }); return; }
+        for (let d = lead.has(ls[i]) ? 1 : 0; d <= 9; d++) if (!used[d]) { used[d] = true; a[ls[i]] = d; rec(i + 1); used[d] = false; }
+      })(0);
+      return out;
+    };
+    const extreme = (expr: string, mode: 'max' | 'min') => {
+      const diff = expr.includes(' − '), words = expr.split(diff ? ' − ' : '+'), ls = [...new Set(words.join(''))], lead = new Set(words.map(w => w[0]));
+      const a: A = {}, used = Array(10).fill(false); let best: number | null = null;
+      const val = (w: string) => { let n = 0; for (const c of w) n = n * 10 + a[c]; return n; };
+      (function rec(i: number) {
+        if (i === ls.length) { const v = diff ? val(words[0]) - val(words[1]) : words.reduce((s, w) => s + val(w), 0); if (best === null || (mode === 'max' ? v > best : v < best)) best = v; return; }
+        for (let d = lead.has(ls[i]) ? 1 : 0; d <= 9; d++) if (!used[d]) { used[d] = true; a[ls[i]] = d; rec(i + 1); used[d] = false; }
+      })(0);
+      return best;
+    };
+    const kinds = new Set<string>();
+    for (let k = 0; k < 120; k++) {
+      const it = b.make(r), got = it.choices[it.answer];
+      expect(new Set(it.choices).size, it.q).toBe(it.choices.length);
+      let m: RegExpExecArray | null;
+      if ((m = /^(.+) \+ (.+) = (.+)\. (\S) \+ (\S) = \?$/.exec(it.q))) {
+        kinds.add('sum');
+        const vals = new Set(brute([m[1], m[2]], m[3]).map(x => x[m![4]] + x[m![5]]));
+        expect(vals.size, it.q).toBe(1); expect(got, it.q).toBe(String([...vals][0]));
+        it.choices.forEach((c: string) => expect(+c, it.q).toBeLessThanOrEqual(18));
+      } else if ((m = /^(.+) = (.+)\. (\S) = \?$/.exec(it.q))) {
+        const sides = m[1].split(' + '), lead = m[2][0] === m[3];
+        kinds.add(lead ? 'lead' : 'digit');
+        const sols = brute(sides, m[2]), vals = new Set(sols.map(x => x[m![3]]));
+        expect(sols.length, it.q).toBeGreaterThan(0); expect(vals.size, it.q).toBe(1); expect(got, it.q).toBe(String([...vals][0]));
+        it.choices.forEach((c: string) => expect(+c, it.q).toBeLessThanOrEqual(9));
+        if (lead) expect(got).toBe('1');
+      } else if ((m = /^(.+): (ең үлкен|ең кіші) мән\?$/.exec(it.q))) {
+        const mode = m[2] === 'ең кіші' ? 'min' : 'max';
+        kinds.add(mode);
+        expect(got, it.q).toBe(String(extreme(m[1], mode)));
+      } else throw new Error('неизвестный вопрос: ' + it.q);
+    }
+    for (const kd of ['lead', 'digit', 'sum', 'max', 'min']) expect(kinds.has(kd), kd).toBe(true);
+  }, 120000);
+  it('урок ребусов: пример решает цель, ребусы виджета решаемы, «единственный» ответ примера верен', () => {
+    const L = WEEK8['logic.cryptarithm'];
+    // цель, пример, «почему», ошибка Глитча и финал говорят про один ребус АБ + БА = ВГВ, где Г = 2 при любых А, Б (А + Б = 11)
+    const sols: number[][] = [];
+    for (let a = 1; a <= 9; a++) for (let bb = 1; bb <= 9; bb++) for (let v = 1; v <= 9; v++) for (let g = 0; g <= 9; g++) {
+      if (new Set([a, bb, v, g]).size < 4) continue;
+      if ((10 * a + bb) + (10 * bb + a) === 100 * v + 10 * g + v) sols.push([a, bb, v, g]);
+    }
+    expect(new Set(sols.map(x => x[3]))).toEqual(new Set([2]));
+    expect(sols.length).toBe(6);
+    expect(L[0].task).toContain('АБ + БА = ВГВ');
+    expect(L.at(-1).choices[L.at(-1).answer]).toBe('2');
+    // в кадрах «Көр» приведённые примеры — верные равенства
+    const ex = L.find((s: any) => s.type === 'example');
+    for (const f of ex.frames) { const m = /(\d+) \+ (\d+) = (\d+)/.exec(f.math); if (m) expect(+m[1] + +m[2], f.math).toBe(+m[3]); }
+    // faded: арифметика подсказок верна
+    const fd = L.filter((s: any) => s.type === 'faded');
+    expect(fd[1].steps[0].blank.choices[fd[1].steps[0].blank.answer]).toBe(String(99 + 99));
+    expect(fd[0].steps[2].blank.choices[fd[0].steps[2].blank.answer]).toBe(String(3 + 3));
+  });
   it('уроки: сцены и виджеты зарегистрированы, запрещённых слов нет', () => {
     const scenes = readFileSync('src/lesson/Scene.svelte', 'utf8'), lesson = readFileSync('src/screens/Lesson.svelte', 'utf8');
     const avoid: string[] = (GLOSSARY as any).terms.flatMap((t: any) => t.avoid ?? []).filter((w: string) => w.length > 3);
-    for (const [id, steps] of Object.entries({ ...WEEK4, ...WEEK5, ...WEEK6, ...WEEK7 })) {
+    for (const [id, steps] of Object.entries({ ...WEEK4, ...WEEK5, ...WEEK6, ...WEEK7, ...WEEK8 })) {
       const txt: string[] = [];
       for (const s of steps) {
         if (s.scene) expect(scenes, `${id}: сцена ${s.scene}`).toMatch(new RegExp(`\\b${s.scene}\\b`));

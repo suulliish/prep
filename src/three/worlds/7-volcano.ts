@@ -3,6 +3,8 @@
 import * as THREE from 'three';
 import type { Palette } from '../worlds3d';
 import { dotTexture, drift, paintNormal, recolorGround } from './_fx789';
+import { ambientOf } from '../ambient';
+import { eruption } from '../ambient_fx';
 
 const V = 'volcano', H = 'hexcore', F = (n: string) => `${n}_Color1`;
 const LAVA = 0xff6a1a, LAVA_HOT = 0xffc94a, LAVA_RIM = 0x8a1e08;
@@ -21,7 +23,7 @@ function pool(g: THREE.Group, x: number, z: number, r: number, sx = 1, sz = 1, s
 }
 
 /** Вулкан на заднем плане: конус с кратером, свечением и потёками лавы вдоль граней. */
-function volcano(g: THREE.Group, x: number, z: number, h: number, rBase: number) {
+function volcano(g: THREE.Group, x: number, z: number, h: number, rBase: number): THREE.Sprite {
   const SIDES = 9, rTop = rBase * 0.16, y0 = -0.4, apo = Math.cos(Math.PI / SIDES);
   const coneGeo = new THREE.CylinderGeometry(rTop, rBase, h, SIDES, 1, true).toNonIndexed(); coneGeo.computeVertexNormals();   // грани плоские
   const cone = new THREE.Mesh(coneGeo, new THREE.MeshToonMaterial({ color: 0x3b2528 }));
@@ -31,6 +33,7 @@ function volcano(g: THREE.Group, x: number, z: number, h: number, rBase: number)
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTexture(), color: LAVA, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   glow.scale.set(rBase * 1.5, rBase * 1.1, 1); glow.position.set(x, y0 + h + 0.8, z + 0.5); g.add(glow);
   // потёки: узкие светящиеся полосы, лежащие на гранях (ширина растёт книзу, каждая на своей грани)
+  const flows: [THREE.MeshBasicMaterial, THREE.Color][] = [];
   [[0, 0.62, 0.2], [2, 0.9, 0.26], [4, 0.5, 0.18], [5, 0.8, 0.22], [7, 0.7, 0.2]].forEach(([k, len, w], i) => {
     const a = (k + 0.5) * 2 * Math.PI / SIDES, pts: number[] = [];
     const at = (t: number, side: number) => { // t: 0 у кратера, 1 у подножия; side: ±1 — левый/правый край полосы
@@ -41,7 +44,10 @@ function volcano(g: THREE.Group, x: number, z: number, h: number, rBase: number)
     const idx: number[] = []; for (let j = 0; j < N; j++) { const o = j * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); geo.setIndex(idx);
     const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: i % 2 ? LAVA : LAVA_HOT, side: THREE.DoubleSide })); m.renderOrder = 1; g.add(m);
+    flows.push([m.material as THREE.MeshBasicMaterial, new THREE.Color(i % 2 ? LAVA : LAVA_HOT)]);
   });
+  ambientOf(g).add(c => flows.forEach(([m, base], i) => m.color.copy(base).multiplyScalar(0.82 + 0.18 * Math.sin(c.t * 1.6 * c.km + i * 1.3))));   // потёки лавы пульсируют
+  return glow;
 }
 
 export const palette: Palette = {
@@ -87,7 +93,12 @@ export const palette: Palette = {
       pool(g, -9.6, -1.6, 1.5, 1.3, 0.9, 1); pool(g, 9.4, -1.2, 1.3, 1.2, 1, 2); pool(g, 0.4, -10.6, 2.2, 1.9, 0.9, 3);
       pool(g, -11.5, 4.6, 1.8, 1.2, 1, 4); pool(g, 11.6, 5.2, 1.6, 1.2, 1, 5);
     }
-    volcano(g, 0, -15.5, 11, 6.2);
+    const glow = volcano(g, 0, -15.5, 11, 6.2);
+    const hot = [LAVA, LAVA_HOT, 0xff8a2a, 0xffe08a];
+    eruption(g, { src: [[0, 10.7, -15.5]], glow, colors: hot, seed: layout, life: [2.4, 3.8], spread: 3 });   // выброс из кратера
+    // всплески лавы из луж: искры прыгают невысоко, часто, вне боевой полосы
+    const spots: [number, number, number][] = layout === 2 ? [[-9, 0.1, -5.2], [-3, 0.1, -5.2]] : [[-9.6, 0.1, -1.6], [9.4, 0.1, -1.2], [0.4, 0.1, -10.6], [-11.5, 0.1, 4.6], [11.6, 0.1, 5.2]];
+    eruption(g, { src: spots, colors: hot, n: 16, power: 0.42, every: [1.4, 3.2], seed: layout + 1 });
     drift(g, { n: 70, area: [-14, 14, -14, 9], height: 9, speed: [0.5, 1.5], sway: 0.6, size: 0.32, colors: [LAVA, LAVA_HOT, 0xff8a2a], seed: layout });
   },
 };

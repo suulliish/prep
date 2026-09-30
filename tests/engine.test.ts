@@ -77,6 +77,18 @@ describe('заработок', () => {
     expect(rec.minutesToday).toBe(90);
     expect(canStartExtra({ ...rec, extraMissions: 4 }, plan, 4)).toBe(false);
   });
+  it('доп. миссия наспех не даёт минут: 15 × доля честных ответов', () => {
+    const s = newSave(); refreshAvailability(s, defs);
+    const plan = buildPlan(s, defs as any, '2026-10-19');
+    const rec = blankDay('2026-10-19');
+    for (const b of plan.blocks) rec.blocksDone[b.id] = true;
+    rec.extraMissions = 1; rec.extraHonest = 0.1; settleDay(rec, plan, 'today');
+    expect(rec.minutesToday).toBe(60);                     // 15 × 0.1 = 1.5 → округление до 5 = 0
+    rec.extraMissions = 2; rec.extraHonest = 1.1; settleDay(rec, plan, 'today');
+    expect(rec.minutesToday).toBe(75);                     // честная вторая миссия: +15
+    delete rec.extraHonest; settleDay(rec, plan, 'today');
+    expect(rec.minutesToday).toBe(90);                     // старое сохранение без поля — миссии честные
+  });
   it('угадывание быстрее 5 секунд — нечестно', () => {
     expect(isHonest(3000, 0)).toBe(false); expect(isHonest(12000, 4)).toBe(false); expect(isHonest(12000, 2)).toBe(true);
   });
@@ -134,5 +146,17 @@ describe('урок сначала (решение семьи 28.09.2026)', () =>
     const plan2 = buildPlan(s, defs, '2026-10-20');
     expect(plan2.blocks.find(b => b.id === 'warmup')?.skills).toContain('a');
     expect(nextSkill(s, defs)).toBe('b');
+  });
+});
+
+// research D1 (30.09): минуты шага — по доле честных ответов, шаг засчитывается всегда
+import { buildPlan as _bp, settleDay as _sd, blankDay as _bd } from '../src/engine/planner';
+describe('минуты за честные ответы', () => {
+  it('половина ответов наугад — половина минут шага; без записи — полные минуты', () => {
+    const plan = { day: '2026-10-05', blocks: [{ id: 'warmup', minutes: 10, skills: [], items: 5 }, { id: 'new', minutes: 10, skills: [], items: 5 }] } as any;
+    const a = _bd('2026-10-05'); a.blocksDone = { warmup: true, new: true }; _sd(a, plan, 'today');
+    const b = _bd('2026-10-05'); b.blocksDone = { warmup: true, new: true }; b.honest = { warmup: 0.5 }; _sd(b, plan, 'today');
+    expect(b.planShare).toBeCloseTo(0.75);
+    expect(b.minutesToday).toBeLessThan(a.minutesToday);
   });
 });

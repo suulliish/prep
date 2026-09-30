@@ -93,8 +93,8 @@ describe('прогрессия: дойдут ли новые уроки до р�
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, report(main, 'основной прогон') + '\n');
 
-  it('всего 35 тем с полным уроком, у каждой есть генераторы', () => {
-    expect(lessoned).toHaveLength(35);
+  it('всего 36 тем с полным уроком, у каждой есть генераторы', () => {
+    expect(lessoned).toHaveLength(36);
     for (const id of lessoned) expect(tplOf(id).length, id).toBeGreaterThan(0);
   });
 
@@ -102,7 +102,7 @@ describe('прогрессия: дойдут ли новые уроки до р�
     for (const id of lessoned) for (const p of byId[id].prereqs) expect(byId[p].lesson, `${id} ← ${p} без урока`).toBe(true);
   });
 
-  it('(1) все 35 тем вводятся за 60 учебных дней', () => {
+  it('(1) все 36 тем вводятся за 60 учебных дней', () => {
     const missing = lessoned.filter(id => main.intro[id] === undefined);
     expect(missing, `не дошли до ребёнка: ${missing.join(', ')}`).toEqual([]);
   });
@@ -114,19 +114,19 @@ describe('прогрессия: дойдут ли новые уроки до р�
     }
   });
 
-  it('(3) порядок по PLAN: делимость → дроби (база) → дроби (× ÷, часть, число по части); весы и нули не позже × ÷', () => {
+  it('(3) порядок по PLAN: делимость → дроби (база) → дроби (× ÷, часть, число по части); весы, ребусы и нули не позже × ÷', () => {
     const d = main.intro;
     const last = (ids: string[]) => Math.max(...ids.map(i => d[i]));
     const first = (ids: string[]) => Math.min(...ids.map(i => d[i]));
     const oct = ['nat.place_value', 'nat.ops', 'nat.order_ops', 'nat.powers', 'div.rules', 'div.primes', 'div.factorization', 'div.gcd', 'div.lcm'];
     const fracBasics = ['frac.concept', 'frac.magnitude', 'frac.basic_property', 'frac.reduce', 'frac.common_denominator', 'frac.compare', 'frac.add_sub', 'frac.mixed'];
     const fracMulDiv = ['frac.mul', 'frac.div', 'frac.part_of_number', 'frac.find_whole'];
-    const nov = ['logic.weighing', 'div.trailing_zeros'];
+    const nov = ['logic.weighing', 'logic.cryptarithm', 'div.trailing_zeros'];
     const dec = ['logic.permutations', 'logic.pairs_tournament', 'vis.count_squares'];
     // делимость и НОД/НОК идут до сокращения и общего знаменателя (они от них зависят), база дробей — до × ÷
     expect(last(oct), 'октябрь до базы дробей: НОД/НОК раньше сокращения').toBeLessThan(d['frac.reduce']);
     expect(last(fracBasics), 'база дробей раньше × ÷ и части от числа').toBeLessThan(first(fracMulDiv));
-    expect(last(nov), 'весы и нули не позже × ÷ (ноябрь, не декабрь)').toBeLessThanOrEqual(first(fracMulDiv));
+    expect(last(nov), 'весы, ребусы и нули не позже × ÷ (ноябрь, не декабрь)').toBeLessThanOrEqual(first(fracMulDiv));
     // фракции начинаются после блока делимости (октябрь), а не вперемешку с ним
     expect(first(fracBasics), 'дроби после всего блока делимости (ЕҮОБ, ЕКОЕ, задачи)').toBeGreaterThan(d['div.gcd_lcm_word']);
     // декабрь: комбинаторика идёт после цепочки × ÷ (part_of_number, find_whole), подсчёт фигур — не раньше конца базы дробей

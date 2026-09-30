@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import type { Palette } from '../worlds3d';
 import { drift, gameGradient, paintNormal, recolorGround, tintMul } from './_fx789';
+import { caustics } from '../ambient_fx';
 
 const T = 'temple', H = 'hexcore';
 
@@ -102,6 +103,7 @@ export const palette: Palette = {
     // лучи света с поверхности
     const tex = rayTexture();
     ([[-9, -9, 2.6, 0.22], [-2, -12, 3.4, 0.16], [6, -10, 2.8, 0.24], [12, -4, 2.4, 0.2], [-13, 2, 2.2, 0.18], [1, -15, 4.2, 0.12]] as const).forEach(([x, z, w, tilt], i) => ray(g, x, z, w, tilt, i * 1.7, tex));
+    caustics(g, { area: [-15, 15, -13, 10], color: sunset ? 0x9ff0ff : 0xa8fff0, opacity: 0.3 });   // блики света на дне
     // пузыри и плавающая муть
     drift(g, { n: 46, area: [-13, 13, -13, 8], height: 9, speed: [0.4, 1.0], sway: 0.5, size: 0.24, colors: [0xdfffff, 0xa8fff0], seed: layout + 3, blending: THREE.NormalBlending, opacity: 0.55 });
     drift(g, { n: 40, area: [-14, 14, -14, 8], height: 8, speed: [0.05, 0.2], sway: 0.3, size: 0.1, colors: [0xffffff], seed: layout + 11, opacity: 0.5 });

@@ -3,6 +3,8 @@
 import * as THREE from 'three';
 import type { Palette } from '../worlds3d';
 import type { IslandKits } from '../island3d';
+import { ambientOf } from '../ambient';
+import { birds, leaves } from '../ambient_fx';
 
 /** Далёкие парящие островки: диск травы, каменный конус вниз, деревце сверху (x, y, z, размер). */
 const ISLETS: [number, number, number, number, string][] = [
@@ -24,8 +26,9 @@ function extra(g: THREE.Group, layout: number, kits: IslandKits) {
   const k = kits.get('isles')!, hex = kits.get('hexcore')!;
   const dusk = layout % 3;                                  // 0 день, 1 закат, 2 ночь (spots.ts)
   const top = new THREE.MeshToonMaterial({ color: 0xa6e89e, emissive: 0x5a9a55 }), rock = new THREE.MeshToonMaterial({ color: 0xc9b48e, emissive: 0x8a7a5e });
+  const isles: [THREE.Group, number][] = [];
   for (const [x, y, z, s, tree] of ISLETS) {
-    const isle = new THREE.Group(); isle.position.set(x, y, z);
+    const isle = new THREE.Group(); isle.position.set(x, y, z); isles.push([isle, y]);
     const disc = new THREE.Mesh(new THREE.CylinderGeometry(s, s * 0.92, 0.5, 9), top); disc.position.y = -0.25; disc.castShadow = disc.receiveShadow = true; isle.add(disc);
     const cone = new THREE.Mesh(new THREE.ConeGeometry(s * 0.92, s * 1.6, 9), rock); cone.rotation.x = Math.PI; cone.position.y = -0.5 - s * 0.8; isle.add(cone);
     const t = k.get(tree, { height: s * 1.5, ground: true }); isle.add(t); isle.rotation.y = x;
@@ -38,6 +41,10 @@ function extra(g: THREE.Group, layout: number, kits: IslandKits) {
     const c = hex.get(s > 2.5 ? 'cloud_big' : 'cloud_small', { shadows: false }); c.scale.setScalar(s); c.position.set(x, y, z); glow(c); g.add(c);
   }
   if (dusk) lift(g, dusk === 1 ? 0.45 : 0.42);
+  // живой воздух: острова тихо покачиваются, птицы кружат, ветер несёт лепестки
+  ambientOf(g).add(c => isles.forEach(([o, y0], i) => { o.position.y = y0 + Math.sin(c.t * 0.5 + i * 1.3) * 0.28 * c.km; o.rotation.z = Math.sin(c.t * 0.3 + i) * 0.012 * c.km; }));
+  if (dusk !== 2) birds(g, { n: 4, color: dusk === 1 ? 0x3a1830 : 0x2c3660, seed: layout + 7 });
+  leaves(g, { n: 26, colors: [0xffb3d9, 0xffffff, 0xffd6ec, 0xfff2a0], seed: layout + 8, size: 0.22, fall: [0.25, 0.55], wind: 0.7, dim: dusk === 2 ? 0.55 : 1 });
 }
 
 export const palette: Palette = {

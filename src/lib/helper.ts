@@ -25,7 +25,8 @@ export async function askBit(c: TaskContext, history: Turn[], question?: string)
   if (r.status === 429) throw 'quota' as HelperError;
   if (!r.ok) throw 'ai_unavailable' as HelperError;
   const { text } = await r.json();
-  const log = (game.save.aiLog ??= []);
+  game.save.aiLog ??= [];   // отдельной строкой: «(x ??= [])» вернул бы копию, а не массив в сохранении
+  const log = game.save.aiLog;
   log.push({ at: Date.now(), day: game.day, skill: c.item.skill, task: c.item.kz.slice(0, 200), q: question?.trim() || 'түсінбедім', a: text });
   if (log.length > 100) log.splice(0, log.length - 100);
   persist();

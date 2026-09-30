@@ -31,7 +31,7 @@ s('div.trailing_zeros', 'D', 5, 'Көбейтіндінің соңындағы �
 // Порядок по docs/PLAN.md (окт: делимость; ноя: дроби-база + весы/нули; дек: × ÷). Планировщик берёт тему с наибольшим весом (C=3 > D,I=2),
 // поэтому без «замков» дроби обгоняли делимость, а × ÷ шли раньше сложения, весов и нулей. Замки (tests/progression.test.ts):
 //  - frac.concept ждёт весь блок делимости (ЕҮОБ, ЕКОЕ, задачи);
-//  - frac.mul (а за ним div/part_of_number/find_whole) ждёт конец базы дробей (frac.mixed) и ноябрьские весы и нули —
+//  - frac.mul (а за ним div/part_of_number/find_whole) ждёт конец базы дробей (frac.mixed) и ноябрьские весы, ребусы (шифры) и нули —
 //    так × ÷ идут в декабре; сокращение остаётся на своём месте, сразу после основного свойства (PLAN: ноябрь).
 //  - logic.permutations (комбинаторика — декабрь) ждёт весы, поэтому идёт после цепочки × ÷ (у неё вес выше).
 s('frac.concept', 'C', 5, 'Жай бөлшек ұғымы', 'Понятие дроби', ['nat.ops', 'div.gcd_lcm_word'], { t: ['frac.concept_part', 'frac.concept_equal'] });
@@ -42,7 +42,7 @@ s('frac.common_denominator', 'C', 5, 'Ортақ бөлімге келтіру',
 s('frac.compare', 'C', 5, 'Бөлшектерді салыстыру', 'Сравнение дробей', ['frac.common_denominator', 'frac.magnitude'], { t: ['frac.compare_extreme', 'frac.compare_order', 'frac.compare_true'] });
 s('frac.add_sub', 'C', 5, 'Бөлшектерді қосу және азайту', 'Сложение и вычитание дробей', ['frac.common_denominator'], { t: ['frac.add_same', 'frac.add_diff', 'frac.to_whole', 'frac.rest_of_path'] });
 s('frac.mixed', 'C', 5, 'Аралас сандар', 'Смешанные числа', ['frac.add_sub'], { t: ['frac.mixed_convert', 'frac.mixed_arith', 'frac.mixed_time'] });
-s('frac.mul', 'C', 5, 'Бөлшектерді көбейту', 'Умножение дробей', ['frac.reduce', 'frac.mixed', 'div.trailing_zeros', 'logic.weighing'], { t: ['frac.mul_whole', 'frac.mul_frac', 'frac.mul_mixed', 'frac.mul_size'] });
+s('frac.mul', 'C', 5, 'Бөлшектерді көбейту', 'Умножение дробей', ['frac.reduce', 'frac.mixed', 'div.trailing_zeros', 'logic.weighing', 'logic.cryptarithm'], { t: ['frac.mul_whole', 'frac.mul_frac', 'frac.mul_mixed', 'frac.mul_size'] });
 s('frac.div', 'C', 5, 'Бөлшектерді бөлу', 'Деление дробей', ['frac.mul'], { t: ['frac.div_whole_by_frac', 'frac.div_frac_by_whole', 'frac.div_frac_frac', 'frac.div_size'] });
 s('frac.part_of_number', 'C', 5, 'Санның бөлігін табу', 'Часть от числа', ['frac.mul'], { t: ['frac.part_of_number_direct', 'frac.part_of_number_more'] });
 s('frac.find_whole', 'C', 5, 'Бөлігі бойынша санды табу', 'Число по его части', ['frac.div'], { t: ['frac.find_whole', 'frac.find_whole_story', 'frac.find_whole_rest'] });
@@ -167,6 +167,7 @@ s('logic.pairs_tournament', 'I', 5, 'Жұптар және турнир', 'Па�
 s('logic.probability', 'I', 6, 'Ықтималдық', 'Вероятность', ['frac.concept']);
 s('logic.page_digits', 'I', 5, 'Беттерді нөмірлеу', 'Нумерация страниц', ['nat.place_value'], { t: ['logic.page_digits'] });
 s('logic.seat_number', 'I', 5, 'Қатар мен орын нөмірі', 'Ряд и место (деление с остатком)', ['nat.ops']);
+s('logic.cryptarithm', 'I', 5, 'Ребус: әріп = цифр', 'Ребусы (буква = цифра)', ['nat.place_value', 'nat.ops'], { t: ['logic.crypt_lead', 'logic.crypt_two_digit', 'logic.crypt_three_digit', 'logic.crypt_extreme'] });
 s('logic.weighing', 'I', 5, 'Таразы және гірлер', 'Взвешивания и гири', ['nat.ops'], { t: ['logic.weighing_set', 'logic.weighing_range'] });
 s('logic.pigeonhole', 'I', 'olymp', 'Ең нашар жағдай', 'Наихудший случай', ['nat.ops']);
 s('logic.invariant', 'I', 'olymp', 'Өзгермейтін шама (инвариант)', 'Инвариант', ['nat.ops']);

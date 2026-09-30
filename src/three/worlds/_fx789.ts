@@ -1,6 +1,8 @@
 // Общие приёмы миров 7–9 (Вулкан, Затонувший храм, Мир великанов): окраска моделей набора и «парящие» частицы.
 // Файл без номера в имени: палитрой мира он не считается (worlds3d.ts берёт только файлы вида <номер>-<имя>.ts).
 import * as THREE from 'three';
+import { ambientOf } from '../ambient';
+import { softDot } from '../ambient_fx';
 
 /** Окрасить модели верхнего уровня острова (по имени) умножением цвета: все материалы модели становятся темнее/цветнее. */
 export function tintMul(g: THREE.Group, match: (name: string) => boolean, color: number) {
@@ -43,18 +45,12 @@ export function paintNormal(g: THREE.Group, match: (name: string) => boolean, si
   }
 }
 
-/** Мягкая круглая текстура-пятно для частиц. */
-export function dotTexture(): THREE.Texture {
-  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
-  const x = cv.getContext('2d')!, gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.8)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
-  x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
-  return new THREE.CanvasTexture(cv);
-}
+/** Мягкая круглая текстура-пятно для частиц (общая на всё приложение). */
+export const dotTexture = (): THREE.Texture => softDot();
 
 export interface Drift { n: number; area: [x0: number, x1: number, z0: number, z1: number]; height: number; speed: [min: number, max: number]; sway?: number;
   size: number; colors: number[]; rise?: 1 | -1; seed?: number; blending?: THREE.Blending; opacity?: number }
-/** Медленно летящие частицы (искры, пузыри, пыль): анимируются в onBeforeRender, отдельный цикл не нужен. */
+/** Медленно летящие частицы (искры, пузыри, пыль): двигаются от тикера острова (ambient.ts), отдельный цикл не нужен. На low видна половина. */
 export function drift(g: THREE.Group, d: Drift) {
   let s = (d.seed ?? 7) * 9301 + 49297; const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   const pos = new Float32Array(d.n * 3), col = new Float32Array(d.n * 3), spd = new Float32Array(d.n), ph = new Float32Array(d.n), c = new THREE.Color();
@@ -65,18 +61,19 @@ export function drift(g: THREE.Group, d: Drift) {
     c.set(d.colors[i % d.colors.length]); col.set([c.r, c.g, c.b], i * 3);
   }
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  const mat = new THREE.PointsMaterial({ size: d.size, map: dotTexture(), vertexColors: true, transparent: true, opacity: d.opacity ?? 1, depthWrite: false, blending: d.blending ?? THREE.AdditiveBlending, fog: false });
+  const mat = new THREE.PointsMaterial({ size: d.size, map: softDot(), vertexColors: true, transparent: true, opacity: d.opacity ?? 1, depthWrite: false, blending: d.blending ?? THREE.AdditiveBlending, fog: false });
   const pts = new THREE.Points(geo, mat); pts.frustumCulled = false; pts.renderOrder = 3;
-  let last = performance.now(); const sway = d.sway ?? 0.5;
-  pts.onBeforeRender = () => {
-    const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now; const t = now / 1000;
+  const sway = d.sway ?? 0.5, amb = ambientOf(g);
+  amb.onDensity(k => geo.setDrawRange(0, Math.max(1, Math.ceil(d.n * k))));
+  amb.add(c => {
+    const dt = c.dt * c.km, t = c.t;
     for (let i = 0; i < d.n; i++) {
       let y = pos[i * 3 + 1] + spd[i] * dt * dir;
       if (y > d.height) y -= d.height; else if (y < 0) y += d.height;
       pos[i * 3 + 1] = y; pos[i * 3] += Math.sin(t * 0.8 + ph[i]) * sway * dt;
     }
     geo.attributes.position.needsUpdate = true;
-  };
+  });
   g.add(pts); return pts;
 }
 

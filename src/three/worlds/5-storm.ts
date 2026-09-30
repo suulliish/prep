@@ -4,6 +4,7 @@ import type { Palette } from '../worlds3d';
 import type { IslandKits } from '../island3d';
 import { toonMat } from '../assets';
 import { halo } from './_fx46';
+import { lightning, rain } from '../ambient_fx';
 
 const BOLT = 0xfff07a;
 
@@ -56,6 +57,7 @@ function extra(g: THREE.Group, _layout: number, _kits: IslandKits) {
   (first.children[0] as THREE.Mesh).onBeforeRender = flick;
   g.add(first, second, third);
   g.add(road());
+  rain(g, { n: 220, seed: 3 }); lightning(g, { seed: 7 });   // ливень и редкие вспышки грозы
 }
 
 export const palette: Palette = {

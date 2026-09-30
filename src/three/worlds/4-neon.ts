@@ -3,7 +3,9 @@ import * as THREE from 'three';
 import type { Palette } from '../worlds3d';
 import type { IslandKits } from '../island3d';
 import { toonMat } from '../assets';
-import { glowBox, halo, localBox, signPlane } from './_fx46';
+import { glowBox, halo, localBox, neonLife, signPlane, type NeonItem } from './_fx46';
+import { ambientOf } from '../ambient';
+import { sparkles } from '../ambient_fx';
 
 const PINK = 0xff4fb8, CYAN = 0x3ff0ff, VIOLET = 0xb58cff, YELLOW = 0xffe14a;
 const NEONS = [PINK, CYAN, VIOLET, YELLOW];
@@ -72,7 +74,9 @@ const SKYLINE: [string, number, number, number][] = [
 ];
 
 function extra(g: THREE.Group, layout: number, kits: IslandKits) {
-  g.add(gridFloor());
+  const gf = gridFloor(), life: NeonItem[] = [];
+  g.add(gf);
+  ambientOf(g).add(c => { (gf.material as THREE.MeshBasicMaterial).map!.offset.set(0, c.t * 0.035 * c.km); });   // сетка на асфальте медленно едет
   const nk = kits.get('neon');
   if (nk) SKYLINE.forEach(([name, x, z, h], i) => { const o = nk.get(name, { height: h, ground: true }); o.position.set(x, 0, z); o.rotation.y = (i % 3 - 1) * 0.12; g.add(o); });
   let n = 0;
@@ -83,7 +87,7 @@ function extra(g: THREE.Group, layout: number, kits: IslandKits) {
       const b = localBox(o), sc = o.scale.x, W = (b.max.z - b.min.z), H = b.max.y - b.min.y, D = b.max.x - b.min.x;
       const sp = signPlane(n++ % 2 ? 'ЖАРЫҚ' : 'NEON', n % 2 ? '#3ff0ff' : '#ff4fb8', W * 0.8 / sc, H * 0.36 / sc);
       sp.position.set((b.min.x - o.position.x) / sc - 0.02 / sc - D * 0.0, (b.min.y + H * 0.78) / sc, ((b.max.z + b.min.z) / 2 - o.position.z) / sc); sp.rotation.y = -Math.PI / 2;
-      o.add(sp); o.rotation.y += Math.PI / 2;
+      life.push({ mat: sp.material as THREE.MeshBasicMaterial, kind: 'sign', phase: n * 0.37 }); o.add(sp); o.rotation.y += Math.PI / 2;
     }
     if (/^(traffic-light|road-sign|bridge-pillar|electricity)/.test(nm)) nightTint(o, 0x8f86c8);
     if (/^(building|low-detail)/.test(nm)) {
@@ -95,9 +99,9 @@ function extra(g: THREE.Group, layout: number, kits: IslandKits) {
         const rot = o.rotation.y, cx = (b.max.x + b.min.x) / 2 - o.position.x, cz = (b.max.z + b.min.z) / 2 - o.position.z, y = b.max.y + 0.03;
         const pieces: [number, number, number, number][] = [[0, d / 2, w + t, t], [0, -d / 2, w + t, t], [w / 2, 0, t, d + t], [-w / 2, 0, t, d + t]];
         const grp = new THREE.Group(); grp.position.copy(o.position); grp.rotation.y = rot;
-        for (const [px, pz, sx, sz] of pieces) { const s = glowBox(neon, sx, t, sz); s.position.set(cx + px, y, cz + pz); grp.add(s); }
-        const v = glowBox(neon, t, h * 0.8, t); v.position.set(cx + w / 2, b.min.y + h * 0.45, cz + d / 2); grp.add(v);
-        const hl = halo(neon, Math.max(w, d) * 2.6, 0.5); hl.position.set(cx, b.max.y, cz); grp.add(hl);
+        for (const [px, pz, sx, sz] of pieces) { const s = glowBox(neon, sx, t, sz); s.position.set(cx + px, y, cz + pz); grp.add(s); life.push({ mat: s.material as THREE.MeshBasicMaterial, kind: 'strip', phase: n * 1.1 + (px + pz) * 0.4 }); }
+        const v = glowBox(neon, t, h * 0.8, t); v.position.set(cx + w / 2, b.min.y + h * 0.45, cz + d / 2); grp.add(v); life.push({ mat: v.material as THREE.MeshBasicMaterial, kind: 'strip', phase: n * 1.1 + 2 });
+        const hl = halo(neon, Math.max(w, d) * 2.6, 0.5); hl.position.set(cx, b.max.y, cz); grp.add(hl); life.push({ halo: hl, kind: 'strip', phase: n * 1.1 });
         g.add(grp);
       }
     } else if (/^light-/.test(nm)) {
@@ -112,7 +116,9 @@ function extra(g: THREE.Group, layout: number, kits: IslandKits) {
   }
   // вывески: две надписи на фоне, по уголку (не в боевой полосе)
   const signs: [string, string, number, number, number, number][] = [['NEON', '#ff4fb8', -8.6, 4.4, -9.4, 0.25], ['КОД', '#3ff0ff', 8.4, 5.4, -9.6, -0.25]];
-  if (layout !== 5) for (const [txt, col, x, y, z, ry] of signs) { const s = signPlane(txt, col, 3.4, 1.5); s.position.set(x, y, z); s.rotation.y = ry; g.add(s); const hl = halo(parseInt(col.slice(1), 16), 6, 0.45); hl.position.set(x, y, z - 0.2); g.add(hl); }
+  if (layout !== 5) for (const [txt, col, x, y, z, ry] of signs) { const s = signPlane(txt, col, 3.4, 1.5); s.position.set(x, y, z); s.rotation.y = ry; g.add(s); const hl = halo(parseInt(col.slice(1), 16), 6, 0.45); hl.position.set(x, y, z - 0.2); g.add(hl); life.push({ mat: s.material as THREE.MeshBasicMaterial, halo: hl, kind: 'sign', phase: x * 0.13 }); }
+  neonLife(g, life);
+  sparkles(g, [[-9, 0.15, -3], [9.5, 0.15, -2], [-6, 0.15, 6.4], [6.5, 0.15, 6.2], [0, 0.15, -8.5], [-11, 0.15, 2], [11.5, 0.15, 3]], { colors: [PINK, CYAN, VIOLET], size: 0.4, rate: 1.4, seed: layout });   // неоновые блики на мокром асфальте
 }
 
 export const palette: Palette = {

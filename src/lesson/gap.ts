@@ -64,7 +64,8 @@ function numPool(ans: string, others: string[]): string[] {
     return [...perms(ans), ...(n > 0 ? [pad(n - 1)] : []), pad(n + 1), pad(n + 10)].filter(x => x.length === ans.length);
   }
   const n = toNum(ans);
-  const c = [n + 1, n - 1, ...others.map(toNum), n + 2, n - 2, n * 2, n + 10, n - 10, Math.round(n / 2)];
+  // n + 10 для одной цифры даёт «11» там, где такой цифры быть не может (В = 1: вариант 11): для однозначного ответа его не предлагаем
+  const c = [n + 1, n - 1, ...others.map(toNum), n + 2, n - 2, n * 2, ...(n >= 10 ? [n + 10] : []), n - 10, Math.round(n / 2)];
   return c.filter(v => Number.isFinite(v) && v >= 0).map(v => fmtLike(v, ans));
 }
 const fracPool = (a: { n: number; d: number }) => [{ n: a.d, d: a.n }, { n: a.n + 1, d: a.d }, { n: a.n, d: a.d + 1 }, { n: a.n + a.d, d: a.d }, { n: Math.max(1, a.n - 1), d: a.d }, { n: a.n * 2, d: a.d + 1 }]

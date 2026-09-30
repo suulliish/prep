@@ -1,23 +1,36 @@
 <script lang="ts">
   // Разряды как поезд: локомотив + вагоны-классы по 3 места. hl — подсвеченный вагон, zeros — светятся нули,
   // broken — Глитч стёр цифры.
-  let { digits = '4030005', hl = null, zeros = false, broken = false }: { digits?: string; hl?: 'm' | 't' | 'u' | null; zeros?: boolean; broken?: boolean } = $props();
+  // live/prev (Scene.svelte): в кадре «Көр» цифры по одной падают в вагоны (звук приземления), смена подсветки вагона — подъём.
+  import { onMount } from 'svelte';
+  import { audio } from '../../lib/audio';
+  let { digits = '4030005', hl = null, zeros = false, broken = false, live = false, prev = null }: { digits?: string; hl?: 'm' | 't' | 'u' | null; zeros?: boolean; broken?: boolean; live?: boolean; prev?: { digits?: string; hl?: string | null } | null } = $props();
+  const drop = $derived(live && (!prev || prev.digits !== digits));
+  const lift = $derived(live && !drop && (prev?.hl ?? null) !== hl && hl !== null);
+  onMount(() => {
+    if (!live) return;
+    const t: number[] = [];
+    if (drop) [420, 620].forEach((ms, k) => t.push(window.setTimeout(() => audio.play('land', { rate: 1.4 - k * 0.25 }), ms)));
+    else if (lift) t.push(window.setTimeout(() => audio.play('click', { rate: 1.5 }), 60));
+    return () => t.forEach(clearTimeout);
+  });
   const NAMES = { u: 'БІРЛІК', t: 'МЫҢ', m: 'МИЛЛИОН' } as const;
   const wagons = $derived.by(() => {
-    const out: { key: 'm' | 't' | 'u'; seats: string[] }[] = [];
+    const out: { key: 'm' | 't' | 'u'; seats: string[]; o: number }[] = [];
     const keys = ['u', 't', 'm'] as const;
-    for (let end = digits.length, k = 0; end > 0; end -= 3, k++) out.unshift({ key: keys[k], seats: digits.slice(Math.max(0, end - 3), end).split('') });
+    for (let end = digits.length, k = 0; end > 0; end -= 3, k++) out.unshift({ key: keys[k], seats: digits.slice(Math.max(0, end - 3), end).split(''), o: 0 });
+    let o = 0; out.forEach(w => { w.o = o; o += w.seats.length; });   // сквозной номер места слева направо: по нему цифры падают друг за другом
     return out;
   });
 </script>
 
-<div class="train" class:broken>
+<div class="train" class:broken class:drop class:still={live && !drop}>
   <div class="loco"><i class="chimney"></i><i class="win"></i><i class="wheel a"></i><i class="wheel b"></i></div>
   {#each wagons as w, k (w.key)}
-    <div class="wagon" class:hl={hl === w.key} class:dim={hl && hl !== w.key} style="animation-delay:{k * 90}ms">
+    <div class="wagon" class:hl={hl === w.key} class:lift={lift && hl === w.key} class:dim={hl && hl !== w.key} style="animation-delay:{k * 90}ms">
       <span class="name">{NAMES[w.key]}</span>
       <div class="seats">
-        {#each w.seats as d}<b class="seat num" class:zero={zeros && d === '0'}>{broken ? '?' : d}</b>{/each}
+        {#each w.seats as d, si}<b class="seat num" class:zero={zeros && d === '0'} style="--o:{w.o + si}">{broken ? '?' : d}</b>{/each}
       </div>
       <i class="wheel a"></i><i class="wheel b"></i>
     </div>
@@ -43,6 +56,12 @@
   .broken .seat { color: var(--glitch); border-color: var(--glitch); animation: glitch-txt .6s steps(2) infinite; }
   .broken .wagon { border-color: #7a2a63; }
   @keyframes roll-in { from { transform: translateX(-60px); opacity: 0; } }
+  .still .wagon { animation: none; }
+  .wagon.lift { animation: hl-lift .4s var(--ease-out); }
+  .drop .seat { animation: seat-drop .55s var(--ease-out) both; animation-delay: calc(.25s + var(--o) * 70ms); }
+  .drop .seat.zero { animation: seat-drop .55s var(--ease-out) both calc(.25s + var(--o) * 70ms), pop-in .4s var(--ease-out) calc(.9s + var(--o) * 70ms); }
+  @keyframes seat-drop { 0% { transform: translateY(-46px) scale(.6); opacity: 0; } 65% { transform: translateY(3px) scale(1.08); opacity: 1; } 100% { transform: none; } }
+  @keyframes hl-lift { from { transform: translateY(0); box-shadow: none; } }
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes glitch-txt { 50% { transform: translate(1px, -1px); text-shadow: -2px 0 var(--code); } }
 </style>

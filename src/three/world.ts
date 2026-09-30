@@ -12,10 +12,14 @@ import { LOOKS, DEFAULT_LOOK } from './looks';
 import { createHub, type CamView } from './hub3d';
 import { createBit, type BitMood } from './bit3d';
 import { createSkyscape } from './skyscape';
+import { createHolo, type Holo } from './holo';
+import type { HoloSpec } from './holo_spec';
 import { audio } from '../lib/audio';
 
 export type CamMode = 'hub' | 'battle' | 'portal' | 'map' | 'hero';
-export type { BitMood };
+export type { BitMood, HoloSpec };
+/** Реакция героя на объяснение: показать (point), кивнуть (nod), порадоваться верному ответу (cheer), почесать голову при ошибке (scratch). */
+export type Emote = 'point' | 'nod' | 'cheer' | 'scratch';
 
 export interface World {
   setEnergy(v: number, max: number): void;
@@ -39,6 +43,14 @@ export interface World {
   clearMob(): void;
   openChest(): Promise<void>;
   bitMood(m: BitMood): void;
+  /** «Тірі түсіндіру»: голограмма Бита над островом в режиме battle (src/three/holo.ts). spec из holoSpecFor(); null — погасить. Повтор того же spec ничего не делает. */
+  holoShow(spec: HoloSpec | null): void;
+  /** Погасить голограмму; instant — сразу и без следа (выход из урока). */
+  holoClear(instant?: boolean): void;
+  /** Ответ ребёнка на голограмму: верно — вспышка зелёным, ошибка — красный сбой. */
+  holoPulse(kind: 'correct' | 'wrong'): void;
+  /** Герой реагирует на ход объяснения. Не чаще раза в 2 с (итоги ответов cheer/scratch — чаще 0.8 с); работает только в бою, разовый клип играет только когда герой свободен (arena.emote). */
+  heroEmote(kind: Emote): void;
   celebrate(color?: number): void;
   openPortal(): void;
   /** Мастерская: купленные украшения встают на палубу, питомец (id 'pet_…' или null) ходит за героем. Можно звать до загрузки палубы. Каталог: content/ship_items.mjs. */
@@ -142,6 +154,12 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   // ---------- 3D-карта миров (своя сцена) ----------
   const map = createMap({ skyMat, starGeo, starMat, km });
   const arena = createArena({ skyMat, starGeo, starMat, km, shadows: quality === 'high', sfx: n => audio.play(n) });
+  // голограмма Бита и реакции героя на объяснения: создаются при первом показе (в хабе и на карте не стоят ни памяти, ни кадра)
+  let holo: Holo | null = null;
+  const holoOn = () => (holo ??= createHolo({ scene: arena.scene, camera: arena.camera, quality, km, sfx: (n, rate = 1) => audio.play(n, { rate }) }));
+  const heroV = new THREE.Vector3();
+  const EMOTE_CLIPS: Record<Emote, [string, number][]> = { point: [['Interact', 1.5], ['Use_Item', 1.7]], nod: [['Interact', 2]], cheer: [['Cheering', 1.15]], scratch: [['Idle_B', 1]] };
+  let emoteAt = -1e9, resultAt = -1e9, emoteN = 0;
 
   // ---------- Постобработка ----------
   let composer: EffectComposer | null = null;
@@ -238,6 +256,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       else renderer.render(map.scene, map.camera);
     } else if (mode === 'battle') {
       arena.setFog(worldFog); arena.update(dt, t);
+      holo?.update(dt, t, { screenH: canvas.clientHeight || innerHeight, hero: arena.heroPos(heroV) });
+      arena.hpVeil(holo?.level ?? 0);                                        // полоска здоровья врага под голограммой гаснет
       if (composer && renderPass) { renderPass.scene = arena.scene; renderPass.camera = arena.camera; composer.render(); }
       else renderer.render(arena.scene, arena.camera);
     } else {
@@ -254,6 +274,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     setEnergy(v, max) { hub.setEnergy(v, max); },
     setMode(m) {
       if (mode === 'map' && m !== 'map') map.abort();                   // ушли с карты: перелёт и катсцены не зависают
+      if (m !== 'battle') holo?.reset();                                // голограмма живёт только в бою
       hub.enterMode(m);                                                 // герой возвращается на место / вылетает из портала после боя
       mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? (narrow ? 0.2 : 0.08) : narrow ? 0.24 : 0.12; applyOffset(); },
     heroWalk(x, z) { return hub.heroWalk(x, z); },
@@ -269,7 +290,18 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     clearMob() { arena.clear(); },
     openChest() { return arena.victory(); },
     portalWalk() { return hub.portalWalk(); },
-    bitMood(m) { bit.setMood(m); },
+    bitMood(m) { bit.setMood(m); holo?.mood(m); },
+    holoShow(spec) { if (mode !== 'battle') return; if (spec) holoOn().show(spec); else holo?.hide(); },
+    holoClear(instant = false) { if (instant) holo?.reset(); else holo?.hide(); },
+    holoPulse(kind) { holo?.pulse(kind); },
+    heroEmote(kind) {
+      if (mode !== 'battle') return;
+      const now = performance.now(), result = kind === 'cheer' || kind === 'scratch';
+      if (result ? now - resultAt < 800 : now - emoteAt < 2000) return;
+      const [clip, speed] = EMOTE_CLIPS[kind][emoteN++ % EMOTE_CLIPS[kind].length];
+      void arena.emote(clip, speed);
+      emoteAt = now; if (result) resultAt = now;
+    },
     setShipDecor(owned, pet) { hub.setShipDecor(owned, pet); },
     showDecor(id) { return hub.showDecor(id); },
     celebrate(color = 0x3ff0ff) { if (mode === 'battle') { arena.celebrate(); return; } hub.celebrate(color); },
@@ -291,7 +323,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     dispose() {
       cancelAnimationFrame(raf); removeEventListener('resize', resize);
       canvas.removeEventListener('pointerdown', onDown); window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp);
-      hub.dispose(); arena.dispose(); renderer.dispose(); composer?.dispose();
+      holo?.dispose(); hub.dispose(); arena.dispose(); renderer.dispose(); composer?.dispose();
     },
   };
 }

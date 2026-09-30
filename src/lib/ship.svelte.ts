@@ -61,7 +61,8 @@ export function buyItem(s: Save, id: string): BuyResult {
   const have = coinsOf(s);
   if (have < it.price) return { ok: false, reason: 'poor', need: it.price - have };
   s.coins = have - it.price;
-  (s.shipOwned ??= []).push(id);
+  s.shipOwned ??= [];   // отдельной строкой: «(x ??= []).push» пишет в копию, а не в сохранение (первая покупка терялась)
+  s.shipOwned.push(id);
   if (it.slot === 'pet') s.shipPet = id;
   return { ok: true, price: it.price };
 }

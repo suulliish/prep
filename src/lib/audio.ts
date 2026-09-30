@@ -1,9 +1,12 @@
-// Звуковой движок: эффекты — готовые семплы Kenney (CC0, public/sfx/*.mp3), музыка — процедурный чиптюн без слов.
+// Звуковой движок: эффекты — готовые семплы Kenney (CC0, public/sfx/*.mp3), музыка — процедурная, без слов и без файлов:
+// казахское фэнтези (домбра, сыбызгы, дрон кобыза, ручные барабаны, колокольчики), код в src/lib/music/.
 // Семплы подгружаются и декодируются после первого нажатия (unlock). Пока семпл не загружен
 // (первый запуск офлайн, сеть упала, формат не декодируется) звук синтезируется кодом, как раньше.
 // Исследования: фоновая музыка слегка мешает чтению и памяти, но улучшает настроение
 // (Kämpfe, Sedlmeier, Renkewitz 2011). Поэтому музыка играет на карте, в бою и в меню,
 // а во время решения задачи и урока по умолчанию стихает («режим фокуса»).
+
+import { Sequencer, type Track } from './music/sequencer';
 
 export type Sfx =
   | 'click' | 'correct' | 'wrong' | 'hit' | 'crit' | 'combo' | 'xp' | 'chest'
@@ -67,6 +70,15 @@ class AudioEngine {
   private failed = new Set<Sfx>();
   private lastRetry = 0;
   private stats = { sample: 0, synth: 0 };
+  /** вкладка в фоне: музыка молчит и не планируется */
+  private hidden = false;
+
+  constructor() {
+    if (typeof document !== 'undefined') {
+      this.hidden = document.visibilityState === 'hidden';
+      document.addEventListener('visibilitychange', () => { this.hidden = document.visibilityState === 'hidden'; this.applyVolumes(); });
+    }
+  }
 
   /** Вызывать из обработчика нажатия: браузер разрешает звук только после действия пользователя. */
   unlock() {
@@ -121,14 +133,16 @@ class AudioEngine {
   }
 
   save(patch: Partial<AudioSettings>) {
+    const focusChanged = patch.musicInFocus !== undefined && patch.musicInFocus !== this.settings.musicInFocus;
     this.settings = { ...this.settings, ...patch };
     try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* приватный режим */ }
     this.applyVolumes();
+    if (focusChanged && this.mood === 'focus') this.setMood('focus', true);
   }
 
   private musicTarget() {
     const s = this.settings;
-    if (this.mood === 'silent') return 0;
+    if (this.mood === 'silent' || this.hidden) return 0;
     if (this.mood === 'focus') return s.musicInFocus === 'quiet' ? s.music * 0.25 : 0;
     return s.music;
   }
@@ -139,6 +153,13 @@ class AudioEngine {
     this.masterGain.gain.setTargetAtTime(this.settings.master, t, 0.05);
     this.sfxGain.gain.setTargetAtTime(this.settings.sfx, t, 0.05);
     this.musicGain.gain.setTargetAtTime(this.musicTarget() * (this.voiceEl && !this.voiceEl.paused ? 0.35 : 1), t, 0.4);
+    this.syncSeq();
+  }
+
+  /** Музыка не слышна (звук или музыка выключены, вкладка в фоне): секвенсор на паузе и не считает ноты. Включили: идёт дальше с того же трека. */
+  private syncSeq() {
+    if (!this.seq) return;
+    if (this.hidden || this.settings.master <= 0.001 || this.settings.music <= 0.001) this.seq.pause(); else this.seq.resume();
   }
 
   /** Настроение музыки: hub — спокойно, map — приключение, battle — энергично, focus — задача/урок. */
@@ -146,16 +167,24 @@ class AudioEngine {
     this.mood = mood;
     if (!this.ctx) return;
     this.applyVolumes();
-    if (mood === 'silent') { this.seq?.stop(); this.seq = null; return; }
-    if (mood === 'focus') { if (!this.seq) this.startTrack('hub'); return; } // фокус: та же мелодия, только тише/без звука
+    if (mood === 'silent') { this.stopTrack(); return; }
+    // фокус: «выкл» — секвенсор не крутится вовсе (экономит батарею); «тихо» — играет что играло (или «Корабль») на 25% громкости
+    if (mood === 'focus') { if (this.settings.musicInFocus === 'off') this.stopTrack(); else if (!this.seq) this.startTrack('hub'); return; }
     if (this.seq && this.seq.track === mood && !force) return;
     this.startTrack(mood);
   }
 
+  private stopTrack() { this.seq?.stop(); this.seq = null; }
+
   private startTrack(track: Track) {
-    this.seq?.stop();
-    this.seq = new Sequencer(this.ctx!, this.musicGain, this.noiseBuf, track);
-    this.seq.start();
+    this.seq?.stop();   // старый трек гаснет ~0.6 с, новый нарастает: перекрёстный переход
+    this.seq = null;
+    try {
+      const s = new Sequencer(this.ctx!, this.musicGain, this.noiseBuf, track);
+      s.start();
+      this.seq = s;
+      this.syncSeq();
+    } catch (e) { console.warn('music: не удалось запустить трек', e); }   // музыка не критична: без неё игра работает
   }
 
   /** Реплика Бита (mp3 из scripts/voice). Музыка приглушается на время речи. */
@@ -265,53 +294,7 @@ function noise(c: AudioContext, out: AudioNode, buf: AudioBuffer, t: number, dur
   env(g, t, vol, dur); s.connect(f).connect(g).connect(out); s.start(t); s.stop(t + dur + 0.05);
 }
 
-// ---------- Процедурная музыка ----------
-type Track = 'hub' | 'battle' | 'map' | 'victory';
-const TRACKS: Record<Track, { bpm: number; root: number; prog: number[][]; drums: boolean; arpType: OscillatorType; lead: boolean }> = {
-  // аккорды — ступени в полутонах от тоники
-  hub: { bpm: 84, root: 57, prog: [[0, 4, 7], [-3, 0, 4], [5, 9, 12], [7, 11, 14]], drums: false, arpType: 'triangle', lead: false },
-  map: { bpm: 104, root: 55, prog: [[0, 4, 7], [7, 11, 14], [-3, 0, 4], [5, 9, 12]], drums: true, arpType: 'square', lead: true },
-  battle: { bpm: 132, root: 52, prog: [[0, 3, 7], [-4, 0, 3], [-2, 2, 5], [0, 3, 7]], drums: true, arpType: 'square', lead: true },
-  victory: { bpm: 120, root: 60, prog: [[0, 4, 7], [5, 9, 12], [7, 11, 14], [0, 4, 7]], drums: true, arpType: 'triangle', lead: true },
-};
-const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
-
-class Sequencer {
-  private step = 0;
-  private next = 0;
-  private timer: number | null = null;
-  private seed = Math.floor(Math.random() * 1e9);
-  constructor(private c: AudioContext, private out: AudioNode, private noiseBuf: AudioBuffer, public track: Track) {}
-  private rnd() { this.seed = (this.seed * 1103515245 + 12345) & 0x7fffffff; return this.seed / 0x7fffffff; }
-  start() {
-    this.next = this.c.currentTime + 0.1;
-    const tick = () => {
-      const T = TRACKS[this.track], sixteenth = 60 / T.bpm / 4;
-      while (this.next < this.c.currentTime + 0.2) { this.schedule(this.step, this.next, sixteenth); this.step++; this.next += sixteenth; }
-    };
-    tick();
-    this.timer = window.setInterval(tick, 50);
-  }
-  stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
-  private schedule(step: number, t: number, s16: number) {
-    const T = TRACKS[this.track], c = this.c, out = this.out;
-    const bar = Math.floor(step / 16) % T.prog.length, pos = step % 16, chord = T.prog[bar];
-    // бас на сильные доли
-    if (pos % 4 === 0) tone(c, out, t, midi(T.root - 12 + chord[0]), s16 * 3.5, 'triangle', 0.22);
-    // арпеджио
-    if (pos % 2 === 0) tone(c, out, t, midi(T.root + 12 + chord[(pos / 2) % chord.length]), s16 * 1.6, T.arpType, 0.05);
-    // мелодия: простые фразы на каждые 2 такта, ноты из аккорда и пентатоники
-    if (T.lead && (pos === 0 || pos === 6 || pos === 10 || (pos === 14 && this.rnd() > 0.5))) {
-      const scale = [0, 2, 4, 7, 9, 12];
-      const n = T.root + 12 + (this.rnd() > 0.5 ? chord[Math.floor(this.rnd() * 3)] : scale[Math.floor(this.rnd() * scale.length)]);
-      tone(c, out, t, midi(n), s16 * 3, 'square', 0.035);
-    }
-    if (!T.drums) return;
-    if (pos % 8 === 0) sweep(c, out, t, 120, 40, 0.12, 'sine', 0.35);                 // бочка
-    if (pos % 8 === 4) noise(c, out, this.noiseBuf, t, 0.08, 1800, 0.12);              // малый
-    if (pos % 2 === 1) noise(c, out, this.noiseBuf, t, 0.03, 8000, 0.04);              // хэт
-  }
-}
+// Музыка: src/lib/music/ (композиция tracks.ts, голоса synth.ts, секвенсор sequencer.ts).
 
 export const audio = new AudioEngine();
 if (import.meta.env.DEV && typeof window !== 'undefined') (window as any).__audio = audio; // только dev: проверка декодирования семплов

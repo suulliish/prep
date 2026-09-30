@@ -101,7 +101,13 @@ export class Actor {
     return found;
   }
   show(part: string, on: boolean) { this.model.traverse(o => { if (o.name === part || o.name === part + '_outline') o.visible = on; }); }
-  dispose() { this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.model); }
+  dispose() {
+    this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.model);
+    // клон скелета создаёт свою текстуру костей (Skeleton.computeBoneTexture) — без dispose она копилась с каждым врагом; материалы — копии этого актёра
+    const sk = new Set<THREE.Skeleton>();
+    this.model.traverse(o => { const s = (o as THREE.SkinnedMesh).skeleton; if (s && !sk.has(s)) { sk.add(s); s.dispose(); } });
+    for (const m of this.mats) m.dispose();
+  }
 }
 
 // ---------- герой ----------

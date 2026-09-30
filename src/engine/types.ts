@@ -36,6 +36,7 @@ export interface DayRecord {
   minutesToday: number;
   minutesWeekend: number;
   extraMissions: number;
+  extraHonest?: number;      // сумма долей честных ответов по доп. миссиям дня (минуты = 15 × сумма), Session.svelte finish()
   bonuses: { reason: string; minutes: number; mastery?: boolean }[];
   hard?: string; // «что было трудно» из итога дня (id темы или 'none') — для командира
   exception?: 'sick' | 'holiday' | 'vacation';
@@ -45,6 +46,8 @@ export interface DayRecord {
   /** План дня, собранный утром: после перезагрузки страницы день продолжается по нему, а не по заново собранному
    *  (иначе пройденный день снова показывал «2/4», минуты и серия дней уменьшались). */
   plan?: import('./planner').Plan;
+  /** Доля честных ответов шага (0..1): минуты шага умножаются на неё (research D1, 30.09). Нет записи — 1 (урок, старые сохранения). */
+  honest?: Record<string, number>;
 }
 
 export interface Settings {

@@ -187,3 +187,59 @@ describe('maskText', () => {
     expect(_mask('жауабы 11/4', '11')).toBe('жауабы ▢/4');
   });
 });
+
+// Подпись кадра под пропуском не должна называть закрытое число СЛОВОМ: механика «вспомнить, а не перечитать» (maskText) прячет только цифры.
+// Найдено: «Бесінші күн» под пропуском 5, «В әрпі бірге тең» под пропуском 1, «бірге артық», «Екінші айырма» под пропуском 2.
+// Ответ 0 не проверяем: слово «нөл» в подписях стоит как предмет вопроса («неше нөл шығады?»), а не как ответ.
+const SUF = '(?:ге|ке|қа|ға|ден|тен|нен|дан|тан|де|те|да|та|ді|ті|ны|ні|ды|ның|нің|дің|тің|дың|тың|мен|пен|бен|і|ы|еу|ау|уі|еуі|інші|ыншы|нші|ншы|ыншы)?';
+const ONES: Record<number, string[]> = {
+  0: ['нөл'], 1: ['бір'], 2: ['екі', 'еке'], 3: ['үш'], 4: ['төрт'], 5: ['бес'], 6: ['алты', 'алт'], 7: ['жеті', 'жет'], 8: ['сегіз'], 9: ['тоғыз'],
+};
+const TENS: Record<number, string[]> = { 10: ['он'], 20: ['жиырма'], 30: ['отыз'], 40: ['қырық'], 50: ['елу'], 60: ['алпыс'], 70: ['жетпіс'], 80: ['сексен'], 90: ['тоқсан'] };
+const wordRe = (stems: string[], suf = SUF) => new RegExp(`^(?:${stems.join('|')})${suf}$`);
+// «он» без окончаний: «оны», «онда», «оның» — местоимения, а не число
+const RE_TEN = /^(?:он|оныншы|онға|оннан|онның)$/;
+const words = (t: string) => t.toLowerCase().match(/[a-zа-яәіңғүұқөһё]+/g) ?? [];
+/** Число-слово ответа (целое до 99) в тексте: одно слово либо «он бір», «жиырма екі». Возвращает найденный фрагмент или null. */
+function numeralWordIn(text: string, answer: string): string | null {
+  if (!/^\d{1,2}$/.test(answer)) return null;
+  const n = +answer, ws = words(text), ones = n % 10, tens = n - ones;
+  const isOne = (w: string, d: number) => wordRe(ONES[d]).test(w);
+  const isTens = (w: string, t: number) => (t === 10 ? RE_TEN.test(w) : wordRe(TENS[t]).test(w));
+  if (n < 10) { const w = ws.find(x => isOne(x, n)); return w ?? null; }
+  if (ones === 0) { const w = ws.find(x => isTens(x, tens)); return w ?? null; }
+  for (let k = 0; k < ws.length - 1; k++) if (isTens(ws[k], tens) && isOne(ws[k + 1], ones)) return `${ws[k]} ${ws[k + 1]}`;
+  return null;
+}
+
+describe('подпись кадра не называет закрытое число словом', () => {
+  it('numeralWordIn: слова, порядковые, составные; не путает с однокоренными', () => {
+    expect(numeralWordIn('В әрпі бірге тең', '1')).toBe('бірге');
+    expect(numeralWordIn('Бесінші күн — жұма', '5')).toBe('бесінші');
+    expect(numeralWordIn('Он екі күн өтті', '12')).toBe('он екі');
+    expect(numeralWordIn('Бірліктер бағаны, бірақ бірдей', '1')).toBeNull();
+    expect(numeralWordIn('Оны ондық деп атайды', '10')).toBeNull();
+    expect(numeralWordIn('Екі жұп', '5')).toBeNull();
+  });
+  for (const [skill, steps] of Object.entries(LESSONS as Record<string, any[]>)) {
+    steps.forEach((st, i) => {
+      const p = planGaps(skill, i, st);
+      const cases: [string, string, string][] = [];
+      p?.frames?.forEach((g, k) => { if (g) cases.push([`кадр ${k}`, g.answer, st.frames[k].kz ?? '']); });
+      if (st.type === 'faded') st.steps.forEach((s: any, k: number) => { if (s.blank) cases.push([`пропуск ${k}`, String(s.blank.choices[s.blank.answer]), `${st.kz} ${s.math}`]); });
+      if (!cases.length) return;
+      it(`${skill} шаг ${i}`, () => {
+        for (const [where, ans, text] of cases) expect(ans === '0' ? null : numeralWordIn(text, ans), `${where}: ответ ${ans} назван словом в «${text}»`).toBeNull();
+      });
+    });
+  }
+});
+
+describe('пропуск одной цифры не предлагает двузначные варианты', () => {
+  it('«В = [1]»: варианты одноцифровые (раньше выпадало 11)', () => {
+    for (let s = 1; s <= 40; s++) {
+      const g = frameGap('В = [1]', seeded('k' + s))!;
+      for (const o of g.options) expect(o, `вариант ${o}`).toMatch(/^\d$/);
+    }
+  });
+});

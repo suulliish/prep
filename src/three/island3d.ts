@@ -4,6 +4,9 @@
 import * as THREE from 'three';
 import { Kit } from './assets';
 import { paletteOf, type Palette, type Role } from './worlds3d';
+import { spotTime } from './spots';
+import { ambientOf, applySway, applyWater, bobLilies } from './ambient';
+import { birds, leaves, pulseEmissive, sparkles } from './ambient_fx';
 
 const TS = 3;                       // плитка KayKit (шестиугольник с вершиной к камере, ширина 2, R = 1.1547) ×3 → ширина 6
 const R = 1.1547 * TS;              // радиус описанной окружности
@@ -35,14 +38,15 @@ export const LAYOUT_ROLES: Role[][] = LAYOUTS.map(l => [...new Set(l.map(s => s[
 const PONDS: [number, number][][] = [[], [], [[-1, -1], [0, -1]], [], [], []];
 
 /** Кристаллы: пучки светящихся граней. */
-function crystals(g: THREE.Group, colors: number[], list: [number, number, number][]) {
-  const geo = new THREE.OctahedronGeometry(1, 0);
+function crystals(g: THREE.Group, colors: number[], list: [number, number, number][]): THREE.MeshToonMaterial[] {
+  const geo = new THREE.OctahedronGeometry(1, 0), mats: THREE.MeshToonMaterial[] = [];
   list.forEach(([x, z, s], i) => {
     const c = colors[i % colors.length];
-    const m = new THREE.Mesh(geo, new THREE.MeshToonMaterial({ color: c, emissive: c, emissiveIntensity: 1.1 }));
+    const m = new THREE.Mesh(geo, new THREE.MeshToonMaterial({ color: c, emissive: c, emissiveIntensity: 1.1 })); mats.push(m.material as THREE.MeshToonMaterial);
     m.scale.set(0.42 * s, 1.0 * s, 0.42 * s); m.position.set(x, 1.0 * s, z); m.rotation.y = i; m.rotation.z = 0.12 * (i % 3 - 1); m.castShadow = true; g.add(m);
     const b = new THREE.Mesh(geo, m.material); b.scale.set(0.3 * s, 0.7 * s, 0.3 * s); b.position.set(x + 0.4 * s, 0.7 * s, z + 0.2 * s); b.rotation.set(0.3, i * 2, 0.4); g.add(b);
   });
+  return mats;
 }
 const CRYSTAL_SPOTS: [number, number, number][] = [[-6.6, -3.6, 1.3], [-7.4, -2.6, 0.8], [6.8, -3.2, 1.5], [7.6, -2.0, 0.9], [-1.2, -6.6, 1.1], [2.2, -6.4, 0.8], [-9.4, 0.4, 1.0], [9.6, 0.6, 1.1]];
 
@@ -55,8 +59,8 @@ export async function loadIslandKits(worldK: number): Promise<IslandKits> {
 }
 
 /** Собрать остров. colA — цвет земли мира (из worlds.mjs), v — вариант уголка. */
-export function buildIsland(kits: IslandKits, worldK: number, colA: number, v: number): THREE.Group {
-  const g = new THREE.Group(), pal: Palette = paletteOf(worldK), hex = kits.get('hexcore')!, layout = v % LAYOUTS.length;
+export function buildIsland(kitsIn: IslandKits, worldK: number, colA: number, v: number): THREE.Group {
+  const g = new THREE.Group(), pal: Palette = paletteOf(worldK), amb = ambientOf(g), kits = amb.trackKits(kitsIn), hex = kits.get('hexcore')!, layout = v % LAYOUTS.length;
   // плитка — одна ячейка палитры: вместо текстуры ставим ровный цвет, получается точно заданный оттенок
   const flat = (tile: string, color: number) => {
     let src: THREE.Material | null = null; hex.get(tile).traverse(o => { if (!src && (o as THREE.Mesh).isMesh) src = (o as THREE.Mesh).material as THREE.Material; });
@@ -65,6 +69,7 @@ export function buildIsland(kits: IslandKits, worldK: number, colA: number, v: n
   const groundTile = pal.ground?.tile ?? 'hex_grass';
   const groundMat = flat(groundTile, pal.ground?.color ?? colA);
   const waterMat = pal.water ? flat('hex_water', pal.water) : null;
+  if (waterMat) applyWater(waterMat, amb, new THREE.Color(pal.water).lerp(new THREE.Color(0xffffff), 0.55).getHex());
   const at = (q: number, r: number) => new THREE.Vector3(Math.sqrt(3) * R * (q + r / 2), 0, 1.5 * R * r);
   const ponds = new Set(PONDS[layout].map(([q, r]) => `${q},${r}`));
   const N = 3;
@@ -86,9 +91,19 @@ export function buildIsland(kits: IslandKits, worldK: number, colA: number, v: n
   if (pal.clouds !== false) for (const [x, y, z, s] of [[-16, 5, -14, 2.4], [17, 7, -6, 2.0], [6, 11, -30, 2.6], [-10, 13, -34, 2.8]] as const) {
     const c = hex.get(s > 2.5 ? 'cloud_big' : 'cloud_small', { shadows: false }); c.scale.setScalar(s); c.position.set(x, y, z); g.add(c);
   }
-  if (pal.crystals && (layout === 5 || pal.crystalsAlways)) crystals(g, pal.crystals, CRYSTAL_SPOTS);
-  pal.extra?.(g, layout, kits);
+  if (pal.crystals && (layout === 5 || pal.crystalsAlways)) pulseEmissive(g, crystals(g, pal.crystals, CRYSTAL_SPOTS), { base: 1.1, amp: 0.3, speed: 1.6 });
+  // пруд: искорки бликов над водой
+  if (waterMat && ponds.size) sparkles(g, [...ponds].flatMap(k => { const [q, r] = k.split(',').map(Number), c = at(q, r); return [[c.x - 1.6, 0.3, c.z + 0.4], [c.x + 0.6, 0.3, c.z - 1.3], [c.x + 1.8, 0.3, c.z + 1.0], [c.x - 0.3, 0.3, c.z + 2.0]] as [number, number, number][]; }), { colors: [0xffffff, 0xbfefff], size: 0.32, seed: layout + 9 });
+  if (pal.extra) pal.extra(g, layout, kits); else villageAmbient(g, layout);
+  applySway(g, amb); bobLilies(g, amb);
   return g;
+}
+
+/** Деревня (палитра без extra): птицы за островом и листопад; ночью птиц нет, листья темнее. */
+function villageAmbient(g: THREE.Group, layout: number) {
+  const night = spotTime(layout) === 2;
+  if (!night) birds(g, { n: 3, color: spotTime(layout) === 1 ? 0x3a1830 : 0x2a1c4a, seed: layout + 1 });
+  leaves(g, { n: 22, colors: [0xf2b632, 0xe8792a, 0x9adf5c, 0xc9e04a], seed: layout + 2, dim: night ? 0.55 : 1 });
 }
 
 /** Остров для карты миров: 7 плиток вокруг центра, ориентир и деревья из палитры мира. Верх земли на y = 0.5 (герой стоит там). */
