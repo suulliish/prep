@@ -264,7 +264,7 @@ describe('дроби: умножение и деление — граф навы
     expect(skillById['frac.find_whole'].templates).toEqual(expect.arrayContaining(['frac.find_whole', 'frac.find_whole_story', 'frac.find_whole_rest']));
   });
   it('порядок навыков не изменился: frac.mul → frac.div → frac.find_whole', () => {
-    expect(skillById['frac.mul'].prereqs).toEqual(['frac.reduce']);
+    expect(skillById['frac.mul'].prereqs).toContain('frac.reduce');   // + замки порядка (весы, нули, смешанные) — см. tests/progression.test.ts
     expect(skillById['frac.div'].prereqs).toEqual(['frac.mul']);
     expect(skillById['frac.part_of_number'].prereqs).toEqual(['frac.mul']);
     expect(skillById['frac.find_whole'].prereqs).toEqual(['frac.div']);
