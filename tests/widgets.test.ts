@@ -340,3 +340,89 @@ describe('TreeBuilder / GridSquares: чистые функции и уроки �
     expect(seen).toBe(9);
   });
 });
+
+describe('LetterDigit: чистые функции и уроки недели 8', () => {
+  it('lettersOf / leadSet / columns: столбики справа налево, первые буквы многозначных чисел', async () => {
+    const t = await import('../src/widgets/letterdigit');
+    expect(t.lettersOf(['АБ', 'БА'], 'ВГВ')).toEqual(['А', 'Б', 'В', 'Г']);
+    expect([...t.leadSet(['АБ', 'БА'], 'ВГВ')].sort()).toEqual(['А', 'Б', 'В']);
+    expect([...t.leadSet(['А', 'Б'], 'ВГ')]).toEqual(['В']);                       // однозначные слагаемые ноль иметь могут
+    expect(t.columns(['АБ', 'БА'], 'ВГВ')).toEqual([{ add: ['Б', 'А'], s: 'В' }, { add: ['А', 'Б'], s: 'Г' }, { add: [], s: 'В' }]);
+  });
+  it('evalColumns: перенос знаем, пока подряд заполнены буквы слагаемых; ✔ и ✘ по столбикам', async () => {
+    const t = await import('../src/widgets/letterdigit');
+    const w = ['АБ', 'БА'], s = 'ВГВ';
+    expect(t.evalColumns(w, s, {}).map(c => c.status)).toEqual(['wait', 'wait', 'wait']);
+    // А = 4, Б = 7, В = 1: единицы 7 + 4 = 11 → 1 сходится, перенос 1
+    let cs = t.evalColumns(w, s, { А: 4, Б: 7, В: 1 });
+    expect(cs[0]).toEqual({ status: 'ok', carryIn: 0, carryOut: 1 });
+    expect(cs[1].carryIn).toBe(1); expect(cs[1].status).toBe('wait');                  // Г ещё нет
+    cs = t.evalColumns(w, s, { А: 4, Б: 7, В: 1, Г: 2 });
+    expect(cs.map(c => c.status)).toEqual(['ok', 'ok', 'ok']); expect(cs[2].carryOut).toBe(0);
+    cs = t.evalColumns(w, s, { А: 4, Б: 7, В: 1, Г: 1 });                               // забыт перенос: 11 без +1
+    expect(cs[1].status).toBe('bad');
+    expect(t.evalColumns(w, s, { А: 4, Б: 7, В: 2 })[0].status).toBe('bad');           // 11 оканчивается на 1, не на 2
+    // без буквы А перенос из единиц неизвестен: столбик десятков не судим, даже если Г уже стоит
+    expect(t.evalColumns(w, s, { Б: 7, В: 1, Г: 2 }).map(c => c.status)).toEqual(['wait', 'wait', 'wait']);
+    // а когда слагаемые известны, перенос виден и до того, как поставлена буква суммы
+    expect(t.evalColumns(w, s, { А: 4, Б: 7 }).map(c => c.carryIn)).toEqual([0, 1, 1]);
+  });
+  it('tryAssign: занятая цифра и ноль первой букве нельзя, повторная цифра той же букве можно', async () => {
+    const t = await import('../src/widgets/letterdigit');
+    const w = ['АБ', 'БА'], s = 'ВГВ';
+    expect(t.tryAssign(w, s, { А: 4 }, 'Б', 4)).toEqual({ ok: false, reason: 'used', by: 'А' });
+    expect(t.tryAssign(w, s, {}, 'В', 0)).toEqual({ ok: false, reason: 'lead0' });
+    expect(t.tryAssign(w, s, { А: 4 }, 'Г', 0)).toEqual({ ok: true, asg: { А: 4, Г: 0 } });
+    expect(t.tryAssign(w, s, { А: 4 }, 'А', 4).ok).toBe(true);
+    expect(t.holderOf({ А: 4, Б: 7 }, 7)).toBe('Б'); expect(t.holderOf({ А: 4 }, 4, 'А')).toBeNull();
+  });
+  it('isSolved: верные и неверные расстановки', async () => {
+    const t = await import('../src/widgets/letterdigit');
+    const w = ['АБ', 'БА'], s = 'ВГВ';
+    expect(t.isSolved(w, s, { А: 4, Б: 7, В: 1, Г: 2 })).toBe(true);
+    expect(t.isSolved(w, s, { А: 3, Б: 8, В: 1, Г: 2 })).toBe(true);
+    expect(t.isSolved(w, s, { А: 4, Б: 7, В: 1 })).toBe(false);                        // не все буквы
+    expect(t.isSolved(w, s, { А: 4, Б: 7, В: 1, Г: 1 })).toBe(false);                  // равенство неверно
+    expect(t.isSolved(w, s, { А: 5, Б: 6, В: 1, Г: 1 })).toBe(false);                  // равенство верно (56 + 65 = 121), но две буквы с одной цифрой
+    expect(t.isSolved(['ТЕ', 'ТЕ'], 'КЕ', { Т: 3, Е: 0, К: 6 })).toBe(true);
+    expect(t.isSolved(['А', 'Б'], 'ВГ', { А: 9, Б: 8, В: 1, Г: 7 })).toBe(true);
+    expect(t.isSolved(['А', 'Б'], 'ВГ', { А: 0, Б: 0, В: 0, Г: 0 })).toBe(false);      // нулевая первая цифра и одинаковые цифры
+  });
+  it('nextFree: по кругу, null когда всё заполнено', async () => {
+    const t = await import('../src/widgets/letterdigit');
+    const L = ['А', 'Б', 'В'];
+    expect(t.nextFree(L, {})).toBe('А'); expect(t.nextFree(L, { А: 1 }, 'А')).toBe('Б');
+    expect(t.nextFree(L, { Б: 1, В: 2 }, 'В')).toBe('А'); expect(t.nextFree(L, { А: 1, Б: 2, В: 3 })).toBeNull();
+  });
+  it('allSolutions совпадает с независимым перебором (все шесть решений АБ + БА = ВГВ)', async () => {
+    const t = await import('../src/widgets/letterdigit');
+    const sols = t.allSolutions(['АБ', 'БА'], 'ВГВ');
+    expect(sols).toHaveLength(6);
+    expect(new Set(sols.map(x => x['Г']))).toEqual(new Set([2]));
+    expect(t.allSolutions(['ТЕ', 'ТЕ'], 'КЕ').map(x => `${x['Т']}${x['Е']}${x['К']}`).sort()).toEqual(['102', '204', '306', '408']);
+  });
+  it('уроки недели 8: у каждого ребуса виджета есть решение, вопрос из after верен, буквы кириллицей', async () => {
+    const { WEEK8 } = (await import('../content/lessons_week8.mjs')) as any;
+    const { allSolutions, lettersOf } = await import('../src/widgets/letterdigit');
+    let seen = 0;
+    for (const [id, list] of Object.entries(WEEK8) as [string, any[]][]) {
+      for (const s of list.filter(x => x.type === 'widget')) {
+        const p = s.props; seen++;
+        expect(s.w, id).toBe('LetterDigit');
+        const ls = lettersOf(p.words, p.sum);
+        expect(ls.length, id).toBeLessThanOrEqual(5);                                 // помещается на экран и решается перебором
+        expect(ls.join(''), id).toMatch(/^[А-ЯӘІҢҒҮҰҚӨҺ]+$/);
+        expect(p.words.length, id).toBe(2);
+        const sols = allSolutions(p.words, p.sum);
+        expect(sols.length, id).toBeGreaterThan(0);
+        expect(sols.length, id).toBeLessThanOrEqual(12);                              // ребёнок находит решение за разумное число попыток
+        // в after названа буква, которая одна и та же во всех решениях
+        for (const m of (p.after as string).matchAll(/(\S) әрқашан (\d|нөл|бір)/g)) {
+          const val = m[2] === 'нөл' ? 0 : m[2] === 'бір' ? 1 : +m[2];
+          expect(new Set(sols.map((a: any) => a[m[1]])), `${id}: ${m[0]}`).toEqual(new Set([val]));
+        }
+      }
+    }
+    expect(seen).toBe(2);
+  });
+});
