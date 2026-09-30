@@ -84,3 +84,30 @@ export function lessonPayload(c: LessonContext, history: Turn[], question?: stri
     question: question?.trim() || undefined,
   };
 }
+
+
+/** Правило темы, как его видит ребёнок (шаг «Есте сақта»), и вопрос Бита для режима «Биткә түсіндір». */
+export interface TeachContext {
+  skill: string;
+  title: string;
+  rule: { kz: string; lines: string[] };   // строки правила целиком: ребёнок их уже прочитал, пропуск ▢ решён
+  question: string;                        // первый вопрос Бита («Бөлшекті қалай қысқартамыз? Не үшін?»)
+  examples?: string[];                     // краткий контекст из урока, необязательно
+}
+export type Verdict = 'got' | 'partial' | 'mis';
+export interface TeachReply { verdict: Verdict; reply: string; followup: string | null }
+export const MAX_TEACH_ROUNDS = 2;   // столько ответов ребёнка принимает сервер; второй — последний
+
+/** Тело запроса режима «Биткә түсіндір». Раунд сервер считает по числу ответов ребёнка в history (kid), последний ответ идёт в answer. */
+export function teachPayload(c: TeachContext, history: Turn[], answer: string) {
+  const ex = (c.examples ?? []).map(x => x.trim()).filter(Boolean).slice(0, 3);
+  return {
+    mode: 'teachback' as const,
+    topic: { skill: c.skill, title: c.title },
+    rule: [c.rule.kz, ...c.rule.lines].filter(Boolean).join(' '),
+    question: c.question,
+    examples: ex.length ? ex : undefined,
+    history: history.map(t => ({ role: t.role, text: t.text })),
+    answer: answer.trim().slice(0, 400),
+  };
+}

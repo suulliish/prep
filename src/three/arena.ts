@@ -204,6 +204,7 @@ export function createArena(d: Deps) {
   // ---------- режиссёр: план камеры ----------
   type Shot = { focus: THREE.Vector3; zoom: number; lift: number };
   const WIDE: Shot = { focus: new THREE.Vector3(0.1, 1.4, 0), zoom: 1, lift: 0.28 };
+  const EVENT_FOCUS = new THREE.Vector3(0.1, 1.5, 0);
   let shotTo = WIDE;
   const camFocus = WIDE.focus.clone(); let camZoom = 1, camLift = 0.28;
   /** Сменить план: точка интереса, приближение (<1 — ближе), высота камеры. null — общий план боя. */
@@ -250,12 +251,48 @@ export function createArena(d: Deps) {
   }
   const enemyPos = () => new THREE.Vector3(enemy ? enemy.m.a.g.position.x : ENEMY_X, (enemy?.top ?? 2.6) * 0.5, Z0);
 
-  /** Щит принял удар: искры, пульс, «ҚАЛҚАН» (text), звук, клип блока героя с отдачей. Урона нет. Промис — конец клипа блока. */
-  function block(o: { at?: THREE.Vector3; c2?: number; power?: number; text?: boolean } = {}) {
+  // Удар по щиту: 0 — держит, 1 — следующий удар пробьёт (ошибка при уверенности), 2 — уже пробит (остальные попадания залпа — только искры)
+  let brk: 0 | 1 | 2 = 0, blockText = true, onContact: (() => void) | null = null;
+  const shardMat = [0x7ff0ff, 0xffffff, 0x35e6ff].map(c => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.92, depthWrite: false }));
+  /** Осколки щита: плоские стёклышки разлетаются от руки героя, крутятся, падают и тают. */
+  function shatter(at: THREE.Vector3, n = 24) {
+    const parts = Array.from({ length: n }, (_, i) => {
+      const m = new THREE.Mesh(box, shardMat[i % 3]), s = 0.2 + Math.random() * 0.32;
+      m.scale.set(s, s * (0.6 + Math.random() * 0.9), 0.05); m.position.copy(at); m.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6); scene.add(m);
+      const a = Math.random() * Math.PI * 2, sp = 2.5 + Math.random() * 4;
+      return { m, v: new THREE.Vector3(Math.cos(a) * sp * 0.7 - 1.2, 2 + Math.random() * 4.5, Math.abs(Math.sin(a)) * sp + 0.8), w: new THREE.Vector3(Math.random() * 12 - 6, Math.random() * 12 - 6, Math.random() * 12 - 6) };
+    });
+    let life = 1.3;
+    fx.push({ update: dt => {
+      life -= dt;
+      for (const p of parts) { p.v.y -= dt * 10; p.m.position.addScaledVector(p.v, dt); p.m.rotation.x += p.w.x * dt; p.m.rotation.y += p.w.y * dt; p.m.rotation.z += p.w.z * dt; if (life < 0.45) p.m.scale.multiplyScalar(0.9); }
+      if (life <= 0) { parts.forEach(p => scene.remove(p.m)); return false; } return true;
+    } });
+  }
+  /** Щит разбит: осколки, вспышка, тряска, герой вскрикивает (Hit_B) и отлетает назад, потом возвращается на место. Урона по модели знаний нет, это только картинка. */
+  function shieldBreak(o: { at?: THREE.Vector3 }) {
+    const h = H();
+    const hand = h.bone('handslot.l')?.getWorldPosition(new THREE.Vector3()) ?? new THREE.Vector3(HERO_X + 0.6, 1.3, Z0 + 0.3);
+    shatter(hand.clone().add(new THREE.Vector3(0.3, 0.1, 0.6)));
+    burst(hand, [0x35e6ff, 0xffffff, 0x7ff0ff], 18, 6, 0.14);
+    ring(new THREE.Vector3(HERO_X + 0.3, 0.15, Z0), 0x35e6ff, 4.5);
+    vfx.shieldHit(o.at ?? V.set(HERO_X + 1.0, 1.4, Z0 + 0.8), 0xffffff, 0x35e6ff); shieldPulse = 1.1;
+    flashT = 0.14; sfx('boom'); sfx('block'); shake = Math.max(shake, 0.8); slow = Math.min(slow, 0.3); slowT = Math.max(slowT, 0.09);
+    const hit = h.play('Hit_B', { speed: 1.0 });
+    const x0 = h.g.position.x;
+    tween(0.55, u => { const k = ease(u); h.g.position.x = x0 - 1.1 * k; h.g.position.y = Math.sin(u * Math.PI) * 0.75; });
+    return (async () => { await within(hit, 1.6); await wait(0.1); h.g.position.y = 0; await walkTo(HERO_X, Z0, 0.45); h.g.rotation.y = Math.PI / 2; })();
+  }
+  /** Щит принял удар: искры, пульс, «ҚАЛҚАН» (text), звук, клип блока героя с отдачей. Урона нет. Промис — конец клипа блока.
+   *  Перед экраном «событие на весь экран» щит можно сделать пробиваемым (arena.enemyAttack({ brk: true })): тогда первый же удар разбивает его. */
+  function block(o: { at?: THREE.Vector3; c2?: number; power?: number; text?: boolean } = {}): Promise<void> {
+    const cb = onContact; onContact = null; cb?.();
+    if (brk === 1) { brk = 2; return shieldBreak(o); }
     const h = H(), pw = o.power ?? 1;
+    if (brk === 2) { burst(new THREE.Vector3(HERO_X + 0.8, 1.4, Z0), [0x35e6ff, 0xffffff], 5, 3, 0.12); sfx('block'); shake = Math.max(shake, 0.2); return Promise.resolve(); }
     burst(new THREE.Vector3(HERO_X + 0.8, 1.4, Z0), [0x35e6ff, 0xffffff], Math.round(8 * pw), 3, 0.14);
     vfx.shieldHit(o.at ?? V.set(HERO_X + 1.0, 1.4, Z0 + 0.8), 0x35e6ff, o.c2 ?? 0xff4fb8); shieldPulse = 1;
-    if (o.text) popText('ҚАЛҚАН', new THREE.Vector3(HERO_X, HERO_HEIGHT + 1.2, Z0), '#35e6ff');
+    if (o.text && blockText) popText('ҚАЛҚАН', new THREE.Vector3(HERO_X, HERO_HEIGHT + 1.2, Z0), '#35e6ff');
     sfx('block'); shake = Math.max(shake, 0.2 * pw);
     const back = h.play('Melee_Block_Hit', { speed: 1.9 });
     tween(0.35, u => { h.g.position.x = HERO_X - Math.sin(u * Math.PI) * 0.35 * Math.min(1.5, pw); });
@@ -324,7 +361,7 @@ export function createArena(d: Deps) {
     const tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), halfW = 5.4, needH = 4.8;
     const dist = Math.max(10, halfW / (tanH * Math.min(aspect, visAspect)), needH / (2 * tanH * winFrac)) * camZoom;
     uiK = Math.min(1.9, Math.max(1, 60 / (screenH / (2 * tanH * dist)))); vfx.setScale(Math.min(1.5, uiK)); hpBar.scale.setScalar(uiK);
-    const sh = shake > 0 ? (Math.random() - 0.5) * shake : 0; shake = Math.max(0, shake - dt * 1.8);
+    const sh = shake > 0 && k >= 1 ? (Math.random() - 0.5) * shake : 0; shake = Math.max(0, shake - dt * 1.8);   // «уменьшить движение»: камера не трясётся
     lookAtV.copy(camFocus);
     camera.position.set(lookAtV.x + Math.sin(t * 0.25) * 0.4 * k + sh, lookAtV.y + dist * camLift + sh, lookAtV.z + dist);
     camera.lookAt(lookAtV);
@@ -568,7 +605,7 @@ export function createArena(d: Deps) {
       await wait(0.2);
     },
     /** Удар героя. crit — удар с разворота, sup — прыжок с ударом по земле. Возвращает, повержен ли враг. */
-    async attack(opts: { crit?: boolean; sup?: boolean; dmg?: number; tech?: Technique | null } = {}) {
+    async attack(opts: { crit?: boolean; sup?: boolean; dmg?: number; tech?: Technique | null; onHit?: () => void } = {}) {
       await whenReady();
       if (!enemy) return false;
       const e = enemy, h = H(), dmg = opts.dmg ?? 1, last = e.hp - dmg <= 0;
@@ -599,7 +636,7 @@ export function createArena(d: Deps) {
         // сплющивание при ударе: враг «проседает» и пружинит обратно
         const sq = opts.sup || opts.crit ? 1.3 : 1, gs = e.m.a.g.scale, b0 = e.s0;
         tween(0.22, u => { const k = Math.sin(u * Math.PI) * (1 - u * 0.4); gs.set(b0 * (1 + 0.14 * sq * k), b0 * (1 - 0.2 * sq * k), b0 * (1 + 0.14 * sq * k)); });
-        hitDone();
+        hitDone(); opts.onHit?.();
       };
       guard = false;
       if (opts.sup) {
@@ -630,14 +667,20 @@ export function createArena(d: Deps) {
       neutral();
       return e.hp <= 0;
     },
-    /** Ход врага при ошибке: у каждого монстра свой стиль (attacks.ts) → щит героя. Урона нет. */
-    async enemyAttack() {
+    /** Ход врага при ошибке: у каждого монстра свой стиль (attacks.ts) → щит героя. Урона нет.
+     *  brk — щит пробивается (ошибка при уверенности: осколки, герой отлетает); quiet — без надписи «ҚАЛҚАН» над героем (её рисует экран);
+     *  onContact — вызывается в момент касания снаряда щита. */
+    async enemyAttack(o: { brk?: boolean; quiet?: boolean; onContact?: () => void } = {}) {
       await whenReady();
       if (!enemy) return;
       const h = H();
-      await within(attacks.run(enemy), 3.4);
-      h.g.position.x = HERO_X; guard = false; stance();
+      brk = o.brk ? 1 : 0; blockText = !o.quiet; onContact = o.onContact ?? null;
+      try { await within(attacks.run(enemy), o.brk ? 4.6 : 3.4); }
+      finally { brk = 0; blockText = true; onContact?.(); onContact = null; }
+      h.g.position.x = HERO_X; h.g.position.y = 0; h.g.rotation.y = Math.PI / 2; guard = false; stance();
     },
+    /** Событие на весь экран: камера подлетает к бойцам (при «уменьшить движение» не летит); выкл — общий план. */
+    eventShot(on: boolean) { if (on && d.km >= 1) shot(EVENT_FOCUS, 0.84, 0.2); else if (!on) shot(null); },
     /** Враг повержен: смерть, крупный план, распад на кубики и монеты. */
     async defeat() {
       await whenReady();

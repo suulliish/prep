@@ -191,7 +191,7 @@ class AudioEngine {
   }
 
   /** Реплика Бита (mp3 из scripts/voice). Музыка приглушается на время речи. */
-  say(url: string) {
+  say(url: string): HTMLAudioElement {
     if (this.voiceEl) { this.voiceEl.pause(); this.voiceDone(); }
     const el = new Audio(url);
     el.volume = this.settings.voice * this.settings.master;
@@ -199,8 +199,18 @@ class AudioEngine {
     el.onpause = () => this.applyVolumes();
     el.onended = () => { this.applyVolumes(); this.voiceDone(); };
     el.onerror = () => this.voiceDone();
-    el.play().then(() => this.applyVolumes()).catch(() => this.voiceDone());
+    // браузер не дал играть (NotAllowedError) — сообщаем слушателям как ошибку загрузки; прерывание своим же pause() ошибкой не считаем
+    el.play().then(() => this.applyVolumes()).catch((e: any) => { this.voiceDone(); if (e?.name !== 'AbortError') el.dispatchEvent(new Event('error')); });
+    return el;
   }
+  /** Оборвать реплику (выход с шага): звук замолкает, ожидающие конца реплики отпускаются. */
+  stopVoice() {
+    const e = this.voiceEl; if (!e) return;
+    this.voiceEl = null; e.onpause = e.onended = e.onerror = null;
+    e.pause(); this.applyVolumes(); this.voiceDone();
+  }
+  /** Голос слышен: громкость реплик и общая выше порога. Без звука видео-объяснение идёт в темпе чтения. */
+  voiceOn() { return this.settings.voice * this.settings.master > 0.01; }
   /** Бит сейчас говорит вслух (звук включён). Нужно, чтобы кнопка «дальше» ждала конца реплики. */
   voiceBusy() { const e = this.voiceEl; return !!e && !e.paused && !e.ended && this.settings.voice * this.settings.master > 0.01; }
   #voiceWaiters: (() => void)[] = [];

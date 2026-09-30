@@ -180,6 +180,7 @@ export function createTrainHero(env: TrainEnv) {
   /** Промис — в момент касания удара (экран показывает «МЕҢГЕРІЛДІ!»); дальше герой сам радуется и ложится на песок. */
   function victory(hitFx: () => void): Promise<void> {
     let touch: () => void = () => {}; const impact = new Promise<void>(r => (touch = r));
+    // фон могут отменить до старта (почёсывание после бонка): тогда промис всё равно разрешается, иначе кнопка урока ждёт вечно
     void bg(async (t, h) => {
       pose = 'stand';
       const onHit = () => { hitFx(); touch(); };
@@ -205,7 +206,7 @@ export function createTrainHero(env: TrainEnv) {
       { const x0 = h.g.position.x, z0 = h.g.position.z; await tw(t, 0.3, u => { h.g.position.x = x0 + 0.5 * u; h.g.position.z = z0 + (Z0 + 0.5 - z0) * u; }); if (!ok(t, h)) return; }
       pose = 'lie';
       await pl(t, h, 'Lie_Down', { speed: 1.5, then: 'Lie_Idle' });
-    });
+    }).finally(() => touch());
     return impact;
   }
 

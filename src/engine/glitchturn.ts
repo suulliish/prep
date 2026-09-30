@@ -233,13 +233,14 @@ function pickWrong(src: GlitchSrc, good: string[], rand: () => number): Choice[]
   }).map(c => ({ c, k: used(c) + rand() * 0.5 })).sort((a, b) => a.k - b.k).map(x => x.c);
 }
 
-/** Собирает ход или null: нет строк, нет подходящей ловушки, результат нигде не стоит в проверяемом вычислении «a · b = c» — тогда в бою обычный вопрос. */
-export function buildGlitch(src: GlitchSrc, rand: () => number = Math.random): GlitchTurn | null {
+/** Собирает ход или null: нет строк, нет подходящей ловушки, результат нигде не стоит в проверяемом вычислении «a · b = c» — тогда в бою обычный вопрос.
+ *  only — текст варианта: испортить именно им (разбор ошибки ребёнка: «вот решение, которое даёт твой ответ», src/engine/review.ts). */
+export function buildGlitch(src: GlitchSrc, rand: () => number = Math.random, only?: string): GlitchTurn | null {
   const right = kzPart(src.choices[src.answer].text);
   if (!right || !src.sol?.kz) return null;
   const good = mergeTo(solLines(src.sol.kz), GLITCH.maxLines);
   if (good.length < GLITCH.minLines) return null;
-  const wrongs = pickWrong(src, good, rand);
+  const wrongs = pickWrong(src, good, rand).filter(c => only === undefined || kzPart(c.text) === kzPart(only));
   if (!wrongs.length) return null;
   for (const ans of new Set([right, bare(right)])) {
     // первая строка, где ответ получается, обязана быть вычислением, которое можно проверить глазами

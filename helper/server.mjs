@@ -3,11 +3,13 @@
 // Кнопка на сайте появляется только ПОСЛЕ ответа ученика (docs/ARCHITECTURE.md: ИИ только после
 // заготовленного объяснения) — правильный ответ к этому моменту уже показан, решать за ребёнка нечего.
 // Режим «урок» (mode:'lesson', helper/lesson.mjs): объясняет шаг урока иначе; закрытые числа приходят как ▢ и не раскрываются.
+// Режим «Биткә түсіндір» (mode:'teachback', helper/teachback.mjs): ребёнок объясняет тему, Бит оценивает понимание (JSON с вердиктом).
 // Спрашивать могут только вошедшие в облако сайта (Firebase ID token проекта prep-b72a9).
 import http from 'node:http';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { GoogleGenAI } from '@google/genai';
 import { SYSTEM_LESSON, checkLesson, lessonPrompt } from './lesson.mjs';
+import { SYSTEM_TEACH, TEACH_SCHEMA, TEACH_THINKING, checkTeach, teachPrompt, parseTeach, roundOf } from './teachback.mjs';
 
 const FIREBASE_PROJECT = process.env.FIREBASE_PROJECT || 'prep-b72a9';
 const MODELS = (process.env.MODELS || 'gemini-3.7-flash,gemini-3.5-flash').split(',');
@@ -84,24 +86,33 @@ function buildPrompt(b) {
   return contents;
 }
 
-async function ask(contents, system) {
+// config — добавки к настройкам модели (для teachback: JSON-ответ по схеме); accept — разбор ответа, null = ответ не годится, пробуем следующую модель
+async function ask(contents, system, config = {}, accept = text => text) {
   let last;
   for (const model of MODELS) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-    try {
-      const r = await Promise.race([
-        ai.models.generateContent({
-          model, contents,
-          config: { systemInstruction: system, temperature: 0.4, maxOutputTokens: 2500, abortSignal: ctrl.signal },
-        }),
-        new Promise((_, rej) => ctrl.signal.addEventListener('abort', () => rej(new Error('timeout')))),
-      ]);
-      const text = (r.text || '').trim();
-      if (text) return { text, model };
-      last = new Error('empty');
-    } catch (e) { last = e; }
-    finally { clearTimeout(timer); }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+      try {
+        const r = await Promise.race([
+          ai.models.generateContent({
+            model, contents,
+            config: { systemInstruction: system, temperature: 0.4, maxOutputTokens: 2500, abortSignal: ctrl.signal, ...config },
+          }),
+          new Promise((_, rej) => ctrl.signal.addEventListener('abort', () => rej(new Error('timeout')))),
+        ]);
+        const text = (r.text || '').trim();
+        const out = text ? accept(text) : null;
+        if (out) return { out, model };
+        last = new Error(text ? 'bad_format' : 'empty');
+      } catch (e) {
+        last = e;
+        // Vertex ответил «ресурс исчерпан» (429): пауза и одна повторная попытка на той же модели, иначе сразу к запасной
+        if (e?.status === 429 && attempt === 0) { await new Promise(r => setTimeout(r, 1200)); continue; }
+      }
+      finally { clearTimeout(timer); }
+      break;
+    }
   }
   throw last;
 }
@@ -127,19 +138,26 @@ const server = http.createServer(async (req, res) => {
   for await (const chunk of req) { body += chunk; if (body.length > 20000) return send(res, origin, 413, { error: 'too_big' }); }
   let b;
   try { b = JSON.parse(body); } catch { return send(res, origin, 400, { error: 'bad_json' }); }
-  // режим «урок» (mode:'lesson') — шаг урока; без mode — разобранная задача практики
-  const lesson = b?.mode === 'lesson';
-  if (b?.mode !== undefined && b.mode !== 'practice' && !lesson) return send(res, origin, 400, { error: 'bad_mode' });
-  if (lesson) {
-    const bad = checkLesson(b);
+  // режим «урок» (mode:'lesson') — шаг урока; «Биткә түсіндір» (mode:'teachback') — объяснение ребёнка; без mode — разобранная задача практики
+  const lesson = b?.mode === 'lesson', teach = b?.mode === 'teachback';
+  if (b?.mode !== undefined && b.mode !== 'practice' && !lesson && !teach) return send(res, origin, 400, { error: 'bad_mode' });
+  if (lesson || teach) {
+    const bad = lesson ? checkLesson(b) : checkTeach(b);
     if (bad) return send(res, origin, 400, { error: bad });
   } else if (!b?.task?.text || !b?.task?.correct) return send(res, origin, 400, { error: 'no_task' });
   if (!quotaOk(who.uid)) return send(res, origin, 429, { error: 'quota' });
 
   try {
     const t0 = Date.now();
-    const { text, model } = await ask(lesson ? lessonPrompt(b) : buildPrompt(b), lesson ? SYSTEM_LESSON : SYSTEM);
-    console.log(JSON.stringify({ uid: who.uid, mode: lesson ? 'lesson' : 'practice', model, ms: Date.now() - t0, q: !!b.question, ...(lesson ? { step: b.step.type, skill: clip(b.topic?.skill, 60) } : {}) }));
+    const mode = teach ? 'teachback' : lesson ? 'lesson' : 'practice';
+    if (teach) {
+      const round = roundOf(b);
+      const { out, model } = await ask(teachPrompt(b), SYSTEM_TEACH, { responseMimeType: 'application/json', responseSchema: TEACH_SCHEMA, thinkingConfig: TEACH_THINKING }, t => parseTeach(t, round));
+      console.log(JSON.stringify({ uid: who.uid, mode, model, ms: Date.now() - t0, skill: clip(b.topic?.skill, 60), round, verdict: out.verdict }));
+      return send(res, origin, 200, out);
+    }
+    const { out: text, model } = await ask(lesson ? lessonPrompt(b) : buildPrompt(b), lesson ? SYSTEM_LESSON : SYSTEM);
+    console.log(JSON.stringify({ uid: who.uid, mode, model, ms: Date.now() - t0, q: !!b.question, ...(lesson ? { step: b.step.type, skill: clip(b.topic?.skill, 60) } : {}) }));
     send(res, origin, 200, { text });
   } catch (e) {
     console.error('explain failed', String(e));

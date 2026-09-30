@@ -2,13 +2,15 @@
   // Урок-миссия (docs/ARCHITECTURE.md 4.6, GAME_LOOP.md 19) как тренировка: вместо врага на площадке манекен, мишени и доска, полоска показывает
   // освоение приёма темы. Верный ответ — удар по манекену, неверный — манекен шлёпает героя (бонк), связка на «Өзің», ошибка Глитча — манекен рассыпается на доски,
   // мишени в мини-игре, в конце «Есте сақта» — карточка приёма. Бой проверяет, тренировка учит: в уроке нет врага, здоровья и атак врага.
-  // Мақсат → Қолмен → Болжа → Көр (анимированная сцена) → Өзің → Неге? → Глитчтің қатесі → Шағын ойын → Есте сақта → возврат к цели (приём освоен).
+  // Мақсат → Қолмен → Болжа → Көр (видео-объяснение под голос Бита, src/lesson/ExampleVideo.svelte) → Өзің → Неге? → Глитчтің қатесі → Шағын ойын → Есте сақта → возврат к цели (приём освоен).
   import { onMount, tick } from 'svelte';
   import Bit from '../ui/Bit.svelte';
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
   import Confirm from '../ui/Confirm.svelte';
   import TechCard from '../lesson/TechCard.svelte';
+  import NotebookCard from '../lesson/NotebookCard.svelte';
+  import TeachBack from '../lesson/TeachBack.svelte';
   import LessonHelper from '../lesson/LessonHelper.svelte';
   import { toast } from '../ui/notify.svelte';
   import { ReadGate, readMs } from '../lib/readgate.svelte';
@@ -27,15 +29,17 @@
   import VOICED from '../../content/voice_lessons.json';
   import MathLine from '../lesson/MathLine.svelte';
   import Gap from '../lesson/Gap.svelte';
-  import { planGaps, maskText } from '../lesson/gap';
-  import { hasHighlight } from '../lesson/rich';
+  import { planGaps } from '../lesson/gap';
+  import ExampleVideo from '../lesson/ExampleVideo.svelte';
+  import Karaoke from '../lesson/Karaoke.svelte';
+  import { VideoPlayer } from '../lesson/video.svelte';
   // @ts-ignore
   import { techniqueOf } from '../../content/techniques.mjs';
   import { fitZoom } from '../lesson/fit';
   import Faded from '../lesson/Faded.svelte';
   import BugHunt from '../lesson/BugHunt.svelte';
   import Blitz from '../lesson/Blitz.svelte';
-  import Scene from '../lesson/Scene.svelte';
+  import Scene, { resetScene } from '../lesson/Scene.svelte';
   import GlitchSays from '../lesson/GlitchSays.svelte';
   import DivideGame from '../widgets/DivideGame.svelte';
   import FactorTree from '../widgets/FactorTree.svelte';
@@ -84,11 +88,18 @@
   let askExit = $state(false);
   let ready = $state(false);
   let frame = $state(0);
+  // видео-объяснение «Көр»: плеер живёт, пока открыт шаг (создаётся в enter, гасится при смене шага и выходе)
+  let vid = $state.raw<VideoPlayer | null>(null);
+  let reduced = $state(false);
+  let hidden = $state(false);
   let pick = $state<number | null>(null);
   let showSkip = $state(false);
   let earned = $state(0);
   let card = $state(false);       // карточка приёма открыта
-  let cardSeen = false;
+  // «Биткә түсіндір» после правила (docs/GAME_LOOP.md): ребёнок объясняет тему своими словами, ИИ или меню проверяет понимание
+  let teach = $state(false);
+  let notebook = $state(false);
+  let cardSeen = false, teachSeen = false;
   let stepDone = $state(false);   // faded/blitz: шаг завершён (для ИИ-помощника)
   let bugFound = $state(false);
   let won = $state(false);
@@ -111,14 +122,26 @@
   const curGap = $derived(step.type === 'example' ? gaps?.frames?.[frame] ?? null : step.type === 'rule' ? gaps?.rule?.gap ?? null : null);
   const gapKey = $derived(`${i}:${frame}`);
   const gapOpen = $derived(!!curGap && !solved[gapKey]);
-  const frameText = (s: any, k: number) => [s.frames[k]?.math, s.frames[k]?.kz].join(' ');
   const fr = $derived(step.type === 'example' ? step.frames[frame] : null);
 
+  function makeVideo(s: any) {
+    const at = i;
+    const v = new VideoPlayer({
+      frames: s.frames.map((f: any, k: number) => ({ kz: f.kz ?? '', math: f.math, url: voiceUrl(`${at}_f${k}`) })),
+      deps: { say: u => audio.say(u), stop: () => audio.stopVoice(), voiceOn: () => audio.voiceOn() },
+      gapOpen: k => !!gaps?.frames?.[k] && !solved[`${at}:${k}`],
+      onframe: k => (frame = k),
+      onreplay: resetScene,
+    });
+    v.start();
+    return v;
+  }
   function enter() {
     const s = steps[i];
     ready = ['say', 'goal', 'rule'].includes(s.type) || (s.type === 'example' && s.frames.length <= 1);
     frame = 0; pick = null; showSkip = false; bugFound = false; stepDone = false; fadedHits = 0;
     clearTimeout(skipTimer); gate.stop();
+    vid?.destroy(); vid = s.type === 'example' ? makeVideo(s) : null;
     // тренировочная площадка: глитч и мишени по шагу, доска пишет название приёма
     W.world?.trainGlitch(s.type === 'bug');
     W.world?.trainTargets(s.type === 'blitz' ? Math.max(1, s.count) : 2);
@@ -127,7 +150,6 @@
     if (s.type === 'rule' && tech) { W.world?.trainBoard(tech.kz); if (!cine) W.world?.trainMastered(tech.color); }
     if (s.type === 'say') gate.start(readMs(s.kz));
     if (s.type === 'rule') gate.start(readMs(s.kz, ...s.lines));
-    if (s.type === 'example') gate.start(readMs(s.kz, frameText(s, 0)));
     if (s.type === 'faded') setTimeout(() => react('self'), 400);
     if (s.type === 'bug') setTimeout(() => react('bug'), 400);
     if (s.type === 'why') setTimeout(() => react('think'), 400);
@@ -137,14 +159,19 @@
   onMount(() => {
     const mq = matchMedia(LAND); land = mq.matches;
     const onLand = (e: MediaQueryListEvent) => (land = e.matches); mq.addEventListener('change', onLand);
+    const rm = matchMedia('(prefers-reduced-motion: reduce)'); reduced = rm.matches;
+    const onRm = (e: MediaQueryListEvent) => (reduced = e.matches); rm.addEventListener('change', onRm);
+    const onVis = () => (hidden = document.hidden); document.addEventListener('visibilitychange', onVis);
     W.dim = false; W.world?.setMode('battle'); W.world?.bitMood('idle');
     const v = W.world?.setSpot(skill);   // урок и практика темы — в одном уголке мира
     if (v !== undefined) setTimeout(() => { const c = sceneCenter(0.3); floatText(`${currentWorld().kz} · ${SPOT_KZ[v]}`, c.x, c.y, '#ffc94a', true); }, 400);
     if (tech) W.world?.trainBoard(`Бүгінгі тәсіл: ${tech.kz}`);
     (W.world?.arrive() ?? Promise.resolve()).then(() => W.world?.setTraining(true)).then(() => (cine = false));
     audio.setMood('training'); enter();
-    return () => { clearTimeout(skipTimer); W.world?.holoClear(true); W.world?.clearMob(); mq.removeEventListener('change', onLand); };
+    return () => { clearTimeout(skipTimer); vid?.destroy(); W.world?.holoClear(true); W.world?.clearMob(); mq.removeEventListener('change', onLand); rm.removeEventListener('change', onRm); document.removeEventListener('visibilitychange', onVis); };
   });
+  // видео стоит, пока открыт вопрос о выходе, карточка приёма или вкладка в фоне
+  $effect(() => { vid?.hold(askExit || card || hidden); });
   // «Тірі түсіндіру» (docs/GAME_LOOP.md 17): Бит проецирует голограмму того, о чём кадр; герой на каждый новый кадр кивает или показывает.
   // Пропуск D11 не выдаётся: голограмма берёт тот же текст с ▢, что и карточка, и заполняет его вместе с ней.
   let liveKey = '';
@@ -166,7 +193,8 @@
   // неверный ответ: манекен шлёпает героя, потом герой чешет голову
   // сколько пропусков «Өзің» уже вписано: каждый верный — следующий удар связки (onstep)
   let fadedHits = 0, strikeN = 0;
-  const bonk = () => { W.world?.trainBonk().then(() => W.world?.heroEmote('scratch')); };
+  // после победы в финале почёсывание от прежнего бонка не играем: оно оборвало бы победный удар
+  const bonk = () => { W.world?.trainBonk().then(() => { if (!won) W.world?.heroEmote('scratch'); }); };
   // связка на «Өзің»: три удара подряд без клинка в ножнах (без ошибок — с вспышкой на третьем), с ошибками — два
   function combo(clean: boolean) {
     const n = clean ? 3 : 2; let last: Promise<void> | undefined;
@@ -174,7 +202,6 @@
     if (clean) last?.then(() => W.world?.heroEmote('cheer'));
   }
   function widgetDone() { audio.play('correct'); W.world?.heroEmote('cheer'); reward(0); }
-  function go2(k: number) { if (k < 0 || k >= step.frames.length) return; const fresh = k > frame; frame = k; audio.play('click'); if (fresh) gate.start(readMs(frameText(step, k))); if (frame === step.frames.length - 1) ready = true; }
   async function choose(k: number) {
     if (pick !== null && step.type !== 'final') return;
     if (step.type === 'final' && won) return;
@@ -190,7 +217,7 @@
       if (!ok) { audio.play('wrong'); flash('#ff9a6b'); bonk(); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake'); return; }
       won = true; audio.play('crit'); react('win');
       // разбег, прыжок и удар с разворотом; промис — в момент касания, радость и отдых лёжа герой доигрывает сам
-      await W.world?.trainVictory();
+      await Promise.race([W.world?.trainVictory(), new Promise(r => setTimeout(r, 4000))]);   // кнопка не ждёт анимацию дольше 4 с
       W.world?.bitMood('happy');
       audio.play('levelup'); floatText('МЕҢГЕРІЛДІ!', sceneCenter(0.28).x, sceneCenter(0.28).y, techHex, true);
       sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#ffc94a', '#3ff0ff', '#b58cff'], 90, 10);
@@ -208,35 +235,30 @@
   // после «Есте сақта» ребёнок получает карточку приёма; закрыл — идём дальше
   function next() {
     if (step.type === 'rule' && tech && !replay && !cardSeen) { cardSeen = true; card = true; return; }
+    if (step.type === 'rule' && !replay && !teachSeen) { teachSeen = true; teach = true; return; }
     advance();
   }
   function advance() {
     if (i < steps.length - 1) { i++; if (!replay) { game.save.lessonPos = { skill, step: i }; persist(); } enter(); audio.play('click'); return; }
     if (replay) { W.world?.trainStep(''); audio.play('mission'); go({ name: 'album' }); return; }
     W.world?.trainStep('');   // герой встаёт, если лежал
-    (game.save.skills[skill] ??= blankSkill()).lessonDone = true;
+    game.save.skills[skill] ??= blankSkill();
+    game.save.skills[skill].lessonDone = true;
     delete game.save.lessonPos;
     persist(); audio.play('mission');
-    go({ name: 'session', block: 'new' });
+    notebook = true;   // «Дәптер»: сначала пишет на бумаге, потом тренировка
   }
-  const isExample = $derived(step.type === 'example' && step.frames.length > 1);
-  const moreFrames = $derived(isExample && frame < step.frames.length - 1);
   const primaryLabel = $derived(
-    moreFrames ? 'Келесі кадр' : step.type === 'goal' ? 'Жаттығуды бастау' : i < steps.length - 1 ? 'Келесі'
+    step.type === 'goal' ? 'Жаттығуды бастау' : i < steps.length - 1 ? 'Келесі'
     : replay ? 'Альбомға қайту' : 'Жаттығуға');
-  // D12: «прочитал» — касание подсвеченной части открывает «дальше» раньше таймера (таймер остаётся запасным)
-  function readTap(e: Event) {
-    if (!gate.on) return;
-    gate.stop(); gate.done = true; audio.play('correct');
-    const c = centerOf(e.currentTarget as HTMLElement); sparksAt(c.x, c.y, ['#ffc94a', '#3ff0ff'], 16);
+  // D11: верный вариант в пропуске открывает число; в видео-объяснении после него идёт голос кадра, в «Есте сақта» — «дальше»
+  function gapSolved() {
+    solved[gapKey] = true; W.world?.holoPulse('correct'); gate.stop(); gate.done = true; vid?.gapSolved();
+    if (nextBtn) { const c = centerOf(nextBtn); sparksAt(c.x, c.y - 40, ['#5ce39c', '#ffc94a'], 18); }
   }
-  // D11: верный вариант в пропуске тоже считается «прочитал»
-  function gapSolved() { solved[gapKey] = true; W.world?.holoPulse('correct'); gate.stop(); gate.done = true; if (nextBtn) { const c = centerOf(nextBtn); sparksAt(c.x, c.y - 40, ['#5ce39c', '#ffc94a'], 18); } }
-  const canTap = $derived(gate.on && !gapOpen);
   function primary() {
     if (gapOpen) { audio.play('click'); toast('Алдымен жасырылған санды тап'); return; }
     if (gate.on) { gate.nope(); audio.play('click'); toast('Алдымен оқы — батырма зарядталып жатыр'); return; }
-    if (moreFrames) return go2(frame + 1);
     if (!ready) { toast(step.type === 'widget' ? 'Алдымен тапсырманы орында' : 'Алдымен жауап таңда'); audio.play('click'); return; }
     next();
   }
@@ -245,19 +267,30 @@
     const t = step.type;
     if (t === 'say' || t === 'goal') return { text: step.kz, mood: 'wow', compact: t === 'goal', voice: voiceUrl(i) };
     if (t === 'widget') return { text: step.kz, mood: 'think', compact: true, voice: voiceUrl(i) };
-    if (t === 'example') {
-      if (!fr?.kz) return null;
-      const hide = !!curGap?.mask && !solved[gapKey];                // подпись называет спрятанное число: до решения прячем его и не озвучиваем
-      return { text: hide ? maskText(fr.kz, curGap!.answer) : fr.kz, mood: 'think', compact: true, voice: hide ? undefined : voiceUrl(`${i}_f${frame}`) };
-    }
-    if (t === 'faded') return { text: 'Енді өзің! Бұзылған модульдерді жөнде.', mood: 'think', compact: true };
+    if (t === 'faded') return { text: 'Енді өзің! Бұзылған модульдерді жөнде.', mood: 'think', compact: true, voice: voiceUrl(i) };
     if (t === 'blitz') return blitzPhase === 'play' ? null : { text: step.kz, mood: 'wow', compact: true };
-    if (['predict', 'why', 'quiz', 'final'].includes(t)) return { text: bitLine, mood: pick === null || pick !== step.answer ? 'think' : 'happy', compact: true };
+    if (['predict', 'why', 'quiz', 'final'].includes(t)) return { text: bitLine, mood: pick === null || pick !== step.answer ? 'think' : 'happy', compact: true, voice: answerVoice };
     return null;
   });
   // окно 3D-сцены: на «читательских» шагах повыше, на шагах с заданием — низкое (задаче нужно место, DESIGN_SYSTEM 6)
   const sceneSize = $derived(step.type === 'say' ? 'short' : 'strip');
+  // пять коротких вариантов (дроби, числа) — в три колонки: две строки вместо трёх, условие задачи не уходит под варианты на низком экране
+  const tinyChoices = $derived(['predict', 'why', 'quiz', 'final'].includes(step.type) && (step.choices?.length ?? 0) >= 5 && Math.max(...step.choices.map((c: string) => c.length)) <= 9);
   const longChoices = $derived(['predict', 'why', 'quiz', 'final'].includes(step.type) && Math.max(...(step.choices ?? ['']).map((c: string) => c.length)) > 22);
+  // голос Бита на шагах с выбором: до ответа читает вопрос, после — разбор (_reveal у прогноза, _why у «Неге?» и у выигранного финала)
+  const answerVoice = $derived(pick === null ? voiceUrl(i)
+    : step.type === 'predict' ? voiceUrl(`${i}_reveal`)
+    : step.type === 'final' ? (won ? voiceUrl(`${i}_why`) : '') : voiceUrl(`${i}_why`));
+  // «Есте сақта» и «Глитчтің қатесі» идут без пузыря Бита: голос шага играет сам; у правила с пропуском после решения — полная версия (_full)
+  let spokeKey = '';
+  $effect(() => {
+    if (cine) return;
+    const t = step.type; if (t !== 'rule' && t !== 'bug') return;
+    const full = t === 'rule' && !!curGap && !!solved[gapKey];
+    const k = `${i}:${full}`; if (k === spokeKey) return; spokeKey = k;
+    const u = full ? voiceUrl(`${i}_full`) : voiceUrl(i);
+    if (u) audio.say(u);
+  });
   const bitLine = $derived.by(() => {
     if (step.type === 'predict') return pick === null ? `${game.save.heroName}, алдымен болжап көр — қателесуден қорықпа!` : (pick === step.answer ? 'Дәл таптың! ' : 'Қызық болжам! ') + step.reveal;
     if (step.type === 'why' || step.type === 'quiz') return pick === null ? 'Қалай ойлайсың?' : pick === step.answer ? 'Дұрыс! ' + step.why : 'Жақын, бірақ: ' + step.why;
@@ -286,7 +319,8 @@
   {/snippet}
 
   {#snippet overlay()}
-    {#if land && bit}<div class="say">{#key i}{@render bitView()}{/key}</div>{/if}
+    {#if land && vid && fr}<div class="say"><Karaoke {vid} text={fr.kz} {reduced} /></div>
+    {:else if land && bit}<div class="say">{#key i}{@render bitView()}{/key}</div>{/if}
   {/snippet}
 
   {#key i}
@@ -305,24 +339,7 @@
         {#if !land}{@render bitView()}{/if}
         <div class="widget pe" use:fitZoom={{ min: SELF_FIT.includes(step.w) ? 1 : 0.8 }}><Comp {...step.props} ondone={widgetDone} /></div>
       {:else if step.type === 'example'}
-        <div class="hrow"><span class="tag c-example">{CHIP.example}</span><h2 class="h"><MathLine text={step.kz.replace(/^Көр:\s*/, '')} inherit /></h2></div>
-        {#if step.scene || fr.scene}
-          {#key frame}
-            <Scene name={fr.scene ?? step.scene} s={fr.s} live hide={curGap && !solved[gapKey] ? curGap.answer : null} />
-            {#if fr.math}<div class="paper mline appear"><MathLine text={curGap ? curGap.text : fr.math} fill={curGap && solved[gapKey] ? curGap.answer : null} big ontap={canTap && hasHighlight(curGap ? curGap.text : fr.math) ? readTap : undefined} /></div>{/if}
-            {#if gapOpen && curGap}<Gap options={curGap.options} answer={curGap.answer} onsolved={gapSolved} />
-            {:else if fr.math && hasHighlight(fr.math) && (gate.on || gate.done)}<p class="tip" class:off={!canTap} aria-hidden={!canTap}>Сары бөлікті түртсең, батырма ашылады</p>{/if}
-            {#if !land}<div class="appear">{@render bitView()}</div>{/if}
-          {/key}
-          <div class="fdots" aria-label="Кадр {frame + 1} / {step.frames.length}">{#each step.frames as _, k}<button class:on={k === frame} class:seen={k < frame} onclick={() => k <= frame && go2(k)} aria-label="Кадр {k + 1}"></button>{/each}</div>
-        {:else}
-          <ol class="paper frames">
-            {#each step.frames.slice(0, frame + 1) as f, k}
-              <li class="appear" class:cur={k === frame}>{#if f.math}<MathLine text={k === frame && curGap ? curGap.text : f.math} fill={k === frame && curGap && solved[gapKey] ? curGap.answer : null} big={k === frame} ontap={k === frame && canTap && hasHighlight(f.math) ? readTap : undefined} />{/if}<span><MathLine text={k === frame && curGap?.mask && !solved[gapKey] ? maskText(f.kz, curGap.answer) : f.kz} inherit /></span></li>
-            {/each}
-          </ol>
-          {#if gapOpen && curGap}<Gap options={curGap.options} answer={curGap.answer} onsolved={gapSolved} />{/if}
-        {/if}
+        {#if vid}<ExampleVideo {vid} {step} gap={curGap} solved={!!solved[gapKey]} {land} {reduced} label={primaryLabel} onsolved={gapSolved} onnext={next} />{/if}
       {:else if step.type === 'faded'}
         {#if !land}{@render bitView()}{/if}
         <div class="paper"><Faded task={step.kz} steps={step.steps} onstep={k => { fadedHits = k; W.world?.trainStrike('combo', Math.min(3, k)); }} onmiss={bonk} ondone={clean => { stepDone = true; if (fadedHits) { if (clean) W.world?.heroEmote('cheer'); } else combo(clean); reward(clean ? 8 : 3); }} /></div>
@@ -346,7 +363,7 @@
           {#if step.type === 'final'}<Icon name={won ? 'check' : 'lock'} fill={won ? 'var(--ok)' : 'var(--gold)'} size={24} />{/if}
           <p class="q"><MathLine text={step.kz} inherit /></p>
         </div>
-        <div class="choices" class:one={longChoices}>
+        <div class="choices" class:one={longChoices} class:tiny={tinyChoices}>
           {#each step.choices as c, k}
             <button class="ans" class:right={pick !== null && k === step.answer && (step.type !== 'final' || won)} class:wrong={pick === k && k !== step.answer}
               disabled={step.type === 'final' ? won : pick !== null} onclick={() => choose(k)}>
@@ -360,14 +377,25 @@
   <LessonHelper ctx={lessonCtx} />
 
   {#snippet footer()}
+    {#if step.type !== 'example'}
     {#if showSkip && !ready}<button class="btn ghost" onclick={() => (ready = true)}>Өткізу</button>{/if}
-    <button bind:this={nextBtn} class="btn big grow {(ready || moreFrames) && !gapOpen ? (won || step.type === 'goal' ? 'primary' : 'go') : 'wait'}" class:charging={gate.on && !gapOpen} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={primary}>
-      {primaryLabel}<Icon name="chevron" fill={(ready || moreFrames) && !gapOpen ? 'var(--outline)' : '#d7dcf5'} size={20} />
+    <button bind:this={nextBtn} class="btn big grow {ready && !gapOpen ? (won || step.type === 'goal' ? 'primary' : 'go') : 'wait'}" class:charging={gate.on && !gapOpen} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={primary}>
+      {primaryLabel}<Icon name="chevron" fill={ready && !gapOpen ? 'var(--outline)' : '#d7dcf5'} size={20} />
     </button>
+    {/if}
   {/snippet}
 </Screen>
 
-{#if card && tech}<TechCard name={tech.kz} color={tech.color} fx={tech.fx} onclose={() => { card = false; advance(); }} />{/if}
+{#if card && tech}<TechCard name={tech.kz} color={tech.color} fx={tech.fx} onclose={() => { card = false; if (!replay && !teachSeen) { teachSeen = true; teach = true; } else advance(); }} />{/if}
+{#if notebook}<NotebookCard {skill} onclose={() => { notebook = false; go({ name: 'session', block: 'new' }); }} />{/if}
+{#if teach && step.type === 'rule'}
+  <div class="teach-veil" role="dialog" aria-modal="true" aria-label="Биткә түсіндір">
+    <div class="teach-box">
+      <TeachBack {skill} title={skillTitle(skill).kz} rule={{ kz: step.kz, lines: step.lines }}
+        ondone={() => { teach = false; advance(); }} />
+    </div>
+  </div>
+{/if}
 
 <Confirm open={askExit} title="Миссиядан шығасың ба?" text="Қай қадамда тұрғаның сақталады — кейін осы жерден жалғастырасың."
   yes="Шығу" no="Жалғастыру" onyes={leave} onno={() => (askExit = false)} />
@@ -392,16 +420,6 @@
   .tag.c-blitz { background: var(--ok); }
   .tag.c-why, .tag.c-predict { background: var(--crystal); }
   .widget { background: var(--deep); border: 3px solid var(--outline); padding: 10px 8px; border-radius: 16px; }
-  .hrow { display: flex; align-items: center; gap: 10px; }
-  .h { font-size: 19px; line-height: 1.2; text-shadow: 0 2px 0 var(--outline); min-width: 0; }
-  .mline { display: flex; justify-content: center; }
-  .fdots { display: flex; justify-content: center; gap: 8px; }
-  .fdots button { width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 2px solid var(--outline); background: #0b1030; cursor: pointer; }
-  .fdots button.seen { background: var(--code-deep); }
-  .fdots button.on { background: var(--code); transform: scale(1.3); }
-  .frames { margin: 0; padding: 14px 16px 14px 36px; display: grid; gap: 12px; font-size: 18px; }
-  .frames li { opacity: .5; display: grid; gap: 4px; }
-  .frames li.cur { opacity: 1; }
   .lock, .qbox { display: flex; align-items: center; gap: 12px; }
   .lock.long { font: 800 19px/1.35 var(--disp); }
   .lock :global(.icon), .lock > :global(svg) { flex: none; }
@@ -411,16 +429,15 @@
   .q { font-size: 19px; font-weight: 800; }
   .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
   .choices.one { grid-template-columns: minmax(0, 1fr); }
+  .choices.tiny { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   /* варианты закреплены внизу панели: даже если условие длинное и панель прокручивается, ответы не уезжают под кнопку */
   .choices { position: sticky; bottom: 0; z-index: 2; margin: 0 -14px; padding: 12px 14px 4px; background: linear-gradient(180deg, transparent, var(--panel-2) 12px); }
   .choices .ans { min-width: 0; min-height: 48px; padding: 6px 10px; gap: 8px; font-size: clamp(15px, 4.4vw, 19px); }
   .choices .ans .l { width: 26px; height: 26px; font-size: 14px; }
   .ct { min-width: 0; overflow-wrap: break-word; line-height: 1.2; }
-  .tip { text-align: center; color: var(--dim); font: 800 var(--fs-xs) var(--txt); }
-  .tip.off { visibility: hidden; }   /* место не отдаём: иначе сцена и реплика прыгают после касания */
   /* реплика Бита в горизонтали — поверх окна сцены (как в Session.svelte): панель справа остаётся под задачу */
   .say { margin-top: auto; padding: 0 4px 4px; width: min(480px, 100%); animation: pop-in .25s var(--ease-out) both; }
-  .say :global(.bubble) { font-size: 14px !important; line-height: 1.35; padding: 7px 10px !important; }
+  .say :global(.bubble:not(.kbub)) { font-size: 14px !important; line-height: 1.35; padding: 7px 10px !important; }
   .say :global(.typed) { inset: 7px 10px !important; }   /* тот же отступ, что у невидимого «призрака» текста, иначе строка переносится иначе и вылезает из пузыря */
   .grow { flex: 1; min-width: 0; }
   /* выкладка на бумаге: подсветка и пропуски — тёмные цвета */
@@ -435,9 +452,7 @@
   @media (max-height: 720px) {
     .card { gap: 8px; }
     .card :global(.paper) { padding: 10px 12px; }
-    .h { font-size: 17px; }
     .q { font-size: 17px; }
-    .frames { font-size: 16px; gap: 8px; padding: 10px 12px 10px 30px; }
     .rule { gap: 6px; } .rule p { font-size: 16px; } .rule b { font-size: 17px; }
     .choices { gap: 6px; } .choices .ans { min-height: 42px; padding: 4px 8px; } .choices .ans .l { width: 24px; height: 24px; }
     .widget { padding: 6px; }
@@ -448,17 +463,18 @@
     .card :global(.tag) { font-size: 11px; padding: 2px 8px; }
     .card :global(.paper) { padding: 6px 10px; }
     .card :global(.bit .bubble) { font-size: 14px; }
-    .h { font-size: 15px; }
     .q { font-size: 16px; }
-    .mline :global(.ml.big) { font-size: 22px; }
-    .frames { font-size: 15px; gap: 6px; padding: 8px 10px 8px 26px; }
     .rule { gap: 4px; } .rule p { font-size: 15px; } .rule b { font-size: 16px; } .rule small { display: none; }
     .lock { gap: 8px; }
     .choices { gap: 5px; } .choices .ans { min-height: 38px; padding: 3px 8px; font-size: clamp(14px, 2.2vw, 16px); } .choices .ans .l { width: 22px; height: 22px; font-size: 12px; }
     .widget { padding: 4px; }
-    .tip { font-size: 12px; }
   }
   .card :global(.paper .task) { color: var(--paper-ink); }
+  /* шаг «Көр»: кнопка шага живёт под видео, подвал пуст и места не занимает */
+  :global(.foot:empty) { display: none; }
   /* стрелка «листай ниже» уходит вправо: по центру она закрывала кнопку «Түсінбедім — Биттен сұра» (LessonHelper), которая стоит слева */
   :global(.frame:has([data-lesson]) .more) { place-items: end end; padding-right: 12px; }
+  /* окно «Биткә түсіндір» принимает касания само (экран по умолчанию пропускает их к 3D): поле ответа ставит курсор, пустое место не жмёт «Келесі» урока под окном */
+  .teach-veil { position: fixed; inset: 0; z-index: var(--z-modal, 50); pointer-events: auto; background: #05081ecc; display: grid; align-items: end; justify-items: center; padding: 12px; }
+  .teach-box { width: min(520px, 100%); max-height: 92dvh; overflow: auto; border-radius: 22px; background: linear-gradient(180deg, var(--panel-hi), var(--panel)); border: 3px solid var(--outline); padding: 14px; box-shadow: 0 10px 0 #0007; }
 </style>

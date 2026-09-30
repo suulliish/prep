@@ -5,7 +5,7 @@
 lines.json: [{"id": "intro_1", "kz": "Сәлем! Мен Битпін."}, ...]  — числа писать словами.
 Нужно: pip install piper-tts lameenc. Модель скачивается в ~/.cache/piper при первом запуске.
 """
-import json, os, sys, subprocess, urllib.request, wave, lameenc
+import json, os, sys, subprocess, time, urllib.request, wave, lameenc
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 cfg = json.load(open(os.path.join(ROOT, 'content', 'voice.json')))
@@ -19,8 +19,14 @@ lines, out = json.load(open(sys.argv[1])), sys.argv[2]
 os.makedirs(out, exist_ok=True)
 for ln in lines:
     wav = os.path.join(out, ln['id'] + '.wav')
-    subprocess.run([sys.executable, '-m', 'piper', '-m', model, '-s', str(cfg['speaker']), '-f', wav],
-                   input=ln['kz'].encode(), check=True, stderr=subprocess.DEVNULL)
+    for attempt in range(5):   # Piper изредка падает (SIGABRT) при нехватке памяти: повторяем строку, а не весь список
+        try:
+            subprocess.run([sys.executable, '-m', 'piper', '-m', model, '-s', str(cfg['speaker']), '-f', wav],
+                           input=ln['kz'].encode(), check=True, stderr=subprocess.DEVNULL)
+            break
+        except subprocess.CalledProcessError:
+            if attempt == 4: raise
+            time.sleep(5)
     w = wave.open(wav); data = w.readframes(w.getnframes()); w.close()
     enc = lameenc.Encoder()
     enc.set_bit_rate(cfg['bitrateKbps']); enc.set_channels(1); enc.set_quality(2)

@@ -8,6 +8,7 @@
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
   import { toast } from '../ui/notify.svelte';
+  import { isCredited, CREDIT_STEPS, WINDOWS } from '../engine/recall';
   // @ts-ignore
   import { LESSONS } from '../../content/lessons.mjs';
   // @ts-ignore
@@ -19,7 +20,7 @@
     automatic: { kz: 'Алтын', c: 'var(--gold)' }, mastered: { kz: 'Кристалл', c: 'var(--crystal)' },
     learned: { kz: 'Үйренді', c: 'var(--code)' }, learning: { kz: 'Зарядталуда', c: '#8c9be0' },
   };
-  let tab = $state<'cards' | 'repair'>(game.screen.name === 'album' && game.screen.tab ? game.screen.tab : 'cards');
+  let tab = $state<'cards' | 'notebook' | 'repair'>(game.screen.name === 'album' && game.screen.tab ? game.screen.tab : 'cards');
   const st = (id: string) => game.save.skills[id]?.status ?? 'locked';
   const mine = $derived(skillDefs.filter(d => TIER[st(d.id)]).sort((a, b) => ['automatic', 'mastered', 'learned', 'learning'].indexOf(st(a.id)) - ['automatic', 'mastered', 'learned', 'learning'].indexOf(st(b.id))));
   const nextCards = $derived(skillDefs.filter(d => st(d.id) === 'available' && d.templates.length && (LESSONS as Record<string, any[]>)[d.id]).slice(0, 4));
@@ -33,6 +34,20 @@
   const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
   const techs = $derived((TECHNIQUES as Tech[]).map(t => ({ ...t, theme: skillDefs.find(d => d.id === t.skill)?.title.kz ?? '', open: lessonPassed(t.skill) })));
   const techsOpen = $derived(techs.filter(t => t.open).length);
+  // «Дәптер»: карточка на каждую тему, которая стоит на возвратах «Еске түсір»: 5 клеток ✔/✘ с датой и статус «зачтено»
+  const dmy = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+  // срок сегодня или уже прошёл: даты в прошлом не показываем, тема ждёт возврата сегодня
+  const dueText = (d: string) => (d <= game.day ? 'бүгін' : dmy(d));
+  const nbCards = $derived(Object.entries(game.save.recall ?? {})
+    .map(([id, r]) => ({ id, r, title: skillDefs.find(d => d.id === id)?.title.kz ?? id, cat: skillDefs.find(d => d.id === id)?.cat ?? 'A', wrote: !!game.save.notebook?.[id]?.wrote }))
+    .sort((a, b) => Number(isCredited(a.r)) - Number(isCredited(b.r)) || (a.r.due < b.r.due ? -1 : 1)));
+  const nbCredited = $derived(nbCards.filter(c => isCredited(c.r)).length);
+  // клетки: последние 5 возвратов; пустые подписаны окном дней, когда ждём следующий
+  const cells = (r: (typeof nbCards)[number]['r']) => {
+    const done = r.history.slice(-5);
+    const at = r.history.length > 5 ? 5 : r.history.length;
+    return [...done.map(h => ({ h, w: '' })), ...Array.from({ length: 5 - done.length }, (_, k) => ({ h: null, w: WINDOWS[at + k] ?? '' }))];
+  };
   const broken = $derived(game.save.repairShop.filter(r => !r.fixed));
   const fixed = $derived(game.save.repairShop.filter(r => r.fixed).length);
   onMount(() => { W.dim = true; audio.setMood('hub'); });
@@ -56,6 +71,7 @@
 <Screen scene="none" title="Альбом" sub={`${mine.length} карта жиналды`} back={() => go({ name: 'hub' })}>
   <div class="seg" role="tablist">
     <button role="tab" class:on={tab === 'cards'} aria-selected={tab === 'cards'} onclick={() => (tab = 'cards')}><Icon name="cards" fill="var(--crystal)" size={20} />Карталар</button>
+    <button role="tab" class:on={tab === 'notebook'} aria-selected={tab === 'notebook'} onclick={() => (tab = 'notebook')}><Icon name="book" fill="#7ee08f" size={20} />Дәптер</button>
     <button role="tab" class:on={tab === 'repair'} aria-selected={tab === 'repair'} onclick={() => (tab = 'repair')}><Icon name="bolt" fill="var(--gold)" size={20} />Жөндеу{#if broken.length}<b class="cnt">{broken.length}</b>{/if}</button>
   </div>
 
@@ -114,6 +130,29 @@
         {/if}
       {/each}
     </div>
+  {:else if tab === 'notebook'}
+    <p class="nbnote"><b>{CREDIT_STEPS} рет</b> қатесіз еске түссе, тақырып меңгерілген болып саналады. Меңгерілді: <b>{nbCredited}/{nbCards.length}</b></p>
+    {#if nbCards.length}
+      <div class="nbgrid">
+        {#each nbCards as c (c.id)}
+          {@const done = isCredited(c.r)}
+          <article class="nbcard" class:done style="--cc:{CC[c.cat]}">
+            <span class="band"></span>
+            <header><b>{c.title}</b><span class="chip" class:ok={done}>{done ? 'Меңгерілді' : `${Math.min(c.r.step, CREDIT_STEPS)}/${CREDIT_STEPS}`}</span></header>
+            <div class="cells" role="list" aria-label="Қайталаулар">
+              {#each cells(c.r) as k}
+                <span class="cell" role="listitem" class:ok={k.h?.ok && k.h.hint === 0} class:help={k.h?.ok && k.h.hint > 0} class:no={k.h && !k.h.ok}>
+                  {#if k.h}<b>{k.h.ok ? '✔' : '✘'}</b><small>{dmy(k.h.day)}</small>{:else}<small class="win">{k.w ? `${k.w} күн` : ''}</small>{/if}
+                </span>
+              {/each}
+            </div>
+            <small class="nx">{c.wrote ? 'Дәптерге жазылды · ' : ''}{done ? 'сирек қайталау: ' : 'келесі: '}{dueText(c.r.due)}</small>
+          </article>
+        {/each}
+      </div>
+    {:else}
+      <div class="paper empty">Дәптер әзірге бос. Бірінші сабақтан кейін әр тақырыпқа бет ашылады.</div>
+    {/if}
   {:else}
     <div class="paper">Әр қате — сынған бөлшек. Жөндеу үшін дәл сондай есепті өзің шығар. Жөнделгені: <b>{fixed}</b>.</div>
     {#if broken.length}
@@ -160,8 +199,8 @@
 {/if}
 
 <style>
-  .seg { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; padding: 5px; border-radius: 16px; background: var(--deep); border: 3px solid var(--outline); }
-  .seg button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; font: 800 15px var(--disp); color: var(--dim); background: none; border: 0; border-radius: 11px; cursor: pointer; }
+  .seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 5px; border-radius: 16px; background: var(--deep); border: 3px solid var(--outline); }
+  .seg button { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 44px; font: 800 14px var(--disp); color: var(--dim); background: none; border: 0; border-radius: 11px; cursor: pointer; }
   .seg button.on { color: var(--ink); background: var(--panel); box-shadow: inset 0 -3px 0 var(--panel-2), 0 0 0 2px var(--outline); }
   .cnt { min-width: 20px; height: 20px; padding: 0 5px; display: grid; place-items: center; font: 900 12px var(--disp); color: var(--outline); background: var(--gold); border-radius: 10px; border: 2px solid var(--outline); }
   .h { font-size: 18px; text-shadow: 0 2px 0 var(--outline); margin-top: 4px; }
@@ -183,6 +222,25 @@
   .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--cc); border: 2px solid var(--outline); }
   .cats b { font-size: 13px; color: var(--dim); }
   .grow { flex: 1; }
+  .nbnote { margin: 0; font: 700 14px/1.35 var(--txt); color: var(--dim); }
+  .nbgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+  .nbcard { position: relative; display: grid; gap: 8px; padding: 18px 10px 10px; color: var(--paper-ink); overflow: hidden;
+    background-image: linear-gradient(#c9d3f577 1px, transparent 1px), linear-gradient(90deg, #c9d3f577 1px, transparent 1px); background-size: 16px 16px; background-color: var(--paper);
+    border: 3px solid var(--outline); border-radius: 14px; box-shadow: 0 3px 0 var(--outline); }
+  .nbcard.done { box-shadow: 0 0 0 3px var(--ok) inset, 0 3px 0 var(--outline); }
+  .nbcard header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .nbcard header b { font: 800 15px/1.2 var(--disp); }
+  .nbcard .chip { flex: none; background: #d6ddf7; }
+  .nbcard .chip.ok { background: var(--ok); }
+  .cells { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+  .cell { display: grid; place-items: center; align-content: center; gap: 1px; min-height: 52px; padding: 2px; border: 2px dashed #8c9be0; border-radius: 8px; background: #ffffffaa; text-align: center; }
+  .cell b { font: 900 18px/1 var(--disp); }
+  .cell small { font: 800 10px/1.1 var(--txt); color: var(--paper-dim); }
+  .cell.ok { border: 2px solid var(--outline); background: #c9f7d8; }
+  .cell.help { border: 2px solid var(--outline); background: #fff1bf; }
+  .cell.no { border: 2px solid var(--outline); background: #ffe0d6; }
+  .cell .win { font-weight: 700; }
+  .nx { font: 700 12px var(--txt); color: var(--paper-dim); }
   .scrim { position: fixed; inset: 0; z-index: var(--z-modal); background: #05071399; }
   .sheet { position: fixed; z-index: calc(var(--z-modal) + 1); left: 0; right: 0; margin-inline: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); width: min(460px, calc(100% - 20px));   /* без transform: анимация pop-in его затирала и карточка уезжала вправо */ display: grid; gap: 8px; animation: pop-in .25s var(--ease-out) both; }
   .rt { display: flex; align-items: center; gap: 8px; font: 900 19px var(--disp); }

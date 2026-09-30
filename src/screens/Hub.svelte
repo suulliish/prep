@@ -6,7 +6,7 @@
   import Icon from '../ui/Icon.svelte';
   import Bit from '../ui/Bit.svelte';
   import CoinChip from '../ui/CoinChip.svelte';
-  import { game, go, levelOf } from '../lib/store.svelte';
+  import { game, go, levelOf, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { ensurePlan, dayRec } from '../lib/session.svelte';
   import { canStartExtra, planComplete, TODAY_MAX, round5 } from '../engine/planner';
@@ -18,12 +18,21 @@
   import { flushRewards, seen, takeLevelUp } from '../lib/reward.svelte';
   import { sparksAt } from '../ui/fx.svelte';
   import { coinsOf, canAffordSomething, syncDecor } from '../lib/ship.svelte';
+  import { due as recallDue, backfill as recallBackfill } from '../engine/recall';
+  import { hasRule } from '../lesson/recallrule';
   // @ts-ignore
   import { LESSONS } from '../../content/lessons.mjs';
 
+  // темы с уроком, пройденным до появления «Еске түсір», встают на возвраты (один раз, дальше по 3 в день)
+  if (recallBackfill(game.save, game.day)) persist();
   const plan = ensurePlan();
   const rec = $derived(dayRec());
   const weekday = isWeekday(game.day);
+  // «Еске түсір» стоит первым: темы на сегодня, не больше 3; «Өткізу» нажимается осознанно и видна командиру
+  const recallList = $derived(recallDue(game.save, game.day, hasRule));
+  const recallOn = $derived(game.save.diagnosticDone && weekday && recallList.length > 0);
+  const recallSkipped = $derived(!!game.save.recallOffer?.[game.day]?.skipped);
+  let recallGate = $state<string | null>(null);
   const lv = $derived(levelOf(game.save.xp));
   const st = $derived(streak(game.save, game.day));
   const crystals = $derived(Object.values(game.save.skills).filter(s => s.status === 'mastered' || s.status === 'automatic').length);
@@ -104,6 +113,12 @@
       later(1200, () => { xpJump = false; xpFrac = frac; celebrateLevel(up); });   // и растёт до нового значения — вместе с праздником
     } else later(350, () => (xpFrac = frac));
     seen.xp = game.save.xp;
+    // что предложили утром: по этому командир видит, вспоминал ли ребёнок или пропускал
+    if (recallOn && !game.save.recallOffer?.[game.day]) {
+      game.save.recallOffer ??= {};
+      game.save.recallOffer[game.day] = { skills: [...recallList] };
+      persist();
+    }
     return () => timers.forEach(clearTimeout);
   });
 
@@ -116,11 +131,24 @@
     await Promise.race([W.world?.portalWalk() ?? Promise.resolve(), new Promise(r => setTimeout(r, 5000))]);
     warp = true; setTimeout(to, 380);
   }
+  function openRecall() { audio.unlock(); audio.play('mission'); recallGate = null; go({ name: 'recall' }); }
+  function skipRecall(thenStart?: string | null) {
+    audio.play('click');
+    game.save.recallOffer ??= {};
+    const cur = game.save.recallOffer[game.day];
+    if (cur) cur.skipped = true; else game.save.recallOffer[game.day] = { skills: [...recallList], skipped: true };
+    persist();
+    recallGate = null;
+    if (thenStart) start(thenStart);
+  }
   function start(id: string) {
+    // пока не вспоминали и не нажали «Өткізу», мягко напоминаем: вспоминание стоит первым
+    if (recallOn && !recallSkipped) { audio.play('click'); recallGate = id; return; }
     audio.unlock(); audio.play('mission');
     if (id === 'summary') return go({ name: 'summary' });
     const b = plan.blocks.find(x => x.id === id)!;
-    if (id === 'new' && b.lesson) return portal(() => go({ name: 'lesson', skill: b.skills[0] }));
+    // план дня хранит «lesson: true» с утра; урок уже пройден (вышли из практики, перезагрузка на «Дәптер») — сразу практика, а не урок заново с первого шага
+    if (id === 'new' && b.lesson && !game.save.skills[b.skills[0]]?.lessonDone) return portal(() => go({ name: 'lesson', skill: b.skills[0] }));
     portal(() => go({ name: 'session', block: id as any }));
   }
   function tapQuest(id: string) {
@@ -164,6 +192,16 @@
   </div>
   <div class="say"><Bit text={greeting} mood={done ? 'happy' : 'idle'} compact /></div>
   {/snippet}
+
+  {#if recallOn}
+    <div class="recall" class:quiet={recallSkipped}>
+      <button class="quest" class:next={!recallSkipped} onclick={openRecall} aria-label="Еске түсір: {recallList.length} тақырып">
+        <span class="qi" style="--c:var(--crystal)"><Icon name="book" fill="#fff" size={22} /></span>
+        <span class="qt"><b>Еске түсір: {recallList.length} тақырып</b><small>Ережені өз сөзіңмен · ~3 мин</small></span>
+      </button>
+      {#if !recallSkipped}<button class="skip" onclick={() => skipRecall()}>Өткізу</button>{/if}
+    </div>
+  {/if}
 
   {#if game.save.diagnosticDone && weekday}
     <!-- сегодня, компактно: кольцо, одна строка, точки-шаги (нажать: причина, если закрыто) и ОДНА карточка «дальше» -->
@@ -217,6 +255,16 @@
         {#if extraOk}<span class="rw"><Icon name="clock" fill="var(--gold)" size={16} />+15</span>{/if}
       </div>
     {/if}
+  {/if}
+
+  {#if recallGate}
+    <div class="gate" role="dialog" aria-modal="true" aria-label="Еске түсір">
+      <div class="gbox panel">
+        <Bit text="Алдымен еске түсірейік! {recallList.length} тақырып, шамамен 3 минут. Ереже осылай ұзақ есте қалады." mood="think" compact />
+        <button class="btn primary big block" onclick={openRecall}><Icon name="book" fill="var(--outline)" size={22} />Еске түсір</button>
+        <button class="btn ghost block" onclick={() => skipRecall(recallGate)}>Өткізу</button>
+      </div>
+    </div>
   {/if}
 
   {#if entering}<div class="tapguard" aria-hidden="true"></div>{/if}{#if warp}<div class="warp" aria-hidden="true"></div>{/if}
@@ -286,6 +334,12 @@
   .pip:active .dot { transform: translateY(2px); }
   .pip:focus-visible { outline: 3px solid var(--code); border-radius: 10px; }
 
+  .recall { display: grid; gap: 0; justify-items: end; margin-bottom: 4px; }
+  .recall .quest { justify-self: stretch; }
+  .recall.quiet .quest { opacity: .8; }
+  .skip { min-height: 34px; padding: 0 10px; font: 800 13px var(--txt); color: var(--dim); background: none; border: 0; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .gate { position: fixed; inset: 0; z-index: calc(var(--z-modal) + 4); display: grid; place-items: center; padding: 16px; background: #05071399; animation: fade .2s ease-out both; }
+  .gbox { width: min(420px, 100%); display: grid; gap: 10px; padding: 14px; }
   .quests { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; position: relative; }
   /* тропа уровней: пунктир соединяет точки, пройденная часть зелёная */
   .quests li { position: relative; }

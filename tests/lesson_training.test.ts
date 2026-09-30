@@ -41,7 +41,7 @@ describe('мир и арена', () => {
     }
   });
   it('Session передаёт приём только для пройденной темы', () => {
-    expect(session).toContain('heroAttack(crit, sup, techFor(item?.skill))'); expect(session).toContain('st?.lessonDone || isDone(st)');
+    expect(session).toContain('heroAttack(crit, sup, techFor(item?.skill)'); expect(session).toContain('st?.lessonDone || isDone(st)');
   });
   it('у каждого приёма цвет и вид удара из известных', () => {
     for (const t of TECHNIQUES) { expect(['arc', 'pierce', 'split', 'multi', 'spin']).toContain(t.fx); expect(arena).toContain(t.fx === 'arc' ? "'arc'" : `'${t.fx}'`); }

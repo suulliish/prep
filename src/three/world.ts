@@ -26,8 +26,8 @@ export interface World {
   setEnergy(v: number, max: number): void;
   setMode(m: CamMode): void;
   heroWalk(x: number, z: number): Promise<void>;
-  /** Удар героя в бою; sup — суперудар; tech — приём темы (цвет удара, вид, название над героем; урон и время те же). Возвращает, повержен ли враг. */
-  heroAttack(crit?: boolean, sup?: boolean, tech?: Technique | null): Promise<boolean>;
+  /** Удар героя в бою; sup — суперудар; tech — приём темы (цвет удара, вид, название над героем; урон и время те же); onHit — вызывается в момент касания. Возвращает, повержен ли враг. */
+  heroAttack(crit?: boolean, sup?: boolean, tech?: Technique | null, onHit?: () => void): Promise<boolean>;
   spawnMob(hp: number, kind?: number, boss?: boolean, worldBoss?: boolean): Promise<void>;
   /** Урок = тренировка: вместо врага на его месте площадка (манекен, мишени, доска), без полоски здоровья и атак. off — площадка уходит с анимацией; выход из урока (clearMob) убирает её сразу. Промис — когда площадка встала/ушла. */
   setTraining(on: boolean): Promise<void>;
@@ -59,8 +59,10 @@ export interface World {
   trainCheer(): Promise<void>;
   /** Для проверок: стоит ли площадка и её счётчики (частицы, мишени) или null. */
   trainingStats(): { particles: number; stars: number; targetsUp: number; glitch: number; shown: number } | null;
-  /** Ход врага при ошибке: снаряд и щит героя (урона нет). */
-  enemyAttack(): Promise<void>;
+  /** Ход врага при ошибке: снаряд и щит героя (урона нет). brk — щит разбивается (осколки, герой отлетает); quiet — без надписи над героем; onContact — в момент касания щита. */
+  enemyAttack(o?: { brk?: boolean; quiet?: boolean; onContact?: () => void }): Promise<void>;
+  /** Событие на весь экран (экран задачи по фазам): камера подлетает к бойцам; false — общий план. При «уменьшить движение» камера не летит. */
+  eventCam(on: boolean): void;
   /** Герой выходит из портала в локацию. */
   arrive(): Promise<void>;
   /** Тема боевой локации: номер мира, цвета острова. */
@@ -316,7 +318,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       hub.enterMode(m);                                                 // герой возвращается на место / вылетает из портала после боя
       mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? (narrow ? 0.2 : 0.08) : narrow ? 0.24 : 0.12; applyOffset(); },
     heroWalk(x, z) { return hub.heroWalk(x, z); },
-    heroAttack(crit = false, sup = false, tech = null) { return arena.attack({ crit, sup, dmg: sup ? 2 : 1, tech }); },
+    heroAttack(crit = false, sup = false, tech = null, onHit) { return arena.attack({ crit, sup, dmg: sup ? 2 : 1, tech, onHit }); },
     setTraining(on) { return arena.setTraining(on); },
     trainStrike(kind, n = 1, stay = false, variant) { return arena.trainStrike(kind, n, stay, variant); },
     trainStep(kind) { arena.trainStep(kind); },
@@ -333,7 +335,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     trainCheer() { return arena.trainCheer(); },
     trainingStats() { return arena.trainingStats(); },
     spawnMob(hp, kind = 0, boss = false, worldBoss = false) { return arena.spawn(hp, kind, boss && !worldBoss, worldBoss); },
-    enemyAttack() { return arena.enemyAttack(); },
+    enemyAttack(o) { return arena.enemyAttack(o); },
+    eventCam(on) { arena.eventShot(on); },
     arrive() { return arena.arrive(); },
     setArena(k, a, b) { arena.theme(k, a, b); },
     setSpot(seed) { return arena.spot(seed); },
