@@ -14,8 +14,10 @@ import { WEEK4 as W4 } from '../content/lessons_week4.mjs';
 import { WEEK5 as W5 } from '../content/lessons_week5.mjs';
 // @ts-ignore
 import { WEEK6 as W6 } from '../content/lessons_week6.mjs';
-const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>, WEEK3 = W3 as Record<string, any[]>, WEEK4 = W4 as Record<string, any[]>, WEEK5 = W5 as Record<string, any[]>, WEEK6 = W6 as Record<string, any[]>;
-const FULL = { ...WEEK1, ...WEEK2, ...WEEK3, ...WEEK4, ...WEEK5, ...WEEK6 };
+// @ts-ignore
+import { WEEK7 as W7 } from '../content/lessons_week7.mjs';
+const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>, WEEK3 = W3 as Record<string, any[]>, WEEK4 = W4 as Record<string, any[]>, WEEK5 = W5 as Record<string, any[]>, WEEK6 = W6 as Record<string, any[]>, WEEK7 = W7 as Record<string, any[]>;
+const FULL = { ...WEEK1, ...WEEK2, ...WEEK3, ...WEEK4, ...WEEK5, ...WEEK6, ...WEEK7 };
 // @ts-ignore
 import { skillById } from '../content/skills.mjs';
 // @ts-ignore
@@ -52,7 +54,7 @@ describe('уроки', () => {
   }
 });
 
-describe('недели 1–6 — полный сценарий', () => {
+describe('недели 1–7 — полный сценарий', () => {
   for (const [id, steps] of Object.entries(FULL) as [string, any[]][]) {
     it(`${id}: цель → … → возврат к цели`, () => {
       const t = steps.map(s => s.type);
@@ -280,10 +282,72 @@ describe('недели 1–6 — полный сценарий', () => {
       else expect(it.choices[it.answer], it.q).toBe(String(pg[1] - pg[0] + 1));
     }
   });
+  it('мини-игры недели 7 считают правильно (независимая проверка)', () => {
+    const r = rng(77), bl = (id: string) => WEEK7[id].find((s: any) => s.type === 'blitz')!;
+    const fact = (n: number): number => (n <= 1 ? 1 : n * fact(n - 1));
+    const DAYS = ['дүйсенбі', 'сейсенбі', 'сәрсенбі', 'бейсенбі', 'жұма', 'сенбі', 'жексенбі'];
+    const dayIn = (q: string) => DAYS.findIndex(d => new RegExp(`(^|[^а-яәіңғүұқөһ])${d}([^а-яәіңғүұқөһ]|$)`).test(q.toLowerCase()));   // «сенбі» есть внутри «жексенбі»
+    const mod = (a: number) => ((a % 7) + 7) % 7;
+    const LEN: Record<string, number> = { 'Қаңтардың': 31, 'Наурыздың': 31, 'Сәуірдің': 30, 'Мамырдың': 31, 'Маусымның': 30, 'Шілденің': 31, 'Тамыздың': 31, 'Қыркүйектің': 30, 'Қазанның': 31, 'Қарашаның': 30, 'Желтоқсанның': 31 };
+    const isAP = (a: number[]) => a.length >= 2 && a.every((x, i) => !i || x - a[i - 1] === a[1] - a[0]);
+    // все заготовки закономерностей: любая применимая обязана давать ровно верный ответ, и применима хотя бы одна
+    const preds = (t: number[]) => {
+      const out: number[] = [], L = t.length, d = t.slice(1).map((x, i) => x - t[i]);
+      if (isAP(t)) out.push(t[L - 1] + d[0]);
+      if (L >= 5 && !isAP(t) && isAP(d)) out.push(t[L - 1] + d[d.length - 1] + d[1] - d[0]);
+      if (L >= 6) { const ev = t.filter((_, i) => i % 2 === 0), od = t.filter((_, i) => i % 2); if (isAP(ev) && isAP(od)) { const nx = L % 2 ? od : ev; out.push(nx[nx.length - 1] + nx[1] - nx[0]); } }
+      if (t[0] > 0 && t[1] % t[0] === 0 && t[1] / t[0] >= 2 && t.every((x, i) => !i || x === t[i - 1] * (t[1] / t[0]))) out.push(t[L - 1] * (t[1] / t[0]));
+      return out;
+    };
+    const kinds = new Set<string>();
+    for (let k = 0; k < 400; k++) {
+      // logic.permutations
+      let it = bl('logic.permutations').make(r), nn = it.q.match(/\d+/g)!.map(Number), got = it.choices[it.answer];
+      if (it.q.includes('бір қатарға неше түрлі')) { kinds.add('line'); expect(got, it.q).toBe(String(fact(nn[0]))); }
+      else if (it.q.includes('спортшыдан')) { kinds.add('top'); const kk = it.q.includes('екі орынға') ? 2 : 3; let v = 1; for (let i = 0; i < kk; i++) v *= nn[0] - i; expect(got, it.q).toBe(String(v)); }
+      else if (it.q.includes('цифрларынан')) { kinds.add('code'); const kk = it.q.includes('екі таңбалы') ? 2 : 3; const digs = nn.length; let v = 1; for (let i = 0; i < kk; i++) v *= digs - i; expect(nn).toEqual(Array.from({ length: digs }, (_, i) => i + 1)); expect(got, it.q).toBe(String(v)); }
+      else { kinds.add('first'); expect(it.q).toContain('Арман'); expect(got, it.q).toBe(String(fact(nn[0] - 1))); }
+      // logic.pairs_tournament
+      it = bl('logic.pairs_tournament').make(r); nn = it.q.match(/\d+/g)!.map(Number); got = it.choices[it.answer];
+      if (it.q.includes('Неше команда')) { kinds.add('rev'); expect((+got * (+got - 1)) / 2, it.q).toBe(nn[0]); }
+      else if (it.q.includes('үйде және қонақта')) { kinds.add('home'); expect(got, it.q).toBe(String(nn[0] * (nn[0] - 1))); }
+      else { kinds.add('games'); expect(got, it.q).toBe(String((nn[0] * (nn[0] - 1)) / 2)); }
+      // pat.sequences: подходящая закономерность единственная и даёт верный ответ, вариантов нет среди ответов «по другой закономерности»
+      it = bl('pat.sequences').make(r); nn = it.q.split('...')[0].match(/\d+/g)!.map(Number);
+      const pr = preds(nn); expect(pr.length, it.q).toBeGreaterThan(0); expect(new Set(pr).size, it.q).toBe(1); expect(got_(it), it.q).toBe(String(pr[0]));
+      // logic.calendar
+      it = bl('logic.calendar').make(r); nn = it.q.match(/\d+/g)!.map(Number); const d0 = dayIn(it.q); expect(d0, it.q).toBeGreaterThanOrEqual(0);
+      let want: number;
+      if (it.q.includes('күннен кейін')) want = mod(d0 + nn[0]);
+      else if (it.q.includes('күн бұрын')) want = mod(d0 - nn[0]);
+      else if (it.q.startsWith('Айдың')) want = mod(d0 + nn[1] - nn[0]);
+      else { const len = LEN[it.q.split(' ')[0]]; expect(len, it.q).toBeTruthy(); want = mod(d0 + len - nn[0] + nn[1]); }
+      expect(got_(it).toLowerCase(), it.q).toBe(DAYS[want]);
+      // vis.count_squares
+      it = bl('vis.count_squares').make(r); nn = it.q.match(/\d+/g)!.map(Number);
+      const cnt = (w: number, h: number) => { let s = 0; for (let a = 1; a <= Math.min(w, h); a++) s += (w - a + 1) * (h - a + 1); return s; };
+      if (it.q.includes('қабырғасы')) expect(got_(it), it.q).toBe(String((nn[0] - nn[2] + 1) ** 2));
+      else expect(got_(it), it.q).toBe(String(cnt(nn[0], nn[1])));
+    }
+    for (const kd of ['line', 'top', 'code', 'first', 'rev', 'home', 'games']) expect(kinds.has(kd), kd).toBe(true);
+    function got_(x: any) { return x.choices[x.answer]; }
+  });
+  it('неделя 7: голосовые реплики без латиницы и знака ×, у мини-игр по 3–4 варианта', () => {
+    const r = rng(9);
+    for (const [id, steps] of Object.entries(WEEK7)) {
+      steps.forEach((s: any, i: number) => {
+        const voiced = ['goal', 'widget', 'say'].includes(s.type) ? [s.kz] : s.type === 'example' ? s.frames.map((f: any) => f.kz) : [];
+        for (const t of voiced) expect(t, `${id}_${i}`).not.toMatch(/[A-Za-z×²³]/);
+      });
+      expect(steps.at(-1).scene, `${id}: сцена final = сцене goal (до победы final берёт props цели)`).toBe(steps[0].scene);
+      const b = steps.find((s: any) => s.type === 'blitz');
+      for (let k = 0; k < 200; k++) expect(b.make(r).choices.length, id).toBeGreaterThanOrEqual(3);
+    }
+  });
   it('уроки: сцены и виджеты зарегистрированы, запрещённых слов нет', () => {
     const scenes = readFileSync('src/lesson/Scene.svelte', 'utf8'), lesson = readFileSync('src/screens/Lesson.svelte', 'utf8');
     const avoid: string[] = (GLOSSARY as any).terms.flatMap((t: any) => t.avoid ?? []).filter((w: string) => w.length > 3);
-    for (const [id, steps] of Object.entries({ ...WEEK4, ...WEEK5, ...WEEK6 })) {
+    for (const [id, steps] of Object.entries({ ...WEEK4, ...WEEK5, ...WEEK6, ...WEEK7 })) {
       const txt: string[] = [];
       for (const s of steps) {
         if (s.scene) expect(scenes, `${id}: сцена ${s.scene}`).toMatch(new RegExp(`\\b${s.scene}\\b`));

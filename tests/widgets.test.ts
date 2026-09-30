@@ -259,3 +259,84 @@ describe('FracArea: чистые функции и уроки недели 6', (
     expect(seen).toBeGreaterThanOrEqual(6);
   });
 });
+
+describe('TreeBuilder / GridSquares: чистые функции и уроки недели 7', () => {
+  it('permtree: число листьев и размер дерева', async () => {
+    const t = await import('../src/widgets/permtree');
+    expect(t.permCount(3, 3)).toBe(6); expect(t.permCount(4, 2)).toBe(12); expect(t.permCount(7, 3)).toBe(210);
+    expect(t.pairCount(4)).toBe(6); expect(t.pairCount(7)).toBe(21);
+    expect(t.levelCounts(5, 3)).toEqual([5, 4, 3]);
+    const a = t.buildTree(3, 3);
+    expect(a.leaves).toBe(6); expect(a.nodes.length).toBe(1 + 3 + 6 + 6);
+    const b = t.buildTree(4, 2);
+    expect(b.leaves).toBe(12); expect(b.nodes.length).toBe(1 + 4 + 12);
+    // ни в одном пути нет повторов
+    for (const x of a.nodes) expect(new Set(x.path).size).toBe(x.path.length);
+    // у родителя строка посередине детей
+    const root = a.byId.get('r')!; expect(root.row).toBe(2.5);
+  });
+  it('permtree: видимость, раскрытие и «полное дерево»', async () => {
+    const t = await import('../src/widgets/permtree');
+    const tr = t.buildTree(3, 3);
+    expect([...t.visibleIds(tr, new Set())]).toEqual(['r']);
+    expect(t.visibleIds(tr, new Set(['r'])).size).toBe(4);
+    // закрытый родитель прячет открытого потомка
+    expect(t.visibleIds(tr, new Set(['0'])).size).toBe(1);
+    expect(t.canOpen(tr, 'r')).toBe(true); expect(t.canOpen(tr, '0-1-2')).toBe(false);
+    expect(t.treeComplete(tr, new Set(['r']))).toBe(false);
+    const all = t.openAll(tr, new Set());
+    expect(t.treeComplete(tr, all)).toBe(true);
+    expect(t.visibleLeaves(tr, t.visibleIds(tr, all))).toBe(6);
+  });
+  it('permtree: близнецы и касание листа в режиме пар', async () => {
+    const t = await import('../src/widgets/permtree');
+    const tr = t.buildTree(4, 2);
+    expect(t.twinId(tr, '0-2')).toBe('2-0'); expect(t.twinId(tr, 'r')).toBeNull(); expect(t.twinId(t.buildTree(3, 3), '0-1-2')).toBeNull();
+    const kept = new Set<string>(), struck = new Set<string>();
+    expect(t.tapLeaf(tr, kept, struck, '0-2')).toBe('keep');
+    expect([...kept]).toEqual(['0-2']); expect([...struck]).toEqual(['2-0']);
+    expect(t.tapLeaf(tr, kept, struck, '0-2')).toBe('already');
+    expect(t.tapLeaf(tr, kept, struck, '2-0')).toBe('struck');
+    // если пройти все листья, оставленных ровно n(n−1)/2
+    for (const x of tr.nodes.filter(n => n.depth === 2)) t.tapLeaf(tr, kept, struck, x.id);
+    expect(kept.size).toBe(6); expect(struck.size).toBe(6);
+    expect(t.leafLabel(tr, '1-3', ['А', 'Б', 'В', 'Г'])).toBe('БГ');
+  });
+  it('gridsquares: число шаршылар в торе', async () => {
+    const g = await import('../src/widgets/gridsquares');
+    expect(g.totalSquares(3, 3)).toBe(14); expect(g.totalSquares(4, 4)).toBe(30); expect(g.totalSquares(5, 5)).toBe(55);
+    expect(g.totalSquares(4, 2)).toBe(11); expect(g.totalSquares(5, 3)).toBe(26);
+    expect(g.sideList(5, 3)).toEqual([1, 2, 3]);
+    expect(g.countOfSide(4, 4, 2)).toBe(9); expect(g.countOfSide(4, 4, 5)).toBe(0);
+    // угол влезает только внутрь
+    expect(g.fits(3, 3, 2, 1, 1)).toBe(true); expect(g.fits(3, 3, 2, 2, 0)).toBe(false); expect(g.fits(3, 3, 3, 0, 0)).toBe(true); expect(g.fits(3, 3, 1, -1, 0)).toBe(false);
+    expect(g.corners(4, 4, 2).length).toBe(9); expect(g.corners(5, 3, 3).length).toBe(3);
+    for (const c of g.corners(5, 3, 2)) expect(g.fits(5, 3, 2, c.r, c.c)).toBe(true);
+    // следующая сторона по кругу, null когда всё готово
+    expect(g.nextSide(3, 3, 1, s => s === 1)).toBe(2);
+    expect(g.nextSide(3, 3, 3, s => s === 1)).toBe(2);
+    expect(g.nextSide(3, 3, 2, () => true)).toBeNull();
+  });
+  it('уроки недели 7: параметры виджетов допустимы и ведут к нужному ответу', async () => {
+    const { WEEK7 } = (await import('../content/lessons_week7.mjs')) as any;
+    const { permCount, pairCount } = await import('../src/widgets/permtree');
+    const { totalSquares } = await import('../src/widgets/gridsquares');
+    let seen = 0;
+    for (const [id, list] of Object.entries(WEEK7) as [string, any[]][]) {
+      for (const s of list.filter(x => x.type === 'widget')) {
+        const p = s.props; seen++;
+        if (s.w === 'TreeBuilder') {
+          const k = p.mode === 'pairs' ? 2 : (p.k ?? p.items.length);
+          expect(p.items.length, id).toBeLessThanOrEqual(4);
+          expect(permCount(p.items.length, k), id).toBeLessThanOrEqual(12);         // дерево помещается по высоте
+          expect(new Set(p.items).size, id).toBe(p.items.length);
+          if (p.mode === 'pairs') expect(pairCount(p.items.length), id).toBeGreaterThan(0);
+        }
+        if (s.w === 'GridSquares') expect(totalSquares(p.w, p.h ?? p.w), id).toBeGreaterThan(3);
+        if (s.w === 'OrderOps') expect(p.expr.length % 2, id).toBe(1);
+        if (s.w === 'DivideGame') expect(p.n % p.divisors[0], id).not.toBe(0);       // остаток нужен: он и есть сдвиг дня
+      }
+    }
+    expect(seen).toBe(9);
+  });
+});
