@@ -16,6 +16,7 @@
   import { audio } from '../lib/audio';
   import { currentWorld } from '../lib/look';
   import { SPOT_KZ } from '../three/spots';
+  import { holoSpecFor } from '../three/holo_spec';
   import { react } from '../lib/voice';
   import { sparksAt, centerOf, floatText, flash, sceneCenter } from '../ui/fx.svelte';
   // @ts-ignore
@@ -50,12 +51,13 @@
   import FracArea from '../widgets/FracArea.svelte';
   import TreeBuilder from '../widgets/TreeBuilder.svelte';
   import GridSquares from '../widgets/GridSquares.svelte';
+  import LetterDigit from '../widgets/LetterDigit.svelte';
 
   // replay — пересмотр из альбома: без XP и без перехода к практике
   let { skill, replay = false }: { skill: string; replay?: boolean } = $props();
   // FractionCircle и FillOne подгоняют себя сами (пицца и мост по высоте); остальные виджеты сжимаются целиком не сильнее 0.8
   const SELF_FIT = ['FractionCircle', 'FillOne'];
-  const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline, MultipleHunt, StarPicker, SetSort, FractionCircle, FractionBar, NumberLine, FillOne, Scales, ZeroCounter, FracArea, TreeBuilder, GridSquares };
+  const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline, MultipleHunt, StarPicker, SetSort, FractionCircle, FractionBar, NumberLine, FillOne, Scales, ZeroCounter, FracArea, TreeBuilder, GridSquares, LetterDigit };
   const steps: any[] = (LESSONS as Record<string, any[]>)[skill] ?? [{ type: 'say', kz: 'Бұл тақырыптың сабағы әзірленуде. Бірден жаттығуға көшейік!' }];
   const goal = steps.find(s => s.type === 'goal');
   const target = goal?.title ?? skillTitle(skill).kz;
@@ -123,7 +125,17 @@
     if (v !== undefined) setTimeout(() => { const c = sceneCenter(0.3); floatText(`${currentWorld().kz} · ${SPOT_KZ[v]}`, c.x, c.y, '#ffc94a', true); }, 400);
     (W.world?.arrive() ?? Promise.resolve()).then(() => W.world?.spawnMob(maxHp, currentWorld().mob)).then(() => (cine = false));
     audio.setMood('focus'); enter();
-    return () => { clearTimeout(skipTimer); W.world?.clearMob(); mq.removeEventListener('change', onLand); };
+    return () => { clearTimeout(skipTimer); W.world?.holoClear(true); W.world?.clearMob(); mq.removeEventListener('change', onLand); };
+  });
+  // «Тірі түсіндіру» (docs/GAME_LOOP.md 17): Бит проецирует голограмму того, о чём кадр; герой на каждый новый кадр кивает или показывает.
+  // Пропуск D11 не выдаётся: голограмма берёт тот же текст с ▢, что и карточка, и заполняет его вместе с ней.
+  let liveKey = '';
+  $effect(() => {
+    if (cine) return;
+    const st = step, g = st.type === 'example' || st.type === 'rule' ? curGap : null;
+    W.world?.holoShow(holoSpecFor(st, { frame, gapText: g?.text ?? null, gapFill: g && solved[gapKey] ? g.answer : null, gapLine: st.type === 'rule' ? gaps?.rule?.line ?? null : null }));
+    const k = `${i}:${st.type === 'example' ? frame : 0}`;
+    if (k !== liveKey) { liveKey = k; if (['example', 'goal', 'rule'].includes(st.type)) W.world?.heroEmote(st.type === 'rule' ? 'nod' : 'point'); }
   });
 
   function strike(crit = false) {
@@ -139,14 +151,14 @@
     sparksAt(c.x, c.y - 40, ['#3ff0ff', '#5ce39c', '#ffc94a'], big ? 60 : 26);
     if (xp && !replay) { earned += xp; game.save.xp += xp; floatText(`+${xp} XP`, c.x, c.y - 60, '#ffc94a', big); persist(); }
   }
-  function widgetDone() { audio.play('correct'); reward(0); }
+  function widgetDone() { audio.play('correct'); W.world?.heroEmote('cheer'); reward(0); }
   function go2(k: number) { if (k < 0 || k >= step.frames.length) return; const fresh = k > frame; frame = k; audio.play('click'); if (fresh) gate.start(readMs(frameText(step, k))); if (frame === step.frames.length - 1) ready = true; }
   async function choose(k: number) {
     if (pick !== null && step.type !== 'final') return;
     if (step.type === 'final' && won) return;
     pick = k;
     const ok = k === step.answer;
-    if (step.type === 'predict') { audio.play(ok ? 'correct' : 'hint'); if (ok) react('correct'); reward(ok ? 3 : 0); gate.start(readMs(step.reveal)); showChoices(); return; }
+    if (step.type === 'predict') { audio.play(ok ? 'correct' : 'hint'); if (ok) react('correct'); W.world?.heroEmote(ok ? 'cheer' : 'scratch'); reward(ok ? 3 : 0); gate.start(readMs(step.reveal)); showChoices(); return; }
     if (step.type === 'final') {
       if (!ok) { audio.play('wrong'); flash('#ff9a6b'); W.world?.enemyAttack(); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake'); return; }
       won = true; hp = 0; audio.play('crit'); react('win');
@@ -159,9 +171,9 @@
       sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#ffc94a', '#3ff0ff', '#b58cff'], 90, 10);
       reward(20, true); return;
     }
-    audio.play(ok ? 'correct' : 'wrong'); react(ok ? 'correct' : 'wrong'); reward(ok ? 5 : 0);
+    audio.play(ok ? 'correct' : 'wrong'); react(ok ? 'correct' : 'wrong'); if (ok) W.world?.heroEmote('cheer'); reward(ok ? 5 : 0);
     if (step.why) gate.start(readMs(step.why));
-    if (!ok) W.world?.enemyAttack();
+    if (!ok) W.world?.enemyAttack().then(() => W.world?.heroEmote('scratch'));   // блок, потом почесал голову
     showChoices();
   }
   // после ответа появляется разбор: варианты и кнопка должны остаться в поле зрения
@@ -188,7 +200,7 @@
     const c = centerOf(e.currentTarget as HTMLElement); sparksAt(c.x, c.y, ['#ffc94a', '#3ff0ff'], 16);
   }
   // D11: верный вариант в пропуске тоже считается «прочитал»
-  function gapSolved() { solved[gapKey] = true; gate.stop(); gate.done = true; if (nextBtn) { const c = centerOf(nextBtn); sparksAt(c.x, c.y - 40, ['#5ce39c', '#ffc94a'], 18); } }
+  function gapSolved() { solved[gapKey] = true; W.world?.holoPulse('correct'); gate.stop(); gate.done = true; if (nextBtn) { const c = centerOf(nextBtn); sparksAt(c.x, c.y - 40, ['#5ce39c', '#ffc94a'], 18); } }
   const canTap = $derived(gate.on && !gapOpen);
   function primary() {
     if (gapOpen) { audio.play('click'); toast('Алдымен жасырылған санды тап'); return; }
@@ -257,7 +269,7 @@
         <div class="hrow"><span class="tag c-example">{CHIP.example}</span><h2 class="h"><MathLine text={step.kz.replace(/^Көр:\s*/, '')} inherit /></h2></div>
         {#if step.scene || fr.scene}
           {#key frame}
-            <Scene name={fr.scene ?? step.scene} s={fr.s} />
+            <Scene name={fr.scene ?? step.scene} s={fr.s} live />
             {#if fr.math}<div class="paper mline appear"><MathLine text={curGap ? curGap.text : fr.math} fill={curGap && solved[gapKey] ? curGap.answer : null} big ontap={canTap && hasHighlight(curGap ? curGap.text : fr.math) ? readTap : undefined} /></div>{/if}
             {#if gapOpen && curGap}<Gap options={curGap.options} answer={curGap.answer} onsolved={gapSolved} />
             {:else if fr.math && hasHighlight(fr.math) && (gate.on || gate.done)}<p class="tip" class:off={!canTap} aria-hidden={!canTap}>Сары бөлікті түртсең, батырма ашылады</p>{/if}
@@ -274,7 +286,7 @@
         {/if}
       {:else if step.type === 'faded'}
         {#if !land}{@render bitView()}{/if}
-        <div class="paper"><Faded task={step.kz} steps={step.steps} ondone={clean => reward(clean ? 8 : 3)} /></div>
+        <div class="paper"><Faded task={step.kz} steps={step.steps} ondone={clean => { if (clean) W.world?.heroEmote('cheer'); reward(clean ? 8 : 3); }} /></div>
       {:else if step.type === 'bug'}
         <GlitchSays text={step.kz} beaten={bugFound} />
         <div class="paper"><BugHunt lines={step.lines} bad={step.bad} follows={step.follows} fix={step.fix} ondone={clean => { bugFound = true; W.world?.heroAttack(clean); reward(clean ? 8 : 3); }} /></div>

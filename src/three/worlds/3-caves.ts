@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import type { Palette } from '../worlds3d';
 import type { IslandKits } from '../island3d';
+import { fireflies, pulseEmissive } from '../ambient_fx';
 
 /** Сталактиты «потолка»: конусы остриём вниз высоко за островом (x, y низа, z, радиус, длина). */
 const DRIPS: [number, number, number, number, number][] = [
@@ -22,7 +23,11 @@ function glow(root: THREE.Object3D, k: number, made = new Map<THREE.Material, TH
 function extra(g: THREE.Group, layout: number, _kits: IslandKits) {
   // грибы светятся сами; на закате оранжевый свет красит фиолетовое в бордо, поэтому весь остров подсвечиваем изнутри
   if (layout % 3) glow(g, layout % 3 === 1 ? 0.4 : 0.25);
-  g.children.forEach(o => { if (o.name.startsWith('mushroom')) glow(o, 0.42); });
+  const shroom = new Map<THREE.Material, THREE.Material>();
+  g.children.forEach(o => { if (o.name.startsWith('mushroom')) glow(o, 0.42, shroom); });
+  pulseEmissive(g, [...shroom.values()] as THREE.MeshToonMaterial[], { base: 0.95, amp: 0.3, speed: 1.2 });   // грибы дышат светом
+  // пыль пещеры: тусклые фиолетовые пылинки плывут в темноте
+  fireflies(g, { n: 46, area: [-14, 14, 0.4, 7, -13, 7], colors: [0xb58cff, 0xd9c2ff, 0x8fe3ff], size: 0.16, wander: 0.5, pulse: 0.4, speed: 0.6, opacity: 0.85, seed: layout + 3 });
   const mat = new THREE.MeshToonMaterial({ color: 0x6a4fb8, emissive: 0x2a1a5a });
   for (const [x, y, z, r, len] of DRIPS) {
     const m = new THREE.Mesh(new THREE.ConeGeometry(r, len, 6), mat); m.rotation.x = Math.PI; m.position.set(x, y + len / 2, z); m.rotation.y = x; g.add(m);

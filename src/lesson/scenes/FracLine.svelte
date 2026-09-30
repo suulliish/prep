@@ -2,9 +2,22 @@
   // Полоска ложится на числовую прямую (одна и та же дробь на полоске и на прямой). Ориентиры 0, 1/2, 1.
   // stage: 0 прямая, 1 полоска n/d над ней, 2 полоска легла на прямую, 3 точка n/d с подписью. points — ещё точки (видны с stage 3).
   // zones — цветные зоны «ближе к 0 / к 1/2 / к 1». broken — Глитч: подписи «?».
+  import { onMount } from 'svelte';
   import Frac from '../../ui/Frac.svelte';
   import { val, type Fr } from '../../widgets/fracdraw';
-  let { n, d, points = [], stage = 3, zones = false, broken = false }: { n?: number; d?: number; points?: Fr[]; stage?: number; zones?: boolean; broken?: boolean } = $props();
+  import { audio } from '../../lib/audio';
+  // live/prev (Scene.svelte): полоска появляется, ложится на прямую, на прямой загорается точка (по шагам, со звуком)
+  let { n, d, points = [], stage = 3, zones = false, broken = false, live = false, prev = null }: { n?: number; d?: number; points?: Fr[]; stage?: number; zones?: boolean; broken?: boolean; live?: boolean; prev?: { n?: number; d?: number; stage?: number } | null } = $props();
+  const pStage = $derived(prev && prev.n === n && prev.d === d && (prev.stage ?? 3) <= stage ? prev.stage ?? 3 : -1);
+  const at = (k: number) => live && stage >= k && pStage < k;   // шаг k случился именно в этом кадре
+  onMount(() => {
+    if (!live) return;
+    const t: number[] = [];
+    if (at(1)) t.push(window.setTimeout(() => audio.play('click', { rate: 1.5 }), 80));
+    if (at(2)) t.push(window.setTimeout(() => audio.play('land', { rate: 1.3 }), 550));
+    if (at(3)) t.push(window.setTimeout(() => audio.play('coins', { rate: 1.3 }), at(2) ? 950 : 250));
+    return () => t.forEach(clearTimeout);
+  });
   const W = 340, H = 140, X0 = 20, X1 = 320, AX = 84;
   const has = $derived(n !== undefined && d !== undefined);
   const xOf = (v: number) => X0 + v * (X1 - X0);
@@ -17,7 +30,7 @@
   ];
 </script>
 
-<div class="box" class:broken>
+<div class="box" class:broken class:a1={at(1)} class:a2={at(2)} class:a3={at(3)}>
   <svg viewBox="0 0 {W} {H}" role="img" aria-label="Сан сызығы">
     {#if zones}
       {#each ZN as z}<rect x={xOf(z.a)} y={AX + 32} width={xOf(z.b) - xOf(z.a)} height="20" fill={z.c} opacity=".22" /><text x={(xOf(z.a) + xOf(z.b)) / 2} y={AX + 46} class="zt" fill={z.c}>{z.t}</text>{/each}
@@ -69,6 +82,17 @@
   .lb .p { transform: translate(-50%, -100%); color: var(--dim); background: #0b1030cc; border-radius: 6px; padding: 0 3px; }
   .lb .p.hi { color: var(--gold); }
   .q { color: var(--glitch); font-size: 18px; }
+  /* шаги кадра: полоска вырастает, скользит на прямую, точка и подпись всплывают */
+  .a1 .strip { animation: strip-in .45s var(--ease-out) both; }
+  .a2 .strip { animation: strip-drop .8s var(--ease-out) both; }
+  .a1.a2 .strip { animation: strip-in .45s var(--ease-out) both, strip-drop .8s .5s var(--ease-out) both; }
+  .a2 .cell.off { animation: cell-off .5s .8s ease-in both; }
+  .a3 .dot, .a3 .stem { animation: pop-in .4s var(--ease-out) both; animation-delay: calc(var(--dl, 0s)); transform-box: fill-box; transform-origin: center; }
+  .a3 .lb .p { animation: pop-in .4s .15s var(--ease-out) both; }
+  .a3.a2 .dot, .a3.a2 .stem, .a3.a2 .lb .p { animation-delay: .9s; }
+  @keyframes strip-in { from { transform: translateY(-14px) scaleY(.3); opacity: 0; } }
+  @keyframes strip-drop { from { transform: translateY(0); } }
+  @keyframes cell-off { from { opacity: 1; } }
   .broken .dot { fill: var(--glitch); }
   .broken .cell.on { fill: var(--glitch); }
 </style>

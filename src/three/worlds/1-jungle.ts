@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import type { Palette } from '../worlds3d';
 import type { IslandKits } from '../island3d';
+import { spotTime } from '../spots';
+import { birds, fireflies, leaves } from '../ambient_fx';
 
 /** Пальмы вокруг боевой площадки: живая стена джунглей по краю острова (x, z, высота). */
 const CANOPY: [string, number, number, number][] = [
@@ -21,9 +23,11 @@ function extra(g: THREE.Group, layout: number, kits: IslandKits) {
     if (layout === 2 && x < -1 && x > -8.5 && z < -1.5 && z > -8) continue;
     const o = k.get(name, { height: h * (0.8 + rnd() * 0.5), ground: true }); o.position.set(x, 0, z); o.rotation.y = rnd() * 6.28; g.add(o);
   }
-  // светлячки над зарослями
-  const geo = new THREE.SphereGeometry(0.07, 6, 5), mat = new THREE.MeshBasicMaterial({ color: 0xd8ff6a });
-  for (let i = 0; i < 16; i++) { const m = new THREE.Mesh(geo, mat); const x = (rnd() - 0.5) * 24, z = -1 - rnd() * 9; if (Math.abs(x) < 4.6 && z > -1.5) continue; m.position.set(x, 0.7 + rnd() * 2.6, z); g.add(m); }
+  // светлячки над зарослями (мигают и блуждают), листопад с крон, стайка попугаев вдали
+  const t = spotTime(layout);
+  fireflies(g, { n: 30, area: [-13, 13, 0.6, 3.4, -11, -1], colors: [0xd8ff6a, 0xfff09a, 0xb6ff8a], size: 0.3, seed: layout + 4, wander: 0.8, speed: 0.8 });
+  leaves(g, { n: 26, colors: [0x9adf5c, 0xc9e04a, 0x6cc04a, 0xf2b632], seed: layout + 5, size: 0.3, dim: t === 2 ? 0.5 : 1, wind: 0.25 });
+  if (t !== 2) birds(g, { n: 3, color: t === 1 ? 0x3a1830 : 0xffb03a, seed: layout + 6 });
 }
 
 export const palette: Palette = {

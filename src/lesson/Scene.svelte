@@ -1,5 +1,13 @@
+<script module lang="ts">
+  // Предыдущая «живая» сцена: кадры «Көр» пересоздают Scene, и сцене нужно знать, что изменилось (порезали, закрасили, добавили ветку),
+  // чтобы оживить только новое, а не всё заново («Тірі түсіндіру», docs/GAME_LOOP.md 17).
+  let last: { name: string; s: Record<string, any> } | null = null;
+</script>
+
 <script lang="ts">
   // Выбор визуальной сцены урока по имени (content/lessons_week1.mjs: scene + s).
+  // live — сцена в кадре «Көр»: включает пошаговую анимацию со звуком; prev — параметры прошлого кадра той же сцены (или null).
+  import { untrack } from 'svelte';
   import Train from './scenes/Train.svelte';
   import Crystals from './scenes/Crystals.svelte';
   import Tiles from './scenes/Tiles.svelte';
@@ -18,11 +26,12 @@
   import FracLine from './scenes/FracLine.svelte';
   import { fitZoom } from './fit';
   const MAP: Record<string, any> = { Train, Crystals, Tiles, Cubes, Scanner, Sieve, Tree, Common, Multiples, Strike, StarDigit, Ladder, Venn2, Venn3, FracBars, FracLine };
-  let { name, s = {} }: { name: string; s?: Record<string, any> } = $props();
+  let { name, s = {}, live = false }: { name: string; s?: Record<string, any>; live?: boolean } = $props();
   const Comp = $derived(MAP[name]);
+  const prev = untrack(() => { const p = live && last && last.name === name ? last.s : null; last = live ? { name, s } : null; return p; });
 </script>
 
-<div class="scene pe" use:fitZoom>{#if Comp}<Comp {...s} />{/if}</div>
+<div class="scene pe" use:fitZoom>{#if Comp}<Comp {...s} {live} {prev} />{/if}</div>
 
 <style>
   .scene { position: relative; overflow: hidden; background: radial-gradient(ellipse at 50% 0%, #1c2556 0%, #0b0f28 70%); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }

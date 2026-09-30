@@ -537,6 +537,8 @@ export function createArena(d: Deps) {
       if (busy === 0 && hero) stance();
     },
     /** Мировая позиция героя (у ног) — кладёт в v и возвращает его. */
+    /** Приглушить полоску здоровья врага (0 — видна, 1 — скрыта): её перекрывает голограмма урока (holo.ts). */
+    hpVeil(k: number) { (hpBar.material as THREE.MeshBasicMaterial).opacity = 1 - Math.min(1, Math.max(0, k)); },
     heroPos(v: THREE.Vector3) { return hero ? v.copy(hero.g.position) : v.set(HERO_X, 0, Z0); },
     /** Мировая позиция врага (центр тела); нет врага — точка, где он стоит. */
     enemyPos2(v: THREE.Vector3) { return v.copy(enemyPos()); },

@@ -2,6 +2,8 @@
 // тёмные скалы (KayKit Hexagon, CC0) и глитч кодом: мерцающие цветные прямоугольники и «сбойные» полосы.
 import * as THREE from 'three';
 import type { Palette } from '../worlds3d';
+import { ambientOf } from '../ambient';
+import { pixels, pulseEmissive } from '../ambient_fx';
 
 const G = 'glitch', H = 'hexcore';
 const TW = (n: string) => `tower-square-build-${n}`;
@@ -47,13 +49,15 @@ function glitch(g: THREE.Group, layout: number) {
 
 /** Высокие светящиеся шпили на дальнем краю острова и два цветных источника света (ночью без них логово тонет во тьме). */
 function spires(g: THREE.Group) {
-  const geo = new THREE.OctahedronGeometry(1, 0);
+  const geo = new THREE.OctahedronGeometry(1, 0), mats: THREE.MeshToonMaterial[] = [];
   ([[-12, -11, 3.6], [-7.5, -12.4, 2.8], [-2.5, -12.6, 4.0], [3.5, -12.8, 3.0], [8.8, -11.6, 3.8], [13, -9, 2.8]] as const).forEach(([x, z, h], i) => {
     const c = NEON[i % 3], m = new THREE.Mesh(geo, new THREE.MeshToonMaterial({ color: c, emissive: c, emissiveIntensity: 1.1 }));
-    m.scale.set(0.55, h, 0.55); m.position.set(x, h * 0.85, z); m.rotation.set(0, i, 0.08 * (i % 3 - 1)); g.add(m);
+    m.scale.set(0.55, h, 0.55); m.position.set(x, h * 0.85, z); m.rotation.set(0, i, 0.08 * (i % 3 - 1)); g.add(m); mats.push(m.material as THREE.MeshToonMaterial);
   });
   const pink = new THREE.PointLight(0xff4fb8, 15, 16), cyan = new THREE.PointLight(0x3ff0ff, 11, 16);
   pink.position.set(-7, 3, -3); cyan.position.set(7, 3, -3); g.add(pink, cyan);
+  pulseEmissive(g, mats, { base: 1.1, amp: 0.4, speed: 2.2 });
+  ambientOf(g).add(c => { pink.intensity = 15 * (1 + 0.14 * Math.sin(c.t * 2.3) * c.km); cyan.intensity = 11 * (1 + 0.14 * Math.sin(c.t * 1.7 + 2) * c.km); });   // цветной свет дышит
 }
 
 export const palette: Palette = {
@@ -86,5 +90,6 @@ export const palette: Palette = {
     tint(g, n => n.startsWith('flag_'), 0xff60ff);
     tint(g, n => n.startsWith('weapon-') || n.startsWith('tower-round'), 0xc9a0ff);
     spires(g); glitch(g, layout);
+    pixels(g, { n: 46, colors: NEON, seed: layout + 5 });
   },
 };
