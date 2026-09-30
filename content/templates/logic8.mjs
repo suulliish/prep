@@ -162,7 +162,11 @@ export function pickPuzzle(r, cfg) {
 
 /** Общий генератор «найди цифру» для T1, T2, T3. */
 function letterItem(r, cfg) {
-  const { words, sum, letters, sols, target, f, v, carryUp, leadLetter } = pickPuzzle(r, cfg);
+  // Ответ 9 и 0 у ребусов встречается неестественно часто (9 у двузначных ~42%, 0 ~25%): «жми 9, а если нет, то 0» угадывал бы больше половины.
+  // Поэтому такие задачи пропускаем с вероятностью cfg.keep[значение] (перебор ограничен: последняя найденная задача берётся как есть).
+  let pz = pickPuzzle(r, cfg);
+  for (let i = 0; i < 12 && cfg.keep && r.next() >= (cfg.keep[pz.v] ?? 1); i++) pz = pickPuzzle(r, cfg);
+  const { words, sum, letters, sols, target, f, v, carryUp, leadLetter } = pz;
   const example = r.pick(sols);
 
   // ---- варианты ответа ----
@@ -175,9 +179,15 @@ function letterItem(r, cfg) {
   } else {
     const w = relaxedValues(words, sum, f);
     const nl = r.shuffle(w.noLead), nd = r.shuffle(w.noDist);
+    // 9 и 0 в вариантах не должны выдавать ответ: подмешиваем их как правдоподобные «крайние» цифры независимо от того, верны они или нет
+    if (r.chance(cfg.decoy ?? 0.35)) push(9, 'random');
+    if (r.chance(cfg.decoy ?? 0.35)) push(0, 'random');
+    if (r.chance(0.5)) push(r.int(1, Math.min(8, top)), 'random');
     nl.slice(0, 2).forEach(x => push(x, 'zero_first_allowed'));
     nd.slice(0, 2).forEach(x => push(x, 'same_digit_two_letters'));
-    push(v + 1, 'forgot_carry'); push(v - 1, 'forgot_carry');
+    // «соседи» ответа: обе стороны сразу выдали бы ответ как медиану набора, поэтому вторая сторона берётся лишь иногда
+    const side = r.chance(0.5) ? 1 : -1;
+    push(v + side, 'forgot_carry'); if (r.chance(0.4)) push(v - side, 'forgot_carry');
     if (target.kind === 'letter') r.shuffle(letters.filter(l => l !== target.l)).forEach(l => push(example[l], 'mixed_letters'));
     nl.slice(2).forEach(x => push(x, 'zero_first_allowed')); nd.slice(2).forEach(x => push(x, 'same_digit_two_letters'));
   }
@@ -330,13 +340,13 @@ export default [
     id: 'logic.crypt_two_digit',
     examType: 'logic', skills: ['logic.cryptarithm'], from: [], difficulty: 2,
     title: { kz: 'Ребус: екі таңбалы сандар', ru: 'Ребус: двузначные числа' },
-    gen(r) { return letterItem(r, { mode: 'digit', pairs: true, pickShape: rr => weighted(rr, [[3, SHAPES_MIRROR2], [1, SHAPES_NO_CARRY], [6, SHAPES_2]]) }); },
+    gen(r) { return letterItem(r, { mode: 'digit', pairs: true, keep: { 9: 0.2, 0: 0.3 }, pickShape: rr => weighted(rr, [[3, SHAPES_MIRROR2], [1, SHAPES_NO_CARRY], [6, SHAPES_2]]) }); },
   },
   {
     id: 'logic.crypt_three_digit',
     examType: 'logic', skills: ['logic.cryptarithm'], from: [], difficulty: 3,
     title: { kz: 'Ребус: үш таңбалы сандар', ru: 'Ребус: трёхзначные числа' },
-    gen(r) { return letterItem(r, { mode: 'digit', pairs: true, pickShape: rr => weighted(rr, [[4, SHAPES_MIRROR3], [6, SHAPES_3]]) }); },
+    gen(r) { return letterItem(r, { mode: 'digit', pairs: true, keep: { 9: 0.5, 0: 0.5 }, pickShape: rr => weighted(rr, [[4, SHAPES_MIRROR3], [6, SHAPES_3]]) }); },
   },
   {
     id: 'logic.crypt_lead',

@@ -19,6 +19,8 @@ export class Sequencer {
   private level = -1;
   private jitter: () => number;
   private off = false;
+  /** таймер положен (start(true)); нужен, чтобы resume() не заводил его у секвенсора с ручным pump() */
+  private auto = false;
 
   constructor(private c: AudioContext, out: AudioNode, noiseBuf: AudioBuffer, public track: Track, seed = Math.floor(Math.random() * 1e9)) {
     const def = (this.cursor = new Cursor(track, seed)).peekDef();
@@ -30,8 +32,28 @@ export class Sequencer {
   start(timer = true) {
     this.nextBar = this.c.currentTime + 0.12;
     this.pump(this.c.currentTime + LOOKAHEAD);
-    if (timer) this.timer = setInterval(() => { if (!this.off) { const now = this.c.currentTime; this.pump(now + LOOKAHEAD, now - 0.15); } }, TICK_MS);
+    this.auto = timer;
+    if (timer) this.arm();
   }
+
+  private arm() { this.timer = setInterval(() => { if (!this.off) { const now = this.c.currentTime; this.pump(now + LOOKAHEAD, now - 0.15); } }, TICK_MS); }
+
+  /** Пауза: таймер снят, новые такты не планируются (звук выключен или вкладка в фоне). Уже отправленные в граф ноты доигрывают (≤ 1.2 с). */
+  pause() {
+    if (!this.timer) return;
+    clearInterval(this.timer); this.timer = null;
+    this.q.length = 0;
+  }
+
+  /** Продолжить с текущего момента: композиция идёт дальше с того же места (курсор не сбрасывается), пропущенное время не догоняется. */
+  resume() {
+    if (this.off || this.timer || !this.auto) return;
+    this.nextBar = this.c.currentTime + 0.12;
+    this.pump(this.c.currentTime + LOOKAHEAD);
+    this.arm();
+  }
+
+  get paused() { return !this.off && this.auto && !this.timer; }
 
   /** Спланировать такты и сыграть события, начинающиеся раньше момента horizon (секунды часов контекста).
    *  late: события раньше этого момента пропускаются (браузер «заморозил» вкладку): вместо залпа нот музыка просто идёт дальше. */

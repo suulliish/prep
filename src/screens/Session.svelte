@@ -340,7 +340,8 @@
       bitText = hintLevel ? 'Дұрыс! Кеңеспен болса да — жақсы.' : combo >= 3 ? 'Керемет серия!' : 'Дұрыс!';
       if (!honest && hintLevel < 4 && !fast) bitText = 'Дұрыс, бірақ тым жылдам! Асықпа — алдымен оқы.';
       bitMood = combo >= 3 ? 'wow' : 'happy';
-      if (battle) hit(false);   // серия даёт крит-вспышку (crit = combo ≥ 2), но урон всегда 1
+      // серия даёт крит-вспышку (crit = combo ≥ 2), но урон всегда 1; бас жау получает удар только за вопрос с первой попытки (реванш не бьёт): победа = 7 верных из 10
+      if (battle && !(block === 'boss' && twin)) hit(false);
       if (block === 'repair' && hintLevel === 0) { const r = game.save.repairShop.find(x => !x.fixed && x.skill === item!.skill); if (r) { r.fixed = true; floatText('ЖӨНДЕЛДІ', at.x, at.y - 50, '#5ce39c'); } }
       if (confidence === 'unsure') bitText += ' Білмеймін дедің, бірақ таптың — демек, түсінік бар.';
     } else {
@@ -445,7 +446,8 @@
       game.save.xp += 3; audio.play('correct'); react('correct', 0.4);
       sparksAt(at.x, at.y, ['#5ce39c', '#3ff0ff'], 20); floatText('+3 XP', at.x, at.y - 20, '#ffc94a');
       bitText = 'Екінші әрекеттен дұрыс! Қатені өзің таптың — бұл нағыз оқу.'; bitMood = 'happy';
-      if (battle) hit(false);
+      // бас жау: вторая попытка не бьёт (иначе каждый вопрос кончается ударом и босса нельзя не победить)
+      if (battle && block !== 'boss') hit(false);
     } else {
       struck = [...struck, picked!]; audio.play('wrong'); flash('#ff9a6b'); if (battle) enemyTurn();
       bitText = 'Дұрыс жауабы жасылмен белгіленді. Шешуін оқы — сосын дәл осындай есепте реванш аласың.'; bitMood = 'think';
@@ -460,22 +462,27 @@
     if (gapOpen) { audio.play('click'); toast('Алдымен шешудегі бос орынды толтыр'); showSolution(); return; }
     if (!twin) idx++;
     const learnedNow = block === 'new' && game.save.skills[skills[0]]?.status === 'learned' && idx >= 6;
-    if (idx >= total || learnedNow) return finish();
+    // бас жау повержен (последняя волна, здоровья нет) — бой окончен, не стоять с пустой полоской до 10-го вопроса
+    const bossDown = block === 'boss' && isLastWave() && mobHp <= 0;
+    if (idx >= total || learnedNow || bossDown) return finish();
     nextItem();
     // новый вопрос виден сразу: перелистывание, номер, ввод закрыт 0.7 с
     locked = true; say(twin ? 'Реванш!' : isRushTwin ? 'Егіз есеп!' : glitch ? GLITCH_SAY.title : `Сұрақ ${idx + 1}/${total}`); audio.play('click');
     cardEl?.closest('.body')?.scrollTo({ top: 0 });
     setTimeout(() => { startAt = performance.now(); if (chk) beginCheck(); else locked = false; }, 700);
   }
-  const starsOf = () => { const a = firstTries ? firstRight / firstTries : 0; return a >= 0.9 ? 3 : a >= 0.7 ? 2 : 1; };
+  // звёзды по верным с первой попытки, но не больше, чем позволяет доля честных ответов (наспех — не 3★ и не монеты за них)
+  const starsOf = () => { const a = firstTries ? firstRight / firstTries : 0, h = honestShare; return Math.min(a >= 0.9 ? 3 : a >= 0.7 ? 2 : 1, h >= 0.9 ? 3 : h >= 0.7 ? 2 : 1); };
 
   // Босс не даёт минут (они — за план), зато открывает путь в следующий мир
   async function finishBoss() {
+    honestShare = answered ? (answered - guessed) / answered : 1;   // для звёзд: наспех — не 3★
     const won = mobHp <= 0, w = currentWorld();
     cine = true;
     if (won && W.world) {
       await W.world.killMob(); audio.play('chest'); await W.world.openChest(); W.world.celebrate(0xffc94a); audio.play('levelup');
-      if (!game.save.worldsCleared?.includes(w.id)) (game.save.worldsCleared ??= []).push(w.id);
+      game.save.worldsCleared ??= [];   // отдельной строкой: «(x ??= []).push» пишет в копию, а не в сохранение
+      if (!game.save.worldsCleared.includes(w.id)) game.save.worldsCleared.push(w.id);
       game.save.xp += 50; persist();
       earn(enemyCoins(true), sceneCenter(0.3), true);
       floatText('БАС ЖАУ ЖЕҢІЛДІ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#ffc94a', true);
@@ -497,12 +504,14 @@
     const before = dayRec().minutesToday;
     let counted = true, note = '';
     honestShare = answered ? (answered - guessed) / answered : 1;
-    if (block !== 'repair') { const r = dayRec(); r.honest ??= {}; r.honest[b] = Math.min(r.honest[b] ?? 1, honestShare); }
+    if (block !== 'repair' && block !== 'extra') { const r = dayRec(); r.honest ??= {}; r.honest[b] = Math.min(r.honest[b] ?? 1, honestShare); }
     if (guessed > 0) note = `Бит қабылдаған жауап: ${answered - guessed}/${answered}. Асығыс жауап ойын минутын бермейді.`;
     if (block === 'extra' && firstRight < 7) {
       counted = false; note = `Бірінші әрекеттен ${firstRight} дұрыс, керегі — 7. Миссия есептелмеді, тағы көр!`;
     }
     item = null; phase = 'feedback'; busy = true;
+    // доп. миссия: её 15 минут тоже умножаются на долю честных ответов (копится сумма долей по всем доп. миссиям дня)
+    if (counted && block === 'extra') { const r = dayRec(); r.extraHonest = (r.extraHonest ?? r.extraMissions) + honestShare; }
     if (counted && block !== 'repair') completeBlock(b as any); else persist();
     if (battle && W.world) {
       cine = true;
@@ -555,7 +564,8 @@
       {/if}
       <div class="loot">
         <div><b class="num">{result.right}/{result.of}</b><small>бірінші әрекеттен</small></div>
-        {#if answered}<div class:warn={guessed > 0}><b class="num">{answered - guessed}/{answered}</b><small>Бит қабылдады</small></div>{/if}
+        <!-- «Бит қабылдады» — только когда были ответы наспех: при честной игре плитка повторяет первую и не влезает на телефоне -->
+        {#if guessed > 0}<div class="warn"><b class="num">{answered - guessed}/{answered}</b><small>Бит қабылдады</small></div>{/if}
         <div><b class="num">+{result.xp}</b><small>XP</small></div>
         {#if result.coins}<div class="gold"><b class="num">+{result.coins}</b><small>тиын</small></div>{/if}
         {#if result.minutes}<div class="gold"><b class="num">+{result.minutes}</b><small>мин ойын</small></div>{/if}
@@ -738,12 +748,12 @@
   .stars span { animation: starIn .5s var(--ease-out) both; }
   .stars span:nth-child(2) { transform: translateY(-10px); }
   @keyframes starIn { from { transform: scale(0) rotate(-90deg); opacity: 0; } }
-  .loot { display: flex; gap: 8px; width: 100%; }
-  .loot > div { flex: 1; display: grid; gap: 2px; padding: 10px 4px; border-radius: 14px; background: var(--deep); border: 3px solid var(--outline); animation: pop-in .4s .5s var(--ease-out) both; }
-  .loot b { font-size: 26px; text-shadow: 0 2px 0 var(--outline); }
+  .loot { display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 6px; width: 100%; }   /* 5 плиток на 375 px в строку, уже — переносом */
+  .loot > div { min-width: 0; display: grid; gap: 2px; padding: 10px 4px; border-radius: 14px; background: var(--deep); border: 3px solid var(--outline); animation: pop-in .4s .5s var(--ease-out) both; }
+  .loot b { font-size: clamp(16px, 5.3vw, 26px); text-shadow: 0 2px 0 var(--outline); }
   .loot > div.warn b { color: var(--gold); }
   .loot .gold b { color: var(--gold); }
-  .loot small { color: var(--dim); font-size: 12px; }
+  .loot small { color: var(--dim); font-size: clamp(10.5px, 3vw, 12px); line-height: 1.15; }
 
   .hd { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .t1 { display: flex; align-items: center; gap: 8px; }

@@ -36,6 +36,7 @@ export interface DayRecord {
   minutesToday: number;
   minutesWeekend: number;
   extraMissions: number;
+  extraHonest?: number;      // сумма долей честных ответов по доп. миссиям дня (минуты = 15 × сумма), Session.svelte finish()
   bonuses: { reason: string; minutes: number; mastery?: boolean }[];
   hard?: string; // «что было трудно» из итога дня (id темы или 'none') — для командира
   exception?: 'sick' | 'holiday' | 'vacation';

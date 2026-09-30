@@ -51,7 +51,9 @@
       return;
     }
     const badAt = cs.findIndex(c => c.status === 'bad');
-    if (badAt >= 0) note = `${COLUMN_NAMES[badAt]} бағаны сәйкес келмейді. Ойда қалған цифрды тексер.`;
+    // в столбце единиц переноса нет: там советуем проверить сумму цифр, а не «цифру, оставшуюся в уме»
+    if (badAt === 0) note = `${COLUMN_NAMES[0]} бағаны сәйкес келмейді. Осы бағандағы цифрлардың қосындысын тексер: оның соңғы цифры қосындының әрпіне тең болуы керек.`;
+    else if (badAt > 0) note = `${COLUMN_NAMES[badAt]} бағаны сәйкес келмейді. Ойда қалған цифрды тексер.`;
     else if (letters.every(x => asg[x] !== undefined)) note = 'Соңғы баған сәйкес емес: ең алдыңғы цифрды тексер.';
     else { note = ''; sel = nextFree(letters, asg, l) ?? l; }
   }

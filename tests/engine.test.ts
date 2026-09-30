@@ -77,6 +77,18 @@ describe('заработок', () => {
     expect(rec.minutesToday).toBe(90);
     expect(canStartExtra({ ...rec, extraMissions: 4 }, plan, 4)).toBe(false);
   });
+  it('доп. миссия наспех не даёт минут: 15 × доля честных ответов', () => {
+    const s = newSave(); refreshAvailability(s, defs);
+    const plan = buildPlan(s, defs as any, '2026-10-19');
+    const rec = blankDay('2026-10-19');
+    for (const b of plan.blocks) rec.blocksDone[b.id] = true;
+    rec.extraMissions = 1; rec.extraHonest = 0.1; settleDay(rec, plan, 'today');
+    expect(rec.minutesToday).toBe(60);                     // 15 × 0.1 = 1.5 → округление до 5 = 0
+    rec.extraMissions = 2; rec.extraHonest = 1.1; settleDay(rec, plan, 'today');
+    expect(rec.minutesToday).toBe(75);                     // честная вторая миссия: +15
+    delete rec.extraHonest; settleDay(rec, plan, 'today');
+    expect(rec.minutesToday).toBe(90);                     // старое сохранение без поля — миссии честные
+  });
   it('угадывание быстрее 5 секунд — нечестно', () => {
     expect(isHonest(3000, 0)).toBe(false); expect(isHonest(12000, 4)).toBe(false); expect(isHonest(12000, 2)).toBe(true);
   });

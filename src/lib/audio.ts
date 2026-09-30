@@ -70,6 +70,15 @@ class AudioEngine {
   private failed = new Set<Sfx>();
   private lastRetry = 0;
   private stats = { sample: 0, synth: 0 };
+  /** вкладка в фоне: музыка молчит и не планируется */
+  private hidden = false;
+
+  constructor() {
+    if (typeof document !== 'undefined') {
+      this.hidden = document.visibilityState === 'hidden';
+      document.addEventListener('visibilitychange', () => { this.hidden = document.visibilityState === 'hidden'; this.applyVolumes(); });
+    }
+  }
 
   /** Вызывать из обработчика нажатия: браузер разрешает звук только после действия пользователя. */
   unlock() {
@@ -133,7 +142,7 @@ class AudioEngine {
 
   private musicTarget() {
     const s = this.settings;
-    if (this.mood === 'silent') return 0;
+    if (this.mood === 'silent' || this.hidden) return 0;
     if (this.mood === 'focus') return s.musicInFocus === 'quiet' ? s.music * 0.25 : 0;
     return s.music;
   }
@@ -144,6 +153,13 @@ class AudioEngine {
     this.masterGain.gain.setTargetAtTime(this.settings.master, t, 0.05);
     this.sfxGain.gain.setTargetAtTime(this.settings.sfx, t, 0.05);
     this.musicGain.gain.setTargetAtTime(this.musicTarget() * (this.voiceEl && !this.voiceEl.paused ? 0.35 : 1), t, 0.4);
+    this.syncSeq();
+  }
+
+  /** Музыка не слышна (звук или музыка выключены, вкладка в фоне): секвенсор на паузе и не считает ноты. Включили: идёт дальше с того же трека. */
+  private syncSeq() {
+    if (!this.seq) return;
+    if (this.hidden || this.settings.master <= 0.001 || this.settings.music <= 0.001) this.seq.pause(); else this.seq.resume();
   }
 
   /** Настроение музыки: hub — спокойно, map — приключение, battle — энергично, focus — задача/урок. */
@@ -167,6 +183,7 @@ class AudioEngine {
       const s = new Sequencer(this.ctx!, this.musicGain, this.noiseBuf, track);
       s.start();
       this.seq = s;
+      this.syncSeq();
     } catch (e) { console.warn('music: не удалось запустить трек', e); }   // музыка не критична: без неё игра работает
   }
 
