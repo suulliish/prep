@@ -215,7 +215,8 @@
 
   .wardrobe { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
   @media (max-width: 420px) { .wardrobe { grid-template-columns: repeat(3, minmax(0, 1fr)); } .stats { grid-template-columns: minmax(0, 1fr); } }
-  /* телефон лёжа: панель узкая, три костюма в ряд (подписи снаряжения не сжимаются в столбик) */
+  /* телефон лёжа: панель узкая, характеристики в один столбец (иначе значения обрезаются), три костюма в ряд */
+  :global(html.lsplit) .stats { grid-template-columns: minmax(0, 1fr); }
   :global(html.lsplit) .wardrobe { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   :global(html.lsplit) .suit .pic { max-width: 60px; }
   .suit { display: grid; justify-items: center; align-content: start; gap: 4px; padding: 8px 4px 8px; font: inherit; color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-radius: 12px; cursor: pointer; transition: transform .15s var(--ease-out), border-color .15s; }
