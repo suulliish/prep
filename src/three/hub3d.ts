@@ -116,11 +116,32 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     air = dressAirship(d.hull, d.model, { quality, furled: true }); ship.add(air.g);
     const [mx, mz] = d.stations.mid; hero.position.set(mx, 0, mz);
     // портал — на открытой носовой палубе (перед фок-мачтой, чтобы парус не закрывал), герой встаёт перед ним
-    const [px, pz] = d.nearest(d.bounds.maxX - 0.9, 0);             // у самого носа: перегораживает только кончик палубы
+    // Кольцо стоит поперёк узкого носа, а на нос ведёт один проход вдоль борта: место портала выбираем так, чтобы камни кольца
+    // его не перекрыли и площадка перед порталом осталась достижимой с середины палубы (иначе герой заперт на носу).
+    const RING = [-1.3, -0.65, 0, 0.65, 1.3], RR = 0.75, nx = Math.sin(PORTAL_FACE), nz = Math.cos(PORTAL_FACE);
+    // с запасом: reserve() занимает клетки с округлением, поэтому при выборе места считаем кольцо чуть шире
+    const ringHit = (cx: number, cz: number, x: number, z: number) => RING.some(k => Math.hypot(x - (cx + Math.cos(PORTAL_FACE) * k), z - (cz - Math.sin(PORTAL_FACE) * k)) < RR + 0.25);
+    const reach = (cx: number, cz: number) => {                          // клетки, куда можно дойти с середины палубы, если кольцо стоит в (cx, cz)
+      const S = 0.3, [sx, sz] = d.stations.mid, seen = new Set<string>(['0,0']), q: [number, number][] = [[0, 0]];
+      while (q.length) { const [i, j] = q.pop()!;
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const a = i + di, b2 = j + dj, k = a + ',' + b2, x = sx + a * S, z = sz + b2 * S;
+          if (seen.has(k) || !d.walkable(x, z) || ringHit(cx, cz, x, z)) continue; seen.add(k); q.push([a, b2]); } }
+      return (x: number, z: number) => seen.has(Math.round((x - sx) / S) + ',' + Math.round((z - sz) / S));
+    };
+    let px = 0, pz = 0;
+    pick: for (const fx of [0.9, 0.6, 1.2, 0.3, 1.5]) for (const fz of [0, 0.3, -0.3, 0.6, -0.6]) {
+      const [cx, cz] = d.nearest(d.bounds.maxX - fx, fz), r = reach(cx, cz);
+      // площадка перед кольцом (со стороны камеры): те же места, где ниже ищем место героя, должны быть достижимы
+      for (let dx = -3.6; dx <= 3.6; dx += 0.3) for (let dz = -3.6; dz <= 3.6; dz += 0.3) {
+        const along = dx * nx + dz * nz, lat = dx * nz - dz * nx;
+        if (along >= 1 && along <= 2.6 && Math.abs(lat) <= 0.6 && d.walkable(cx + dx, cz + dz) && r(cx + dx, cz + dz)) { px = cx; pz = cz; break pick; }
+      }
+    }
+    if (!px) [px, pz] = d.nearest(d.bounds.maxX - 0.9, 0);
     portal.position.set(px, d.height(px, pz) ?? 0, pz);             // нос приподнят над главной палубой — ставим на его высоту
-    for (const k of [-1.3, -0.65, 0, 0.65, 1.3]) d.reserve(px + Math.cos(PORTAL_FACE) * k, pz - Math.sin(PORTAL_FACE) * k, 0.75);   // кольцо поперёк: сквозь камни не ходим
+    for (const k of RING) d.reserve(px + Math.cos(PORTAL_FACE) * k, pz - Math.sin(PORTAL_FACE) * k, RR);   // кольцо поперёк: сквозь камни не ходим
     // место героя перед входом: прямо напротив центра кольца (с любой стороны — вихрь двусторонний), куда можно дойти с середины палубы
-    { const nx = Math.sin(PORTAL_FACE), nz = Math.cos(PORTAL_FACE), cand: [number, number, number][] = [];
+    { const cand: [number, number, number][] = [];
       for (let dx = -3.6; dx <= 3.6; dx += 0.3) for (let dz = -3.6; dz <= 3.6; dz += 0.3) {
         const along = dx * nx + dz * nz, lat = dx * nz - dz * nx;       // вдоль нормали и вдоль кольца
         if (Math.abs(along) < 1 || Math.abs(along) > 2.6 || Math.abs(lat) > 0.6 || !d.walkable(px + dx, pz + dz)) continue;
