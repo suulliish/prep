@@ -145,7 +145,7 @@ s('word.mixture_dilution', 'B', 6, 'Ерітіндіні сұйылту', 'Ра�
 s('word.drying', 'B', 6, 'Кептіру есептері', 'Задачи на высушивание', ['pct.find_whole'], { t: ['pct.drying'] });
 
 // ---- Закономерности ----
-s('pat.sequences', 'H', 5, 'Сандар тізбегі', 'Числовые последовательности', ['nat.ops']);
+s('pat.sequences', 'H', 5, 'Сандар тізбегі', 'Числовые последовательности', ['nat.ops'], { t: ['pat.seq_nth', 'pat.seq_position', 'pat.seq_growing_diff', 'pat.seq_interleaved'] });
 s('pat.bracket', 'H', 5, 'Жақшадағы сан заңдылығы', 'Закономерность с числом в скобках', ['pat.sequences', 'nat.powers'], { t: ['logic.bracket_pattern'] });
 s('pat.function_machine', 'H', 5, 'Кесте бойынша формула', 'Формула по таблице', ['expr.variables']);
 s('pat.arith_progression', 'H', 'olymp', 'Тұрақты айырмалы тізбек', 'Постоянная разность', ['pat.sequences']);
@@ -153,11 +153,11 @@ s('pat.arith_progression', 'H', 'olymp', 'Тұрақты айырмалы тіз
 // ---- Логика словами ----
 s('logic.new_operation', 'I', 5, 'Жаңа амал', 'Новая операция', ['expr.variables'], { t: ['logic.new_operation'] });
 s('logic.clock_angle', 'I', 6, 'Сағат тілдерінің арасындағы бұрыш', 'Угол между стрелками', ['geo.angles_basic', 'frac.mul'], { t: ['logic.clock_angle'] });
-s('logic.calendar', 'I', 5, 'Күнтізбе есептері', 'Календарь', ['div.rules'], { t: ['logic.every_k_days'] });
+s('logic.calendar', 'I', 5, 'Күнтізбе есептері', 'Календарь', ['div.rules'], { t: ['logic.every_k_days', 'logic.cal_weekday_shift', 'logic.cal_days_between', 'logic.cal_years_days', 'logic.cal_weekend_count', 'logic.cal_date_weekday'] });
 s('logic.clock_lag', 'I', 'olymp', 'Қалып қоятын сағат', 'Отстающие часы', ['ratio.units']);
 s('logic.deduction', 'I', 5, 'Кім қайда: кесте әдісі', 'Кто где: таблица', [], { t: ['logic.who_in_which_class'] });
-s('logic.permutations', 'I', 5, 'Қатарға тұру тәсілдері', 'Перестановки', ['nat.ops'], { t: ['logic.line_up'] });
-s('logic.pairs_tournament', 'I', 5, 'Жұптар және турнир', 'Пары и турнир', ['logic.permutations']);
+s('logic.permutations', 'I', 5, 'Қатарға тұру тәсілдері', 'Перестановки', ['nat.ops'], { t: ['logic.line_up', 'logic.perm_digits', 'logic.perm_menu', 'logic.perm_fixed'] });
+s('logic.pairs_tournament', 'I', 5, 'Жұптар және турнир', 'Пары и турнир', ['logic.permutations'], { t: ['logic.tour_pairs', 'logic.tour_double', 'logic.tour_one_more', 'logic.tour_find_n'] });
 s('logic.probability', 'I', 6, 'Ықтималдық', 'Вероятность', ['frac.concept']);
 s('logic.page_digits', 'I', 5, 'Беттерді нөмірлеу', 'Нумерация страниц', ['nat.place_value'], { t: ['logic.page_digits'] });
 s('logic.seat_number', 'I', 5, 'Қатар мен орын нөмірі', 'Ряд и место (деление с остатком)', ['nat.ops']);
@@ -168,7 +168,7 @@ s('logic.snail', 'I', 'olymp', 'Ұлу: күндіз көтеріледі, тү�
 
 // ---- Визуальная логика ----
 s('vis.count_segments', 'J', 5, 'Кесінділер санын табу', 'Подсчёт отрезков', [], { fig: true });
-s('vis.count_squares', 'J', 5, 'Квадраттар санын табу', 'Подсчёт квадратов', [], { fig: true });
+s('vis.count_squares', 'J', 5, 'Квадраттар санын табу', 'Подсчёт квадратов', [], { fig: true, t: ['vis.sq_grid', 'vis.sq_square_grid', 'vis.sq_shape'] });
 s('vis.count_triangles', 'J', 5, 'Үшбұрыштар санын табу', 'Подсчёт треугольников', ['vis.count_segments'], { fig: true });
 s('vis.cube_count', 'J', 5, 'Фигурадағы кубиктер саны', 'Кубики в фигуре', ['geo.volume'], { fig: true });
 s('vis.cube_net', 'J', 5, 'Кубтың жазбасы', 'Развёртка куба', [], { fig: true });
