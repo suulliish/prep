@@ -34,7 +34,9 @@ export class Actor {
   /** Базовая зацикленная анимация (плавный переход). */
   loop(name: string, fade = 0.2, speed = 1) {
     const a = this.act(name); if (!a || a === this.base) { if (a) a.timeScale = speed; return; }
-    a.reset().setLoop(THREE.LoopRepeat, Infinity); a.timeScale = speed; a.enabled = true;
+    // цикл, который ещё гаснет (только что сменили), подхватывается с того же места, а не с начала — иначе шаг «заикается»
+    if (!a.isRunning()) a.reset();
+    a.setLoop(THREE.LoopRepeat, Infinity); a.timeScale = speed; a.enabled = true;
     if (this.base) this.base.crossFadeTo(a, fade, false); a.play(); this.base = a;
   }
   baseName() { return this.base?.getClip().name ?? ''; }

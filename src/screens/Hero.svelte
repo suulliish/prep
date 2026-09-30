@@ -6,12 +6,14 @@
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
   import { streak } from '../engine/streak';
-  import { OUTFITS, crystals, wearOutfit, STAR_REWARDS, totalStars, wearStyle } from '../lib/look';
+  import { OUTFITS, crystals, wearOutfit, STAR_REWARDS, totalStars, wearStyle, applyLook } from '../lib/look';
   import { sparksAt, centerOf } from '../ui/fx.svelte';
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
 
-  onMount(() => { W.dim = false; W.world?.setMode('hero'); audio.setMood('hub'); return () => W.world?.setMode('hub'); });
+  // примерка: костюм на герое в 3D, пока не надет насовсем; уходим с экрана — возвращаем надетый
+  let trying = $state<string | null>(null);
+  onMount(() => { W.dim = false; W.world?.setMode('hero'); audio.setMood('hub'); return () => { W.world?.setMode('hub'); if (trying) applyLook(); }; });
 
   const lv = $derived(levelOf(game.save.xp));
   const cr = $derived(crystals());
@@ -61,11 +63,20 @@
     audio.play(on ? 'click' : 'levelup');
     if (!on) { const b = (ev.currentTarget as HTMLElement).getBoundingClientRect(); sparksAt(b.left + b.width / 2, b.top + b.height / 2, [hex(r.color), '#ffc94a'], 24); W.world?.celebrate(r.color); }
   }
+  const tryO = $derived(OUTFITS.find(o => o.id === trying));
+  function tryOn(o: (typeof OUTFITS)[number]) {
+    audio.play('click');
+    if (o.id === worn) { trying = null; applyLook(); return; }
+    trying = o.id; W.world?.setOutfit(o.jacket, o.dark, o.visor, o.id);
+  }
   function wear(id: string, ev: MouseEvent) {
-    wearOutfit(id); audio.play('levelup'); W.world?.celebrate(OUTFITS.find(o => o.id === id)!.jacket);
+    trying = null; wearOutfit(id); audio.play('levelup'); W.world?.celebrate(OUTFITS.find(o => o.id === id)!.jacket);
     const c = centerOf(ev.currentTarget as HTMLElement); sparksAt(c.x, c.y, ['#ffc94a', '#3ff0ff'], 30);
   }
   const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
+  const img = (f: string) => `${import.meta.env.BASE_URL}ui/hero/${f}.png`;
+  // у награды нет картинки — остаётся цветной значок из CSS
+  let noImg = $state<Record<string, boolean>>({});
 </script>
 
 <Screen scene="tall" back={() => go({ name: 'hub' })}>
@@ -113,14 +124,20 @@
       {#each OUTFITS as o}
         {@const got = cr >= o.need}
         {@const on = worn === o.id}
-        <button class="suit" class:got class:on disabled={!got || on} onclick={ev => wear(o.id, ev)} style="--j:{hex(o.jacket)}; --d:{hex(o.dark)}; --v:{hex(o.visor)}" aria-label="{o.kz}{on ? ', киіліп тұр' : got ? ', кию' : `, ${o.need} кристалл керек`}">
-          <span class="fig" aria-hidden="true"><i class="hd"><i class="hair"></i><i class="vs"></i></i><i class="bd"><i class="belt"></i></i><i class="al"></i><i class="ar"></i><i class="lg"></i></span>
+        <button class="suit" class:got class:on class:try={trying === o.id} onclick={ev => { tryOn(o); ev.currentTarget.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }} aria-pressed={trying === o.id} aria-label="{o.kz}{on ? ', киіліп тұр' : got ? '' : `, ${o.need} кристалл керек`}">
+          <span class="pic"><img src={img(o.id)} alt="" width="256" height="320" draggable="false" />{#if !got}<i class="lock" aria-hidden="true"></i>{/if}</span>
           <b>{o.kz}</b>
           {#if o.gear}<small class="gear">{o.gear}</small>{/if}
-          <small>{on ? 'Киіліп тұр' : got ? 'Кию' : ''}{#if !got}<i class="gem sm"></i><span class="num">{o.need}</span>{/if}</small>
+          <small class="fl">{#if on}Киіліп тұр{:else if !got}<i class="gem sm"></i><span class="num">{o.need}</span>{/if}</small>
         </button>
       {/each}
     </div>
+    {#if tryO && tryO.id !== worn}
+      <div class="tryrow">
+        {#if cr >= tryO.need}<button class="wearbtn" onclick={ev => wear(tryO.id, ev)}>Кию</button>
+        {:else}<p class="need">Тағы <b class="num">{tryO.need - cr}</b> кристалл керек</p>{/if}
+      </div>
+    {/if}
   </section>
 
   <section class="block">
@@ -137,7 +154,7 @@
         {@const got = stars >= r.need}
         {@const on = style[r.kind] === r.id}
         <button class="rw" class:got class:on onclick={ev => toggleStyle(r, ev)} aria-label="{r.kz}{on ? ', киіліп тұр' : got ? ', кию' : `, ${r.need} жұлдыз керек`}">
-          <span class="sw {r.kind}" class:rainbow={r.rainbow} style="--c:{hex(r.color)}"></span>
+          <span class="pic">{#if noImg[r.id]}<span class="sw {r.kind}" class:rainbow={r.rainbow} style="--c:{hex(r.color)}"></span>{:else}<img src={img('reward-' + r.id)} alt="" width="256" height="256" draggable="false" onerror={() => (noImg[r.id] = true)} />{/if}</span>
           <b>{r.kz}</b>
           <small>{on ? 'Киіліп тұр' : got ? 'Кию' : `★ ${r.need}`}</small>
         </button>
@@ -198,37 +215,44 @@
 
   .wardrobe { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
   @media (max-width: 420px) { .wardrobe { grid-template-columns: repeat(3, minmax(0, 1fr)); } .stats { grid-template-columns: minmax(0, 1fr); } }
-  .suit { display: grid; justify-items: center; gap: 4px; padding: 10px 4px 8px; font: inherit; color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-radius: 12px; cursor: pointer; transition: transform .15s var(--ease-out), border-color .15s; }
-  .suit.got:not(.on):hover { transform: translateY(-2px); border-color: var(--line-hi); }
+  /* телефон лёжа: панель узкая, характеристики в один столбец (иначе значения обрезаются), три костюма в ряд */
+  :global(html.lsplit) .stats { grid-template-columns: minmax(0, 1fr); }
+  :global(html.lsplit) .wardrobe { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :global(html.lsplit) .suit .pic { max-width: 60px; }
+  .suit { display: grid; justify-items: center; align-content: start; gap: 4px; padding: 8px 4px 8px; font: inherit; color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-radius: 12px; cursor: pointer; transition: transform .15s var(--ease-out), border-color .15s; }
+  @media (hover: hover) { .suit:hover { transform: translateY(-2px); border-color: var(--line-hi); } }
+  .suit { scroll-margin: 6px 0 64px; }   /* при касании карточка не прячется под кнопкой «Кию» */
+  .suit.try { border-color: var(--code); box-shadow: 0 0 14px #3ff0ff44; }
   .suit.on { border-color: var(--gold); box-shadow: 0 0 18px #ffc94a44, inset 0 0 0 1px #ffc94a55; }
-  .suit:disabled { cursor: default; }
   .suit b { font-size: 13px; }
+  /* портрет: мягкое светлое пятно под фигурой, чтобы тёмные костюмы и плащи не тонули в синем */
+  .pic { position: relative; display: grid; place-items: center; width: 100%; max-width: 84px; aspect-ratio: 4 / 5; border-radius: 10px; background: radial-gradient(closest-side at 50% 58%, #4a5fd0aa, #2a3a9a33 60%, transparent); }
+  .pic img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
+  .suit:not(.got) .pic img { filter: brightness(0) opacity(.8) drop-shadow(0 0 4px #8fa0ff88); }
+  .suit .pic .lock { position: absolute; left: 50%; top: 52%; margin: 0 0 0 -7px; }
+  .suit .lock { background: #dfe6ff; box-shadow: 0 0 0 2px #0a0b1e88; }
+  .suit .lock::before { border-color: #dfe6ff; }
+  .suit .gear { display: block; font: 700 10px/1.25 var(--txt); color: var(--dim); text-align: center; padding: 0 2px; overflow-wrap: anywhere; }
+  .suit .fl { display: inline-flex; align-items: center; min-height: 14px; font: 800 11px var(--txt); color: var(--faint); }
+  .suit.on .fl { color: var(--gold); }
+  .tryrow { position: sticky; bottom: 4px; z-index: 2; display: grid; }
+  .wearbtn { padding: 12px; font: 900 16px var(--disp); color: var(--outline); background: linear-gradient(180deg, #b9fdff, var(--code)); border: 3px solid var(--outline); border-radius: 12px; box-shadow: 0 3px 0 var(--code-deep), 0 6px 14px #0008; cursor: pointer; }
+  .wearbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--code-deep); }
+  .need { margin: 0; padding: 10px 12px; text-align: center; font-size: 14px; font-weight: 700; border-radius: 12px; background: #1b1440; border: 1px solid #5a3bb0; box-shadow: 0 6px 14px #0008; }
+  .need b { color: var(--crystal); }
+
   .rewards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-  .rw { display: grid; justify-items: center; gap: 4px; padding: 8px 2px; font: inherit; color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-radius: 12px; cursor: pointer; }
+  .rw { display: grid; justify-items: center; align-content: start; gap: 4px; padding: 6px 2px 8px; font: inherit; color: var(--ink); background: var(--deep); border: 2px solid var(--line); border-radius: 12px; cursor: pointer; }
   .rw.on { border-color: var(--gold); box-shadow: 0 0 14px #ffc94a44; }
-  .rw:not(.got) { opacity: .5; }
+  .rw:not(.got) .pic { opacity: .5; }
+  .rw .pic { max-width: 72px; aspect-ratio: 1; }
   .rw b { font-size: 11px; text-align: center; line-height: 1.15; }
   .rw small { font: 800 11px var(--txt); color: var(--code); }
   .rw.on small { color: var(--gold); }
   .rw:not(.got) small { color: var(--faint); }
+  /* запасной значок, если у награды нет картинки */
   .sw { width: 34px; height: 34px; border-radius: 8px; border: 3px solid var(--outline); background: var(--c); }
   .sw.trail { border-radius: 50%; background: radial-gradient(circle, #fff 0 18%, var(--c) 40%, transparent 72%); }
   .sw.cape { clip-path: polygon(20% 0, 80% 0, 100% 100%, 0 100%); }
   .sw.rainbow { background: conic-gradient(#ff4fb8, #ffcb2e, #3ddc6e, #35e6ff, #a77bff, #ff4fb8); }
-  .suit .gear { display: block; font: 700 10px/1.25 var(--txt); color: var(--dim); text-align: center; padding: 0 2px; }
-  .suit small { display: inline-flex; align-items: center; font: 800 11px var(--txt); color: var(--code); }
-  .suit.on small { color: var(--gold); }
-  .suit:not(.got) small { color: var(--faint); }
-  .suit:not(.got) .fig { filter: grayscale(1) brightness(.35); }
-  /* воксельная фигурка героя в цветах костюма */
-  .fig { position: relative; width: 44px; height: 62px; }
-  .fig i { position: absolute; display: block; border-radius: 3px; }
-  .hd { left: 10px; top: 0; width: 24px; height: 22px; background: #e2b48a; box-shadow: inset 0 -3px 0 #c9966c; }
-  .hair { left: -1px; top: -2px; width: 26px; height: 8px; background: #2a1d17; border-radius: 4px 4px 2px 2px; }
-  .vs { left: 2px; top: 9px; width: 20px; height: 5px; background: var(--v); box-shadow: 0 0 6px var(--v); }
-  .bd { left: 9px; top: 23px; width: 26px; height: 20px; background: var(--j); box-shadow: inset 0 -4px 0 var(--d); }
-  .belt { left: 0; bottom: 3px; width: 26px; height: 3px; background: var(--d); }
-  .al { left: 2px; top: 24px; width: 7px; height: 17px; background: var(--d); }
-  .ar { right: 2px; top: 24px; width: 7px; height: 17px; background: var(--d); }
-  .lg { left: 12px; top: 44px; width: 20px; height: 16px; background: #1d2346; box-shadow: inset -10px 0 0 #262d58; }
 </style>
