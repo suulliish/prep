@@ -122,7 +122,9 @@
     // тренировочная площадка: глитч и мишени по шагу, доска пишет название приёма
     W.world?.trainGlitch(s.type === 'bug');
     W.world?.trainTargets(s.type === 'blitz' ? Math.max(1, s.count) : 2);
-    if (s.type === 'rule' && tech) W.world?.trainBoard(tech.kz);
+    // герой по шагу: разминка на «Мақсат», сидит и слушает на «Көр», встаёт на остальных; на «Есте сақта» — «приём освоен»
+    W.world?.trainStep(s.type);
+    if (s.type === 'rule' && tech) { W.world?.trainBoard(tech.kz); if (!cine) W.world?.trainMastered(tech.color); }
     if (s.type === 'say') gate.start(readMs(s.kz));
     if (s.type === 'rule') gate.start(readMs(s.kz, ...s.lines));
     if (s.type === 'example') gate.start(readMs(s.kz, frameText(s, 0)));
@@ -163,7 +165,7 @@
   }
   // неверный ответ: манекен шлёпает героя, потом герой чешет голову
   // сколько пропусков «Өзің» уже вписано: каждый верный — следующий удар связки (onstep)
-  let fadedHits = 0;
+  let fadedHits = 0, strikeN = 0;
   const bonk = () => { W.world?.trainBonk().then(() => W.world?.heroEmote('scratch')); };
   // связка на «Өзің»: три удара подряд без клинка в ножнах (без ошибок — с вспышкой на третьем), с ошибками — два
   function combo(clean: boolean) {
@@ -181,20 +183,22 @@
     if (step.type === 'predict') {
       audio.play(ok ? 'correct' : 'hint'); if (ok) react('correct');
       // верно — сильный удар, потом радость; неверно — бонк (манекен шлёпает героя), потом герой чешет голову
-      if (ok) W.world?.trainStrike('strong').then(() => W.world?.heroEmote('cheer')); else bonk();
+      if (ok) W.world?.trainStrike('strong', 1, false, strikeN++).then(() => W.world?.heroEmote('cheer')); else bonk();
       reward(ok ? 3 : 0); gate.start(readMs(step.reveal)); showChoices(); return;
     }
     if (step.type === 'final') {
       if (!ok) { audio.play('wrong'); flash('#ff9a6b'); bonk(); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake'); return; }
       won = true; audio.play('crit'); react('win');
-      await W.world?.trainStrike('combo', 3);
-      W.world?.trainCheer(); W.world?.bitMood('happy');
+      // разбег, прыжок и удар с разворотом; промис — в момент касания, радость и отдых лёжа герой доигрывает сам
+      await W.world?.trainVictory();
+      W.world?.bitMood('happy');
       audio.play('levelup'); floatText('МЕҢГЕРІЛДІ!', sceneCenter(0.28).x, sceneCenter(0.28).y, techHex, true);
       sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#ffc94a', '#3ff0ff', '#b58cff'], 90, 10);
       reward(20, true); return;
     }
     audio.play(ok ? 'correct' : 'wrong'); react(ok ? 'correct' : 'wrong'); reward(ok ? 5 : 0);
-    if (ok) W.world?.trainStrike('light').then(() => W.world?.heroEmote('cheer')); else bonk();
+    // «Неге?»: верно — блок и контратака, неверно — шлепок (бонк) и почесать голову; остальные шаги — обычный удар
+    if (ok) (step.type === 'why' ? W.world?.trainBlock() : W.world?.trainStrike('light'))?.then(() => W.world?.heroEmote('cheer')); else bonk();
     if (step.why) gate.start(readMs(step.why));
     showChoices();
   }
@@ -208,7 +212,8 @@
   }
   function advance() {
     if (i < steps.length - 1) { i++; if (!replay) { game.save.lessonPos = { skill, step: i }; persist(); } enter(); audio.play('click'); return; }
-    if (replay) { audio.play('mission'); go({ name: 'album' }); return; }
+    if (replay) { W.world?.trainStep(''); audio.play('mission'); go({ name: 'album' }); return; }
+    W.world?.trainStep('');   // герой встаёт, если лежал
     (game.save.skills[skill] ??= blankSkill()).lessonDone = true;
     delete game.save.lessonPos;
     persist(); audio.play('mission');
@@ -285,7 +290,7 @@
   {/snippet}
 
   {#key i}
-    <div class="card" class:final={step.type === 'final'} bind:this={cardEl}>
+    <div class="card" data-lesson class:final={step.type === 'final'} bind:this={cardEl}>
       {#if step.type !== 'example'}<span class="tag c-{step.type}">{CHIP[step.type] ?? ''}</span>{/if}
 
       {#if step.type === 'say'}
@@ -454,4 +459,6 @@
     .tip { font-size: 12px; }
   }
   .card :global(.paper .task) { color: var(--paper-ink); }
+  /* стрелка «листай ниже» уходит вправо: по центру она закрывала кнопку «Түсінбедім — Биттен сұра» (LessonHelper), которая стоит слева */
+  :global(.frame:has([data-lesson]) .more) { place-items: end end; padding-right: 12px; }
 </style>

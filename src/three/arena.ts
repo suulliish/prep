@@ -15,6 +15,7 @@ import { spotLight, spotIndex } from './spots';
 import { createVfx } from './vfx';
 import { createAttacks, prepareEnemy, HERO_X, ENEMY_X, Z0, type Body } from './attacks';
 import { createIdleLife } from './idle_life';
+import { createTrainHero } from './train_hero';
 import { createTraining, type Training, type HitKind } from './training3d';
 import type { Sfx } from '../lib/audio';
 
@@ -23,7 +24,7 @@ interface Deps { skyMat: THREE.Material; starGeo: THREE.BufferGeometry; starMat:
 const box = new THREE.BoxGeometry(1, 1, 1);
 const SWING = new THREE.Vector3();   // направление взмаха для vfx.slash (переиспользуется)
 /** Момент касания в клипе (доля 0..1) — по нему считается удар. */
-const HIT_AT: Record<string, number> = { Melee_1H_Attack_Slice_Diagonal: 0.42, Melee_1H_Attack_Chop: 0.45, Melee_2H_Attack_Spinning: 0.5, Melee_1H_Attack_Jump_Chop: 0.55, Melee_1H_Attack_Stab: 0.4 };
+const HIT_AT: Record<string, number> = { Melee_1H_Attack_Slice_Diagonal: 0.42, Melee_1H_Attack_Chop: 0.45, Melee_2H_Attack_Spinning: 0.5, Melee_1H_Attack_Jump_Chop: 0.55, Melee_1H_Attack_Stab: 0.4, Melee_1H_Attack_Slice_Horizontal: 0.42 };
 /** Приём темы (content/techniques.mjs) для удара в бою: цвет, вид удара, название над героем. Только красота, урон и тайминги те же. */
 export interface Technique { color: number; fx: 'arc' | 'pierce' | 'split' | 'multi' | 'spin'; kz: string }
 
@@ -85,7 +86,7 @@ export function createArena(d: Deps) {
       if (my !== look) return;
       if (my.tint) h.tint(my.tint, my.glow);
       h.setCape(cape);
-      if (hero) { scene.remove(hero.g); hero.dispose(); }
+      if (hero) { scene.remove(hero.g); hero.dispose(); train.heroReplaced(); }
       hero = h; scene.add(h.g); h.g.add(shield);
       h.g.position.set(HERO_X, 0, Z0); h.g.rotation.y = Math.PI / 2;
       weapon = h.bone('handslot.r')?.children.find(c => c.userData.gear) ?? null;
@@ -179,10 +180,10 @@ export function createArena(d: Deps) {
       if (t > 1.2) { scene.remove(sp); map.dispose(); pm.dispose(); return false; } return true; } });
   }
   // ---------- анимации (твины) ----------
-  type Tw = { t: number; dur: number; step: (u: number) => void; res: () => void };
+  type Tw = { t: number; dur: number; step: (u: number) => void; res: () => void; stop?: () => boolean };
   const tweens: Tw[] = [];
   const ease = (u: number) => 1 - Math.pow(1 - u, 3);
-  function tween(dur: number, step: (u: number) => void) { return new Promise<void>(res => tweens.push({ t: 0, dur, step, res })); }
+  function tween(dur: number, step: (u: number) => void, stop?: () => boolean) { return new Promise<void>(res => tweens.push({ t: 0, dur, step, res, stop })); }
   const wait = (s: number) => tween(s, () => {});
   const easeBack = (u: number) => 1 + 2.2 * Math.pow(u - 1, 3) + 1.2 * Math.pow(u - 1, 2);
   let shake = 0, slow = 1, slowT = 0, flashT = 0;
@@ -223,13 +224,15 @@ export function createArena(d: Deps) {
   function stance() { if (!hero) return; hero.loop(guard ? 'Melee_Blocking' : 'Idle_A', 0.2); }
   function neutral() { if (!hero) return; hero.g.position.y = 0; hero.g.scale.setScalar(1); stance(); }
   const faceAngle = (x: number, z: number) => Math.atan2(x - H().g.position.x, z - H().g.position.z);
-  async function walkTo(x: number, z: number, dur: number, run = false) {
+  async function walkTo(x: number, z: number, dur: number, run = false, stop?: () => boolean) {
     const h = H(), x0 = h.g.position.x, z0 = h.g.position.z;
+    // жест или поза (радость, сидение) обрываются сразу: меч и щит появляются с первым шагом, а не через долю секунды
+    h.settle();
     h.g.rotation.y = faceAngle(x, z); h.loop(run ? 'Running_A' : 'Walking_A', 0.12, run ? 1.25 : 1);
-    await tween(dur, u => { const k = ease(u); h.g.position.x = x0 + (x - x0) * k; h.g.position.z = z0 + (z - z0) * k; });
+    await tween(dur, u => { const k = ease(u); h.g.position.x = x0 + (x - x0) * k; h.g.position.z = z0 + (z - z0) * k; }, stop);
     h.loop('Idle_A', 0.12);
   }
-  async function runTo(x: number, dur: number) { await walkTo(x, H().g.position.z, dur, true); H().g.rotation.y = Math.PI / 2; }
+  async function runTo(x: number, dur: number) { await walkTo(x, Z0, dur, true); H().g.rotation.y = Math.PI / 2; }
   /** Приземление: сплющивание + пыль. */
   async function land(big = false) {
     const h = H(), p = h.g.position.clone(); vfx.dust(p.setY(0), big ? 1.4 : 0.9); burst(p.clone().setY(0.3), [0xd8d0ff, 0xffffff], big ? 8 : 4, 3, 0.12);
@@ -291,7 +294,7 @@ export function createArena(d: Deps) {
     const k = d.km;
     if (slowT > 0) { slowT -= dt; if (slowT <= 0) slow = 1; }
     const sdt = dt * slow;
-    for (let i = tweens.length - 1; i >= 0; i--) { const w = tweens[i]; w.t += sdt / w.dur; const u = Math.min(1, w.t); w.step(u); if (u >= 1) { tweens.splice(i, 1); w.res(); } }
+    for (let i = tweens.length - 1; i >= 0; i--) { const w = tweens[i]; if (w.stop?.()) { tweens.splice(i, 1); w.res(); continue; } w.t += sdt / w.dur; const u = Math.min(1, w.t); w.step(u); if (u >= 1) { tweens.splice(i, 1); w.res(); } }
     for (let i = fx.length - 1; i >= 0; i--) if (!fx[i].update(sdt)) fx.splice(i, 1);
     vfx.update(sdt);
 
@@ -334,7 +337,8 @@ export function createArena(d: Deps) {
   const idle = createIdleLife({
     hero: () => hero, weapon: () => weapon, km: () => d.km,
     mob: () => (enemy?.live ? { a: enemy.m.a, cls: enemy.m.cls } : null),
-    quiet: () => busy > 0 || emoting > 0 || guard || !hero || hero.marksPending(),
+    quiet: () => busy > 0 || emoting > 0 || guard || !hero || hero.marksPending() || train.posed(),
+    training: () => !!training,
   });
   const seq = <T>(fn: () => Promise<T>): Promise<T> => { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; };
   /** Ждать не дольше s секунд (защита от вечного ожидания момента удара, если анимацию прервали). */
@@ -347,17 +351,23 @@ export function createArena(d: Deps) {
   let training: Training | null = null, trainGen = 0;
   // clear() (уход с экрана) меняет поколение: недоигранное появление врага видит это после каждого ожидания и тихо выходит
   let clearGen = 0;
-  let bonkQueued: Promise<void> | null = null;
+  let bonkQueued: Promise<void> | null = null, missQueued: Promise<void> | null = null;
   // желаемое состояние площадки: применяется, когда она уже стоит (шаг урока мог войти раньше)
   const tWant = { glitch: false, left: 0, board: '' };
   function dropTraining() { const t = training; training = null; t?.dispose(); }
   const nearDummy = () => !!hero && hero.g.position.x > ENEMY_X - 2.6;
   /** Вернуться на своё место (после ударов «на месте»). */
-  async function goHome() { if (hero && hero.g.position.x > HERO_X + 0.3) await runTo(HERO_X, 0.34); neutral(); }
+  async function goHome() {
+    const h = hero; if (!h) return;
+    const d = Math.hypot(h.g.position.x - HERO_X, h.g.position.z - Z0);
+    if (d > 0.3) await walkTo(HERO_X, Z0, Math.max(0.2, Math.min(0.6, d / 9)), true);
+    h.g.rotation.y = Math.PI / 2; neutral();
+  }
   /** Герой вздрагивает: манекен шлёпнул его по макушке. */
+  let flinchN = 0;
   function flinch() {
     const h = hero; if (!h) return;
-    shake = Math.max(shake, 0.2); void h.play('Hit_B', { speed: 1.2 });
+    shake = Math.max(shake, 0.2); void h.play(flinchN++ % 2 ? 'Hit_A' : 'Hit_B', { speed: 1.2 });
     const x0 = h.g.position.x; tween(0.35, u => { h.g.position.x = x0 - Math.sin(u * Math.PI) * 0.3; });
   }
   /** Удар по манекену: добежать (если ещё не рядом), ударить клипом героя, в момент касания вызвать onHit. stay — остаться у манекена (следующий удар связки). */
@@ -369,8 +379,11 @@ export function createArena(d: Deps) {
     const at = HIT_AT[clip] ?? 0.45;
     trailOn = true;
     h.play(clip, { speed, marks: [{ at: 0.12, fn: () => sfx('slash') }, { at, fn: () => { onHit(); done(); } }] });
+    // у каждого удара свой ход: выпад вперёд с колющим, прыжок с рубящим сверху
+    if (clip === 'Melee_1H_Attack_Stab') { const x0 = h.g.position.x; tween(0.2, u => { h.g.position.x = x0 + 0.8 * ease(u); }); }
+    else if (clip === 'Melee_1H_Attack_Jump_Chop') { const dur = h.length(clip, speed) * 0.6; tween(dur, u => { h.g.position.y = Math.sin(u * Math.PI) * 1.1; }).then(() => { h.g.position.y = 0; }); }
     await within(hit, 3); await wait(h.length(clip, speed) * (1 - at) * 0.9);
-    trailOn = false;
+    trailOn = false; h.g.position.y = 0;
     if (!stay) { await runTo(HERO_X, 0.34); neutral(); }
   }
   /** Первая стоящая мишень (мировая точка): читаем матрицы её InstancedMesh; нет — null. */
@@ -392,48 +405,74 @@ export function createArena(d: Deps) {
     }
     guard = false; stance(); shot(null);
     await training.show(true);
+    if (gen === trainGen) train.onArrived();
   }
   async function trainOff(gen: number) {
     const t = training; if (!t || gen !== trainGen) return;
+    train.reset();
     await t.show(false);
     if (training === t && gen === trainGen) dropTraining();
   }
 
+  const train = createTrainHero({
+    scene, vfx, km: d.km, sfx,
+    hero: () => hero, training: () => training,
+    fx: u => { fx.push({ update: u }); }, tween,
+    burst: (p, c, n, sp, sz) => burst(p, c, n, sp, sz), ring: (p, c, m) => ring(p, c, m),
+    shake: v => { shake = Math.max(shake, v); },
+    faceAngle, run: (x, z, dur, stop) => walkTo(x, z, dur, true, stop), home: () => goHome(),
+    queue: fn => queue(fn), busy: () => busy, targetPoint: () => targetPoint(), knock: t => knock(t),
+    block: o => block(o), strike: (clip, speed, onHit, stay) => trainSwing(clip, speed, onHit, stay),
+    guard: on => { guard = on; stance(); }, stance: () => neutral(),
+  });
   let throwQ = 0;
   /** Действие боя в очереди: пока оно идёт, «живое ожидание» молчит. */
-  const act = <T>(fn: () => Promise<T>): Promise<T> => { busy++; idle.stop(); return seq(() => within(fn(), 12) as Promise<T>).finally(() => busy--); };
+  const queue = <T>(fn: () => Promise<T>): Promise<T> => { busy++; idle.stop(); return seq(() => within(fn(), 12) as Promise<T>).finally(() => busy--); };
+  // обычное действие обрывает фон героя (разминку, сидение, отдых): герой сразу на ногах, ребёнка ничто не задерживает
+  const act = <T>(fn: () => Promise<T>): Promise<T> => { train.interrupt(); return queue(fn); };
   /** Мишень сбита: когда она упала и ушла в землю, счёт уменьшается и на её место встаёт следующая. */
   function knock(tr: Training) { void tr.targetHit().then(() => { if (training === tr && tWant.left > 0) { tWant.left--; tr.targets(Math.min(5, tWant.left)); } }); }
-  async function runStrike(kind: HitKind, n: number, stay: boolean) {
+  // каждый удар на «Болжа» другой, по кругу; связка на «Өзің»: горизонтальный, косой, с разворотом
+  const VARIANTS = ['Melee_1H_Attack_Chop', 'Melee_1H_Attack_Slice_Horizontal', 'Melee_1H_Attack_Stab', 'Melee_1H_Attack_Jump_Chop', 'Melee_1H_Attack_Slice_Diagonal'];
+  const SPEEDS: Record<string, number> = { Melee_1H_Attack_Stab: 2.15, Melee_1H_Attack_Jump_Chop: 1.3, Melee_1H_Attack_Slice_Horizontal: 1.3 };
+  async function runStrike(kind: HitKind, n: number, stay: boolean, variant?: number) {
     await whenReady(); const tr = training; if (!tr) return;
-    const clip = kind === 'light' ? 'Melee_1H_Attack_Slice_Diagonal' : kind === 'strong' ? 'Melee_1H_Attack_Chop' : n >= 3 ? 'Melee_2H_Attack_Spinning' : n === 2 ? 'Melee_1H_Attack_Chop' : 'Melee_1H_Attack_Slice_Diagonal';
-    await trainSwing(clip, 1.35, () => { shake = Math.max(shake, kind === 'light' ? 0.12 : 0.28); slow = Math.min(slow, 0.3); slowT = Math.max(slowT, 0.04); void tr.hit(kind, n); }, stay);
+    let clip = variant !== undefined ? VARIANTS[variant % VARIANTS.length] : kind === 'light' ? 'Melee_1H_Attack_Slice_Diagonal' : kind === 'strong' ? 'Melee_1H_Attack_Chop' : n >= 3 ? 'Melee_2H_Attack_Spinning' : n === 2 ? 'Melee_1H_Attack_Slice_Diagonal' : 'Melee_1H_Attack_Slice_Horizontal';
+    if (d.km < 1 && clip === 'Melee_1H_Attack_Jump_Chop') clip = 'Melee_1H_Attack_Chop';
+    await trainSwing(clip, SPEEDS[clip] ?? 1.35, () => { shake = Math.max(shake, kind === 'light' ? 0.12 : 0.28); slow = Math.min(slow, 0.3); slowT = Math.max(slowT, 0.04); void tr.hit(kind, n); }, stay);
   }
   async function runBonk() { await whenReady(); const tr = training; if (!tr) return; await goHome(); await tr.bonk(); }
   async function runBreak() {
+    train.volleys(false);
     await whenReady(); const tr = training; if (!tr) return;
     let bg: Promise<void> = Promise.resolve();
     await trainSwing('Melee_1H_Attack_Stab', 2.15, () => { shake = Math.max(shake, 0.25); bg = tr.breakGlitch(); });
     await bg;
   }
-  async function runThrow() {
+  /** Мишень: выстрел по очереди — лук, бросок, магия (train_hero.ts); промах — снаряд мимо. */
+  async function runShot(miss: boolean) {
     await whenReady(); const tr = training; if (!tr) return;
-    const h = H(); await goHome();
-    const tp = targetPoint() ?? new THREE.Vector3(ENEMY_X - 1.8, 1.1, Z0 - 1.6);
-    h.g.rotation.y = faceAngle(tp.x, tp.z);
-    let landed: () => void = () => {};
-    const thrown = new Promise<void>(r => (landed = r));
-    h.play('Throw', { speed: 1.6, marks: [{ at: 0.4, fn: () => {
-      sfx('slash');
-      const from = new THREE.Vector3(); (h.bone('handslot.r') ?? h.model).getWorldPosition(from);
-      const m = new THREE.Mesh(box, mat(0xffcb2e, 0xffcb2e, 2.2)); m.scale.setScalar(0.24); m.position.copy(from); scene.add(m);
-      let u = 0;
-      fx.push({ update: dt => {
-        u += dt / 0.3; m.position.lerpVectors(from, tp, Math.min(1, u)); m.position.y += Math.sin(Math.min(1, u) * Math.PI) * 0.5; m.rotation.x += dt * 14; m.rotation.z += dt * 9;
-        if (u >= 1) { scene.remove(m); knock(tr); landed(); return false; } return true; } });
-    } }] });
-    await within(thrown, 2); await wait(h.length('Throw', 1.6) * 0.5);
+    await goHome();
+    await train.shoot(miss, () => knock(tr));
     neutral();
+  }
+  /** Блок на «Неге?»: манекен бежит и замахивается на героя, герой ставит блок и отвечает ударом щитом. */
+  async function runBlock() {
+    await whenReady(); const tr = training; if (!tr) return;
+    await goHome(); const h = H();
+    let counter: Promise<void> = Promise.resolve();
+    await tr.bonk({
+      block: true,
+      onRush: () => { guard = true; stance(); },
+      onStrike: () => {
+        counter = (async () => {
+          await within(block({ text: true }), 1.5); guard = false;
+          const x0 = h.g.position.x; tween(0.25, u => { h.g.position.x = x0 + 0.9 * ease(u); });
+          await within(h.play('Melee_Block_Attack', { speed: 1.4, marks: [{ at: 0.3, fn: () => { sfx('slash'); shake = Math.max(shake, 0.2); void tr.hit('light'); } }] }), 2);
+        })();
+      },
+    });
+    await counter; guard = false; await goHome();
   }
   async function runCheer() {
     await whenReady(); const tr = training; if (!tr) return;
@@ -678,7 +717,7 @@ export function createArena(d: Deps) {
     },
     /** Разовая «эмоция» героя (клип вроде 'Interact', 'Cheering', 'Idle_B', 'Use_Item'): только когда герой свободен (нет боя, катсцены, ожидающих ударов) — иначе сразу выполнено. Потом возвращается в стойку. */
     async emote(clip: string, speed = 1) {
-      if (!hero || busy > 0 || hero.marksPending() || !hero.has(clip)) return;
+      if (!hero || busy > 0 || hero.marksPending() || !hero.has(clip) || train.posed()) return;
       idle.stop(true); emoting++;
       try { await hero.play(clip, { speed }); } finally { emoting--; }
       if (busy === 0 && hero) stance();
@@ -694,16 +733,18 @@ export function createArena(d: Deps) {
     celebrate() { idle.stop(true); if (hero && !hero.marksPending()) hero.play('Cheering');   // не обрывать удар: иначе его момент касания сработает раньше срока
       burst(new THREE.Vector3(HERO_X, 3, Z0), [0xffcb2e, 0x35e6ff], 12, 5); vfx.sparkleShower(new THREE.Vector3(HERO_X, 2.6, Z0 + 0.5)); },
     /** Освободить ресурсы частиц (сцену выкидывают целиком). */
-    dispose() { idle.dispose(); dropTraining(); attacks.dispose(); vfx.dispose(); },
-    clear() { clearGen++; trainGen++; dropTraining(); tWant.glitch = false; tWant.left = 0; tWant.board = ''; trailOn = false; trailOne = null; idle.stop(true); vfx.clear(); if (enemy) { scene.remove(enemy.m.a.g); enemy.m.a.dispose(); enemy = null; } hpBar.visible = false; guard = false; if (hero) { neutral(); hero.g.position.set(HERO_X, 0, Z0); hero.g.rotation.y = Math.PI / 2; } shot(null); },
+    dispose() { idle.dispose(); train.dispose(); dropTraining(); attacks.dispose(); vfx.dispose(); },
+    clear() { clearGen++; trainGen++; train.reset(); dropTraining(); tWant.glitch = false; tWant.left = 0; tWant.board = ''; trailOn = false; trailOne = null; idle.stop(true); vfx.clear(); if (enemy) { scene.remove(enemy.m.a.g); enemy.m.a.dispose(); enemy = null; } hpBar.visible = false; guard = false; if (hero) { neutral(); hero.g.position.set(HERO_X, 0, Z0); hero.g.rotation.y = Math.PI / 2; } shot(null); },
     hasEnemy: () => !!enemy,
     hasTraining: () => !!training,
+    /** Проверка: поза героя на тренировке ('' — стоит; 'warm', 'sit', 'lie', 'stand') и тип шага. */
+    trainPose: () => train.state(),
     /** Проверка: состояние площадки (частицы, мишени, глитч) или null, если её нет. */
     trainingStats: () => training?.stats() ?? null,
     /** Тренировка: площадка вместо врага (on) или её уход (off, с анимацией). Последовательное действие боя, промис — когда площадка встала/ушла. */
     setTraining(on: boolean) { const gen = trainGen; return act(() => (on ? trainOn(gen) : trainOff(gen))); },
     /** Удар героя по манекену настоящим клипом атаки: light — обычный, strong — сильный, combo — n-й удар связки (1..3; 3-й с разворота). stay — остаться у манекена для следующего удара. */
-    trainStrike(kind: HitKind, n = 1, stay = false) { return act(() => runStrike(kind, n, stay)); },
+    trainStrike(kind: HitKind, n = 1, stay = false, variant?: number) { return act(() => runStrike(kind, n, stay, variant)); },
     /** Неверный ответ: манекен бросается к герою и шлёпает его по макушке (герой вздрагивает). */
     // шлепок не копится: пока один ждёт в очереди или идёт, новые ошибки его не добавляют (быстрые ошибки иначе давали десятки секунд шлепков подряд)
     trainBonk() { if (bonkQueued) return bonkQueued; bonkQueued = act(runBonk).finally(() => { bonkQueued = null; }); return bonkQueued; },
@@ -712,16 +753,30 @@ export function createArena(d: Deps) {
     /** Попал в мишень: герой бросает снаряд, мишень падает. Если бросков уже накопилось два (ребёнок отвечает быстрее анимации), мишень падает сразу, без броска. */
     trainTargetHit() {
       if (throwQ >= 2) { if (training) knock(training); return Promise.resolve(); }
-      throwQ++; return act(runThrow).finally(() => throwQ--);
+      throwQ++; return act(() => runShot(false)).finally(() => throwQ--);
     },
-    /** Промах (мишени вздрагивают, из-под ближней облачко пыли). */
-    trainTargetMiss() { training?.targetMiss(); },
+    /** Промах: мишени вздрагивают, из-под ближней облачко пыли, а герой стреляет мимо (не копится: одна промашка в очереди). */
+    trainTargetMiss() {
+      training?.targetMiss();
+      if (!missQueued && training) missQueued = act(() => runShot(true)).finally(() => { missQueued = null; });
+    },
     /** Стрельбище: n мишеней (сразу стоят не больше пяти, сбитые заменяются, пока не кончится счёт). */
     trainTargets(n: number) { tWant.left = Math.max(0, Math.round(n)); training?.targets(Math.min(5, tWant.left)); },
     /** Доска: «пишет» название приёма (пусто — стереть). */
     trainBoard(text: string) { tWant.board = text; training?.board(text); },
     /** «Заражённый» манекен: розовые трещины и экран с ошибкой (on) / снять. */
-    trainGlitch(on: boolean) { tWant.glitch = on; training?.glitch(on); },
+    trainGlitch(on: boolean) { tWant.glitch = on; training?.glitch(on); train.volleys(on); },
+    /** Тип шага урока: герой занимает нужную позу (разминка на «Мақсат», сидит на «Көр», встаёт на других). '' — урок кончился. */
+    trainStep(kind: string) { train.setStep(kind); },
+    /** Блок на «Неге?» (верный ответ): манекен замахивается на героя, тот ставит щит и отвечает. */
+    trainBlock() { return act(runBlock); },
+    /** «Приём освоен» на «Есте сақта»: руки вверх, кольцо света цветом приёма. */
+    trainMastered(color: number) { return train.mastered(color); },
+    /** Победа в финале: разбег, прыжок, удар с разворотом, радость, отдых лёжа. Промис — в момент касания удара. */
+    trainVictory() {
+      const tr = training;
+      return train.victory(() => { shake = Math.max(shake, 0.28); slow = Math.min(slow, 0.3); slowT = Math.max(slowT, 0.06); void tr?.hit('combo', 3); });
+    },
     /** Победа: конфетти, салют, манекен подпрыгивает, герой радуется. */
     trainCheer() { return act(runCheer); },
   };

@@ -172,3 +172,20 @@ describe('damage3d: без утечек', () => {
     expect(s.ship.children.length).toBe(before);
   });
 });
+
+describe('damage3d: починка с задержкой (молоток героя)', () => {
+  it('set(n, delay): починяемая поломка стоит на месте, пока идёт задержка, потом чинится и исчезает', () => {
+    const { ship, d } = make(); d.set(2); const t = run(d, 2);
+    const onScreen = () => ship.getObjectByName('damage')!.children.filter(c => c.name.startsWith('damage_') && c.visible).length;
+    expect(onScreen()).toBe(2);
+    d.set(1, 1.0); const t1 = run(d, 0.6, 1 / 30, t); expect(onScreen()).toBe(2);
+    const t2 = run(d, 3, 1 / 30, t1); expect(onScreen()).toBe(1); expect(d.stats().visible).toBe(1);
+    run(d, 0.1, 1 / 30, t2);
+  });
+  it('fix(i, delay): промис завершается после задержки и починки', async () => {
+    const { d } = make(); d.set(1); const t = run(d, 2);
+    let done = false; d.fix(undefined, 0.8).then(() => (done = true));
+    run(d, 0.5, 1 / 30, t); await Promise.resolve(); expect(done).toBe(false);
+    run(d, 3, 1 / 30, t + 0.5); await Promise.resolve(); expect(done).toBe(true);
+  });
+});

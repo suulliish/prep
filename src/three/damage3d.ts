@@ -238,9 +238,9 @@ export interface DamageOpts {
 }
 export interface Damage {
   /** Показать n поломок (0..6). Места фиксированы: больше n — появляются с наименьшими номерами, меньше — лишние чинятся (анимация с конца). Первое показанное (n > 0 в самом начале) ставится без анимации. */
-  set(n: number): void;
+  set(n: number, delay?: number): void;   // delay — через сколько секунд начнётся починка (молоток героя: вспышка «починено» ложится на последний удар)
   /** Починить поломку i (по умолчанию последнюю из видимых): анимация 1.1 с. Промис — когда всё кончилось. Невидимую — сразу. */
-  fix(i?: number): Promise<void>;
+  fix(i?: number, delay?: number): Promise<void>;
   update(dt: number, t: number): void;
   /** Номер поломки под лучом (луч в мировых координатах) или -1: для касания. Чинящиеся и скрытые не считаются. */
   pick(ray: THREE.Raycaster): number;
@@ -264,7 +264,7 @@ interface Item {
   /** Починка: сработала ли вспышка «починено» и как далеко от неё (0..1). */
   flashed: boolean; fu: number;
 }
-const FIX_TIME = 1.15, FIX_MOTION = 0.5, POP_TIME = 0.55, FIX_QUICK = 0.4;
+export const FIX_TIME = 1.15, FIX_MOTION = 0.5, POP_TIME = 0.55, FIX_QUICK = 0.4;
 // с камеры меню палуба мелкая: поломки чуть крупнее «по-честному», иначе не читаются
 const ITEM_SCALE = 1.3;
 // с бликами (6) — не больше 100 точек на всё
@@ -333,18 +333,18 @@ export function createDamage(ship: THREE.Object3D, deck: Deck, opts: DamageOpts)
   let seen = false, disposed = false, live = 0;
   const api: Damage = {
     spots,
-    set(n) {
+    set(n, delay = 0) {
       if (disposed) return;
       // самый первый показ — без анимации (загрузка экрана)
       const want = Math.max(0, Math.min(MAX_DAMAGE, Math.round(n) || 0)), instant = !seen; let cur = shownCount(); if (want > 0) seen = true;
       for (const it of items) { if (cur >= want) break; if (it.st === 'off' && !Number.isNaN(it.spot.x)) { begin(it, instant); cur++; } }
-      let k = 0; for (const it of items.slice().reverse()) { if (cur <= want) break; if (shown(it)) { startFix(it, k++ * 0.22); cur--; } }
+      let k = 0; for (const it of items.slice().reverse()) { if (cur <= want) break; if (shown(it)) { startFix(it, delay + k++ * 0.22); cur--; } }
     },
-    fix(i) {
+    fix(i, delay = 0) {
       if (disposed) return Promise.resolve();
       const it = i === undefined ? items.slice().reverse().find(shown) : items[i];
       if (!it || it.st === 'off') return Promise.resolve();
-      if (it.st !== 'out') startFix(it);
+      if (it.st !== 'out') startFix(it, delay);
       return new Promise<void>(res => { it.done.push(res); });
     },
     update(dt, t) {

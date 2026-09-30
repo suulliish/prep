@@ -206,3 +206,28 @@ describe('живое ожидание: нельзя пугать и торопи
     for (const a of ACTS) { const d = a.clip ? (a.who === 'hero' ? h : m).length(a.clip[0], a.clip[1]) : a.dur; expect(d, a.name).toBeGreaterThanOrEqual(1); expect(d, a.name).toBeLessThanOrEqual(4); }
   });
 });
+
+
+describe('живое ожидание на тренировке: бой с тенью', () => {
+  const train = (on: boolean, km = 1) => {
+    const hero = actor([...HERO_CLIPS, 'Melee_Unarmed_Idle', 'Melee_Unarmed_Attack_Punch_A', 'Melee_Unarmed_Attack_Kick']); hero.loop('Idle_A', 0);
+    const st = { quiet: false, km, on }; const evs: string[] = []; let t = 0;
+    const idle = createIdleLife({ hero: () => hero, weapon: () => null, mob: () => null, quiet: () => st.quiet, km: () => st.km, training: () => st.on, rnd: rng(3) });
+    idleTrace.fn = (who, act) => evs.push(act);
+    const step = (sec: number) => { for (let i = 0; i < Math.round(sec * 60); i++) { t += 1 / 60; hero.update(1 / 60); idle.update(1 / 60); } };
+    return { hero, st, evs, step, idle };
+  };
+  it('только на тренировке: вне её действия shadow не бывает', () => {
+    const a = train(false); a.step(200); expect(a.evs).not.toContain('shadow');
+  });
+  it('на тренировке бой с тенью случается регулярно, пауза 5–8 с, после него герой возвращается в обычную стойку', () => {
+    const a = train(true); a.step(120);
+    const n = a.evs.filter(e => e === 'shadow').length; expect(n).toBeGreaterThanOrEqual(4); expect(a.evs.length).toBeLessThanOrEqual(120 / 4);
+    a.st.quiet = true; a.step(3); expect(a.hero.baseName()).toBe('Idle_A');
+  });
+  it('при «уменьшить движение» реже; пока ребёнок что-то делает (quiet) — молчит', () => {
+    const a = train(true, 0.3); a.step(120); const calm = a.evs.length;
+    const b = train(true); b.step(120); expect(calm).toBeLessThan(b.evs.length);
+    const c = train(true); c.st.quiet = true; c.step(60); expect(c.evs).toHaveLength(0);
+  });
+});

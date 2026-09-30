@@ -31,8 +31,16 @@ export interface World {
   spawnMob(hp: number, kind?: number, boss?: boolean, worldBoss?: boolean): Promise<void>;
   /** Урок = тренировка: вместо врага на его месте площадка (манекен, мишени, доска), без полоски здоровья и атак. off — площадка уходит с анимацией; выход из урока (clearMob) убирает её сразу. Промис — когда площадка встала/ушла. */
   setTraining(on: boolean): Promise<void>;
-  /** Герой бьёт манекен настоящим ударом: light — обычный, strong — сильный, combo — n-й удар связки 1..3 (3-й с разворота); stay — не возвращаться (следующий удар сразу). */
-  trainStrike(kind: HitKind, n?: number, stay?: boolean): Promise<void>;
+  /** Герой бьёт манекен настоящим ударом: light — обычный, strong — сильный, combo — n-й удар связки 1..3 (3-й с разворота); stay — не возвращаться (следующий удар сразу); variant — номер удара по кругу (рубящий, горизонтальный, колющий, с прыжком, косой). */
+  trainStrike(kind: HitKind, n?: number, stay?: boolean, variant?: number): Promise<void>;
+  /** Тип шага урока: герой занимает нужную позу (разминка на «Мақсат», сидит на «Көр», встаёт на других). Пустая строка — урок кончился. */
+  trainStep(kind: string): void;
+  /** Верный ответ на «Неге?»: манекен замахивается на героя, тот ставит блок и контратакует. */
+  trainBlock(): Promise<void>;
+  /** «Приём освоен» (шаг «Есте сақта»): руки вверх, кольцо света цветом приёма и искры. */
+  trainMastered(color: number): Promise<void>;
+  /** Победа в финале: разбег, прыжок, удар с разворотом, радость, отдых лёжа. Промис — в момент касания удара. */
+  trainVictory(): Promise<void>;
   /** Неверный ответ: манекен бросается к герою и шлёпает его по макушке, герой вздрагивает. */
   trainBonk(): Promise<void>;
   /** «Заражённый» манекен (розовые трещины, экран ERROR) вкл/выкл. */
@@ -172,7 +180,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   // ---------- Корабль-хаб ---------- (src/three/hub3d.ts): палуба, портал, герой, частицы; Бит — bit3d.ts
   let damageTap: (() => void) | null = null;
-  const hub = createHub(scene, { quality, km, bitMood: m => bit.setMood(m), onCutscene: () => { userTheta = userPhi = 0; }, onDamageTap: () => damageTap?.() });
+  const hub = createHub(scene, { quality, km, bitMood: m => bit.setMood(m), onCutscene: () => { userTheta = userPhi = 0; }, onDamageTap: () => damageTap?.(), sfx: n => audio.play(n) });
   const bit = createBit(scene);
 
   // ---------- Острова и облака ---------- (src/three/skyscape.ts)
@@ -310,7 +318,11 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     heroWalk(x, z) { return hub.heroWalk(x, z); },
     heroAttack(crit = false, sup = false, tech = null) { return arena.attack({ crit, sup, dmg: sup ? 2 : 1, tech }); },
     setTraining(on) { return arena.setTraining(on); },
-    trainStrike(kind, n = 1, stay = false) { return arena.trainStrike(kind, n, stay); },
+    trainStrike(kind, n = 1, stay = false, variant) { return arena.trainStrike(kind, n, stay, variant); },
+    trainStep(kind) { arena.trainStep(kind); },
+    trainBlock() { return arena.trainBlock(); },
+    trainMastered(color) { return arena.trainMastered(color); },
+    trainVictory() { return arena.trainVictory(); },
     trainBonk() { return arena.trainBonk(); },
     trainGlitch(on) { arena.trainGlitch(on); },
     trainBreakGlitch() { return arena.trainBreakGlitch(); },

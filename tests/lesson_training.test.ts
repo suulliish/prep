@@ -17,7 +17,7 @@ describe('Lesson.svelte: тренировка вместо боя', () => {
     expect(lesson).toContain('setTraining(true)'); expect(lesson).toContain("audio.setMood('training')"); expect(lesson).toContain('Бүгінгі тәсіл: ');
   });
   it('каждый тип шага зовёт своё действие', () => {
-    for (const call of ["trainStrike('strong')", "trainStrike('light')", 'trainBonk()', "trainStrike('combo', k", "trainStrike('combo', 3)", 'trainBreakGlitch()', 'trainGlitch(', 'trainTargets(', 'trainTargetHit()', 'trainBoard(', 'trainCheer()'])
+    for (const call of ["trainStrike('strong', 1, false, strikeN++)", "trainStrike('light')", 'trainBlock()', 'trainBonk()', "trainStrike('combo', k", 'trainVictory()', 'trainMastered(tech.color)', 'trainStep(s.type)', 'trainBreakGlitch()', 'trainGlitch(', 'trainTargets(', 'trainTargetHit()', 'trainBoard('])
       expect(lesson.includes(call), call).toBe(true);
   });
   it('карточка приёма после «Есте сақта», подпись полоски по-казахски, кнопки без «Соққы беру»', () => {
@@ -35,7 +35,7 @@ describe('Lesson.svelte: тренировка вместо боя', () => {
 
 describe('мир и арена', () => {
   it('методы тренировки есть в интерфейсе мира, реализации и арене', () => {
-    for (const m of ['setTraining', 'trainStrike', 'trainBonk', 'trainGlitch', 'trainBreakGlitch', 'trainTargets', 'trainTargetHit', 'trainTargetMiss', 'trainBoard', 'trainCheer']) {
+    for (const m of ['setTraining', 'trainStrike', 'trainBonk', 'trainGlitch', 'trainBreakGlitch', 'trainTargets', 'trainTargetHit', 'trainTargetMiss', 'trainBoard', 'trainCheer', 'trainStep', 'trainBlock', 'trainMastered', 'trainVictory']) {
       expect(world.match(new RegExp(`\\b${m}\\(`, 'g'))!.length, `world ${m}`).toBeGreaterThanOrEqual(2);
       expect(arena, `arena ${m}`).toContain(m);
     }

@@ -392,14 +392,16 @@ export function createTraining(scene: THREE.Scene, o: TrainingOpts) {
   }
 
   // ---------- бонк ----------
-  /** Неверный прогноз: манекен замахивается назад, прыжками бросается к герою и шлёпает рукой-палкой по макушке — смешно, не больно — и возвращается. */
-  async function bonk(): Promise<void> {
+  /** Неверный прогноз: манекен замахивается назад, прыжками бросается к герою и шлёпает рукой-палкой по макушке — смешно, не больно — и возвращается.
+   *  block — «отработка блока» (шаг «Неге?»): вместо шлепка замах в щит героя; onRush — манекен побежал (герою пора поднять щит), onStrike — рука долетела (точка у щита, мир), после неё манекен ждёт дольше: герой успевает контратаковать. */
+  async function bonk(b: { block?: boolean; onRush?: () => void; onStrike?: (at: THREE.Vector3) => void } = {}): Promise<void> {
     if (dead || show_.u < 0.35 || breaking) return;
     const hero = heroWorld(), tgtX = clamp(Math.min(0, local(hero).x + 2.0), -6.5, 0);
     // замах: откидывается назад, вскидывает руку, приседает
     sfx('growl');
     await tween(calm ? 0.5 : 0.34, u => { pose.lean = 0.4 * A * easeOut(u); pose.armL = -1.55 * (calm ? 0.3 : 1) * easeOut(u); pose.sq = 0.5 * easeIO(u) * A; });
     if (dead) return;
+    b.onRush?.();
     if (!calm) {
       // два прыжка к герою
       const T = 0.62;
@@ -412,12 +414,12 @@ export function createTraining(scene: THREE.Scene, o: TrainingOpts) {
     let slapped = false;
     await tween(calm ? 0.35 : 0.16, u => {
       pose.armL = lerp(-1.55 * (calm ? 0.3 : 1), 0.95 * (calm ? 0.4 : 1), easeIn(u)); pose.lean = lerp(calm ? 0.4 * A : -0.22, calm ? -0.12 : -0.3, u);
-      if (u > 0.6 && !slapped) { slapped = true; slap(hero); }
+      if (u > 0.6 && !slapped) { slapped = true; if (b.block) b.onStrike?.(hero.clone().add(new THREE.Vector3(0.9, 1.3, 0.3))); else slap(hero); }
     });
     if (dead) return;
     // «бум-м»: манекен трясёт, вокруг головы героя кружат звёздочки
     lean.kick(-2.4 * A); headS.kick(3.5 * A); sq.kick(-2 * A); flail.kick(-3 * A);
-    await wait(calm ? 0.5 : 0.62); if (dead) return;
+    await wait(b.block ? 1.15 : calm ? 0.5 : 0.62); if (dead) return;
     // возвращается: рука вниз, два прыжка назад
     if (!calm) {
       const T = 0.7;
@@ -430,6 +432,14 @@ export function createTraining(scene: THREE.Scene, o: TrainingOpts) {
     if (dead) return;
     lean.kick(1.6 * A); headS.kick(-2 * A); sq.kick(2 * A); pose.armL = 0; pose.lean = 0; pose.slide = 0; pose.sq = 0;
     await wait(0.25);
+  }
+  /** «Глитч» плюётся сгустком ошибки: откидывается назад, розовая вспышка, толчок вперёд. Промис — в момент, когда сгусток вылетает (дальше манекен успокаивается сам). */
+  async function spit(): Promise<void> {
+    if (dead || show_.u < 0.35 || breaking) return;
+    sfx('growl'); flash = Math.max(flash, 0.55);
+    await tween(0.3, u => { pose.lean = 0.35 * A * easeOut(u); pose.sq = 0.5 * A * easeIO(u); });
+    if (dead) return;
+    lean.kick(-2.2 * A); headS.kick(3 * A); sq.kick(-1.6 * A); flash = Math.max(flash, 0.9); pose.lean = 0; pose.sq = 0;
   }
   function slap(hero: THREE.Vector3) {
     const head = local(hero).add(new THREE.Vector3(0.05, 2.35, 0.35));
@@ -647,7 +657,7 @@ export function createTraining(scene: THREE.Scene, o: TrainingOpts) {
   }
 
   return {
-    g, show, hit, bonk, glitch, breakGlitch, targets, targetHit, targetMiss, board, cheer, update, dispose, anchor, drawCalls,
+    g, show, hit, bonk, spit, glitch, breakGlitch, targets, targetHit, targetMiss, board, cheer, update, dispose, anchor, drawCalls,
     /** Для проверок: живых частиц и звёзд, поднятых мишеней, включён ли глитч. */
     stats: () => ({ particles: bits.live, stars: stars.filter(s => s.m.visible).length, targetsUp: tg.filter(x => x.st === 'up' && x.h > 0.5).length, glitch: glitchOn, shown: show_.u }),
   };

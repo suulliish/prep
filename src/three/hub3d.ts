@@ -13,7 +13,10 @@ import type { CamMode } from './world';
 import type { BitMood } from './bit3d';
 import { createDecor, planSpots, planCircles, connGuard, sampleSurface, findMasts, ITEMS, type Decor, type Guard, type Circle } from './decor3d';
 import { createPet, type Pet } from './pet3d';
-import { createDamage, MAX_DAMAGE, type Damage } from './damage3d';
+import { createDamage, MAX_DAMAGE, FIX_MOTION, type Damage } from './damage3d';
+import { addAnimSet, type Actor } from './actor';
+import { buildHammer } from './hero_props';
+import type { Sfx } from '../lib/audio';
 
 /** Поза орбитальной камеры: цель, расстояние, углы (см. кадр в world.ts). */
 export interface CamView { target: THREE.Vector3; radius: number; phi: number; theta: number }
@@ -28,6 +31,8 @@ export interface HubDeps {
   onCutscene(): void;
   /** Ребёнок коснулся поломки на палубе (неисправленная ошибка) — экран открывает ремонт. */
   onDamageTap?(): void;
+  /** Звук момента (молоток при починке). */
+  sfx?(n: Sfx): void;
 }
 
 export interface Hub {
@@ -200,8 +205,9 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
   type Walk = { path: [number, number][]; i: number; res: () => void; run: boolean };
   let walk: Walk | null = null;
   /** Идти (run — бегом) по найденному пути. Нет пути (точка за порталом, отрезанный угол) — не идём напрямик сквозь препятствия, а стоим. */
-  const goTo = (x: number, z: number, res: () => void = () => {}, run = false) => {
+  const goTo = (x: number, z: number, res: () => void = () => {}, run = false, keepRepair = false) => {
     if (!deck) { res(); return; }
+    if (!keepRepair) abortRepair();
     endActivity(true);
     const p = deck.path([hero.position.x, hero.position.z], [x, z]);
     if (!p.length) { walk = null; res(); return; }
@@ -335,7 +341,7 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
   // касание палубы — герой идёт туда (просьба ребёнка 30.09); касание самого героя — машет в ответ
   const tapRay = new THREE.Raycaster(), tapPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), tapHit = new THREE.Vector3();
   function tap(ndc: THREE.Vector2, camera: THREE.Camera) {
-    if (mode !== 'hub') return;
+    if (mode !== 'hub' || repair) return;                                // пока герой чинит, касания его не отвлекают
     tapRay.setFromCamera(ndc, camera);
     if (!deck || cutscene || pulling) return;                             // во время катсцены касания не двигают героя
     // касание самого героя (луч попал в его модель) — он машет в ответ, Бит радуется
@@ -370,7 +376,7 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
 
     // живой корабль: герой сам ходит между станциями палубы (нос у портала, корма, середина, борта)
     if (activity && t > activity.until) { endActivity(); nextWander = t + 2.5; }
-    if (mode === 'hub' && !walk && !cutscene && km === 1 && deck && t > nextWander) {
+    if (mode === 'hub' && !walk && !repair && !cutscene && km === 1 && deck && t > nextWander) {
       const st = home.length ? anyHome() : spot(WANDER[Math.floor(Math.random() * WANDER.length)]);   // в главном меню гуляет в кадре, у портала
       nextWander = t + 5 + Math.random() * 5;
       goTo(st[0], st[1], () => startActivity(t));
@@ -395,6 +401,67 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
       b.parts.forEach(p => { p.v.y -= dt * 6; p.m.position.addScaledVector(p.v, dt); p.m.rotation.x += dt * 5; p.m.scale.multiplyScalar(0.985); });
       if (b.life <= 0) { scene.remove(b.g); bursts.splice(i, 1); }
     }
+  }
+
+  // ---------- Починка молотком ----------
+  // Поломка чинится не «сама»: герой подходит к ней по палубе, встаёт лицом, достаёт молоток (меч и щит на это время прячутся, Actor.carry),
+  // бьёт 4 раза (искры на каждый удар), последний удар совпадает со вспышкой «починено» (damage3d), потом молоток убирается, меч и щит возвращаются.
+  const applyFix = (over: boolean, delay = 0) => {
+    if (!dmg) return;
+    if (over) { void dmg.fix(undefined, delay).then(() => setTimeout(() => dmg?.set(dmgN), 900)); return; }
+    dmg.set(dmgN, delay);
+    // поломка, которая ещё чинится, при новом росте не возвращается — повторяем после конца анимации
+    setTimeout(() => dmg?.set(dmgN), 1300 + delay * 1000);
+  };
+  interface Repair { tok: number; actor: Actor; over: boolean; applied: boolean; wake: (() => void) | null }
+  let repair: Repair | null = null, repairTok = 0;
+  /** Обрыв починки (касание, катсцена, бой, смена костюма): молоток убран, меч и щит на месте, число поломок применено. */
+  function abortRepair() {
+    const r = repair; if (!r) return;
+    repair = null; repairTok++;
+    r.actor.carry([]); r.wake?.();
+    if (!r.applied) applyFix(r.over);
+  }
+  /** Где герою встать у поломки: достижимая клетка на 0.5–1.8 м от неё; из подходящих — со стороны камеры меню (герой виден, борт не заслоняет), при равных — ближе к нему. */
+  function standAt(x: number, z: number): [number, number] {
+    const d = deck!, from: [number, number] = [hero.position.x, hero.position.z], cx = Math.cos(HUB_THETA), cz = Math.sin(HUB_THETA);
+    for (const r of [0.55, 0.8, 1.05, 1.4, 1.8]) {
+      let best: [number, number] | null = null, bs = -Infinity;
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2, q: [number, number] = [x + Math.cos(a) * r, z + Math.sin(a) * r], dist = Math.hypot(q[0] - from[0], q[1] - from[1]);
+        const score = (Math.cos(a) * cx + Math.sin(a) * cz) * 2 - dist * 0.15;
+        if (score > bs && d.walkable(q[0], q[1]) && (dist < 0.15 || d.path(from, q).length > 0)) { bs = score; best = q; }
+      }
+      if (best) return best;
+    }
+    return d.nearest(x, z);
+  }
+  async function hammerFix(over: boolean) {
+    const a = fig.actor!, tok = ++repairTok, idx = dmg!.visible().slice(-1)[0], sp = dmg!.spots[idx];
+    const r: Repair = { tok, actor: a, over, applied: false, wake: null }; repair = r;
+    const alive = () => repair === r && fig.actor === a && mode === 'hub';
+    const tools = addAnimSet(a, 'Tools').then(() => true, () => false);            // тяжёлый набор клипов — только сейчас, один раз
+    const st = standAt(sp.x, sp.z);
+    nextWander = Infinity;
+    await new Promise<void>(res => { r.wake = res; goTo(st[0], st[1], res, false, true); });
+    if (!alive()) { if (repair === r) abortRepair(); return; }
+    r.wake = null;
+    hero.rotation.y = Math.atan2(sp.x - hero.position.x, sp.z - hero.position.z);
+    const okTools = await tools;
+    if (!alive()) { if (repair === r) abortRepair(); return; }
+    if (!okTools || !a.has('Hammering')) { applyFix(over); r.applied = true; repair = null; nextWander = now + 6; return; }
+    const SPEED = 1.5, len = a.length('Hammering', SPEED), HITS = [0.094, 0.337, 0.59, 0.837];   // моменты ударов в клипе (доли): по два за круг
+    a.carry([{ slot: 'handslot.r', obj: buildHammer() }]);
+    // вспышка «починено» (через FIX_MOTION после старта починки) — на последний удар
+    applyFix(over, Math.max(0, HITS[HITS.length - 1] * len - FIX_MOTION)); r.applied = true;
+    const spark = (k: number) => {
+      if (!alive()) return;
+      const p = dmg!.at(idx); p.y += 0.05;
+      burst(p, k === HITS.length - 1 ? 0x5ce39c : 0xffe07a, km < 1 ? 4 : k === HITS.length - 1 ? 16 : 8, 3);
+      deps.sfx?.(k === HITS.length - 1 ? 'crystal' : 'hit');
+    };
+    await a.play('Hammering', { speed: SPEED, marks: HITS.map((at, k) => ({ at, fn: () => spark(k) })) });
+    if (repair === r) { a.carry([]); repair = null; nextWander = now + 6; deps.bitMood('happy'); }
   }
 
   // ---------- Праздник нового предмета ----------
@@ -443,6 +510,7 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     },
     update,
     enterMode(m) {
+      abortRepair();
       const tiny = hero.scale.x < 0.99 || pulling;                  // после входа в портал герой уменьшен и висит в центре кольца
       if ((m === 'hub' || m === 'hero') && (mode !== m || tiny)) {
         walk = null; endActivity(true); hero.scale.setScalar(1); cutscene = pulling = focusPortal = false; portalP = null; cutToken++; portalOpen = false;
@@ -464,7 +532,7 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     },
     portalWalk() {
       if (portalP) return portalP;                                       // повторный вызов — та же катсцена
-      cancelShow(); framePortal(); const tok = cutToken; cutscene = focusPortal = true; portalOpen = true; deps.onCutscene();          // портал разгорается, пока герой бежит
+      abortRepair(); cancelShow(); framePortal(); const tok = cutToken; cutscene = focusPortal = true; portalOpen = true; deps.onCutscene();          // портал разгорается, пока герой бежит
       portalP = new Promise<void>(res => {
         // герой бежит к порталу, тот вспыхивает, героя затягивает в центр вихря с поворотом — вспышка
         // Пути к площадке нет (украшение отрезало героя, он на корме за ним): не летим сквозь корабль, а переносимся со вспышкой
@@ -490,10 +558,11 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
       const all = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0, prev = dmgAll; dmgAll = all; dmgN = Math.min(MAX_DAMAGE, all);
       if (!dmg) return;
       // ошибок больше шести и часть исправили — число на палубе не меняется, но ремонт должен быть виден: одна поломка чинится и, раз ошибки остались, через миг возвращается
-      if (all < prev && dmgN === MAX_DAMAGE && prev > 0) { void dmg.fix().then(() => setTimeout(() => dmg?.set(dmgN), 900)); return; }
-      dmg.set(dmgN);
-      // поломка, которая ещё чинится, при новом росте не возвращается — повторяем после конца анимации
-      setTimeout(() => dmg?.set(dmgN), 1300);
+      const over = all < prev && dmgN === MAX_DAMAGE && prev > 0;
+      if (repair) { if (all < prev) repair.over ||= over; return; }             // герой уже чинит: итог применится в момент починки по самому свежему числу
+      // поломку чинят молотком: герой идёт к ней, бьёт, молоток убирается (не в катсцене и не вне главного меню)
+      if (all < prev && mode === 'hub' && !cutscene && !pulling && !focusView && deck && fig.actor && dmg.visible().length) { void hammerFix(over); return; }
+      applyFix(over);
     },
     setShipDecor(owned, pid) { ownedDecor = owned.slice(); petId = pid; decor?.set(ownedDecor); pet.set(pid && ITEMS.some(i => i.id === pid && i.slot === 'pet') ? pid : null); },
     async showDecor(id) { await showDecorImpl(id); },
@@ -503,6 +572,6 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     setCape(c) { fig.setCape(c); },
     heroWorldPos(v) { return hero.getWorldPosition(v); },
     get inCutscene() { return cutscene; },
-    dispose() { cutToken++; focusView = null; decor?.dispose(); dmg?.dispose(); pet.dispose(); portalFx.dispose(); },
+    dispose() { abortRepair(); cutToken++; focusView = null; decor?.dispose(); dmg?.dispose(); pet.dispose(); portalFx.dispose(); },
   };
 }

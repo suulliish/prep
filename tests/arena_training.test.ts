@@ -5,7 +5,11 @@ import * as THREE from 'three';
 
 const CLIPS: Record<string, number> = {
   Idle_A: 1, Idle: 1, Running_A: 0.8, Walking_A: 1, Melee_1H_Attack_Slice_Diagonal: 1, Melee_1H_Attack_Chop: 1.067, Melee_1H_Attack_Stab: 1.6, Melee_2H_Attack_Spinning: 0.667,
-  Melee_1H_Attack_Jump_Chop: 1.333, Throw: 1.367, Hit_B: 0.867, Cheering: 1.5, Interact: 1.3, Melee_Blocking: 1, Melee_Block_Hit: 1, Use_Item: 1.6, Idle_B: 2, Spawn_Air: 1, Bite_Front: 1, HitReact: 0.5, Death: 1, Jump_Full_Short: 1,
+  Melee_1H_Attack_Jump_Chop: 1.333, Throw: 1.367, Hit_B: 0.867, Cheering: 1.5, Interact: 1.3, Melee_Blocking: 1, Melee_Block_Hit: 1.067, Use_Item: 1.6, Idle_B: 2, Spawn_Air: 1, Bite_Front: 1, HitReact: 0.5, Death: 1, Jump_Full_Short: 1,
+  // новые действия героя на тренировке (src/three/train_hero.ts): длительности как у настоящих клипов KayKit
+  Melee_1H_Attack_Slice_Horizontal: 1.367, Hit_A: 0.667, Melee_Block: 1.067, Melee_Block_Attack: 1.067, Push_Ups: 1.033, Jump_Full_Long: 2.333,
+  Sit_Floor_Down: 1, Sit_Floor_Idle: 4, Sit_Floor_StandUp: 1.133, Lie_Down: 3, Lie_Idle: 2.667, Lie_StandUp: 2.333, Dodge_Left: 0.4, Dodge_Right: 0.4, Dodge_Backward: 0.4,
+  Ranged_Bow_Draw: 1.333, Ranged_Bow_Release: 1.333, Ranged_Magic_Shoot: 0.933, Ranged_Magic_Raise: 2.1,
 };
 vi.mock('../src/three/actor', async orig => {
   const m = await orig<typeof import('../src/three/actor')>();
@@ -114,5 +118,47 @@ describe('приёмы в бою', () => {
   });
   it('приём не меняет суперудар', async () => {
     const a = make(); await until(a, a.spawn(9, 0)); const p = a.attack({ sup: true, dmg: 2, tech: { color: 1, fx: 'spin', kz: 'x' } }); await until(a, p); a.clear();
+  });
+});
+
+describe('герой на тренировке: действия по шагам урока (src/three/train_hero.ts)', () => {
+  const ready = async () => { const a = make(); await until(a, a.setTraining(true)); await frames(a, 1.2); return a; };
+  const pose = (a: ReturnType<typeof make>) => a.trainPose().pose;
+  it('разминка на «Мақсат»: недолго (до 8 с), заканчивается стойкой на своём месте; следующее действие обрывает её сразу', async () => {
+    const a = await ready(); a.trainStep('goal'); await frames(a, 0.5); expect(pose(a)).toBe('warm');
+    await frames(a, 8); expect(pose(a)).toBe(''); expect(heroX(a)).toBeCloseTo(HERO_X, 1);
+    const b = await ready(); b.trainStep('goal'); await frames(b, 1);
+    const t = await until(b, b.trainStrike('light')); expect(t).toBeLessThan(4); expect(pose(b)).toBe(''); expect(heroX(b)).toBeCloseTo(HERO_X, 1);
+    a.clear(); b.clear();
+  });
+  it('«Көр»: садится, на другом шаге встаёт и идёт на место; спешка не ломает', async () => {
+    const a = await ready(); a.trainStep('example'); await frames(a, 4); expect(pose(a)).toBe('sit'); expect(heroX(a)).toBeGreaterThan(HERO_X + 2);
+    a.trainStep('predict'); await frames(a, 5); expect(pose(a)).toBe(''); expect(heroX(a)).toBeCloseTo(HERO_X, 1);
+    a.trainStep('example'); await frames(a, 0.3); a.trainStep('predict'); await frames(a, 5); expect(pose(a)).toBe(''); expect(heroX(a)).toBeCloseTo(HERO_X, 1);
+    a.trainStep('example'); await frames(a, 4); expect(pose(a)).toBe('sit'); await until(a, a.trainStrike('strong', 1, false, 2)); expect(pose(a)).toBe(''); expect(heroX(a)).toBeCloseTo(HERO_X, 1);
+    a.trainStep('example'); await frames(a, 4); a.clear(); expect(pose(a)).toBe(''); expect(heroX(a)).toBeCloseTo(HERO_X, 1);
+  });
+  it('удары по кругу (5 видов), блок и контратака на «Неге?», «приём освоен»: всё завершается, герой дома', async () => {
+    const a = await ready();
+    for (let k = 0; k < 6; k++) { await until(a, a.trainStrike('strong', 1, false, k)); expect(heroX(a)).toBeCloseTo(HERO_X, 1); }
+    await until(a, a.trainBlock()); expect(heroX(a)).toBeCloseTo(HERO_X, 1);
+    await until(a, a.trainMastered(0x35e6ff)); expect(pose(a)).toBe(''); a.clear();
+  });
+  it('стрельбище: лук, бросок, магия по очереди; промахи не копятся; мишени падают', async () => {
+    const a = await ready(); a.trainTargets(6); await frames(a, 2);
+    for (let k = 0; k < 3; k++) await until(a, a.trainTargetHit());
+    for (let k = 0; k < 4; k++) a.trainTargetMiss();
+    await frames(a, 8); expect(heroX(a)).toBeCloseTo(HERO_X, 1); expect(a.trainingStats()!.targetsUp).toBeGreaterThan(0); a.clear();
+  });
+  it('«Глитч»: сгустки летят, герой уворачивается и возвращается; нашёл ошибку — сгустки кончаются', async () => {
+    const a = await ready(); a.trainGlitch(true); await frames(a, 9);
+    await until(a, a.trainBreakGlitch()); await frames(a, 6); expect(heroX(a)).toBeCloseTo(HERO_X, 1); expect(a.trainingStats()!.glitch).toBeLessThan(0.05); a.clear();
+  });
+  it('финал: победа доходит до касания, герой ложится; выход посреди отдыха и посреди прыжка возвращает его в стойку', async () => {
+    const a = await ready(); await until(a, a.trainVictory()); await frames(a, 8); expect(pose(a)).toBe('lie');
+    a.trainStep('final'); await frames(a, 1); expect(pose(a)).toBe('lie');
+    a.trainStep(''); await frames(a, 5); expect(pose(a)).toBe(''); expect(heroX(a)).toBeCloseTo(HERO_X, 1);
+    const b = await ready(); const v = b.trainVictory(); await frames(b, 0.6); b.clear(); await until(b, v); expect(pose(b)).toBe(''); expect(heroX(b)).toBeCloseTo(HERO_X, 1); expect(b.hasTraining()).toBe(false);
+    await frames(b, 3); expect(pose(b)).toBe(''); a.clear();
   });
 });

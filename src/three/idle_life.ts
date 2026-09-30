@@ -19,6 +19,8 @@ export interface IdleDeps {
   quiet: () => boolean;
   /** Коэффициент движения арены: меньше 1 — «уменьшить движение». */
   km: () => number;
+  /** Идёт тренировка (урок): паузы 5–8 с, среди действий героя добавляется бой с тенью без оружия. */
+  training?: () => boolean;
   rnd?: () => number;
 }
 
@@ -28,7 +30,8 @@ const zero = (o: Off) => { o.x = o.y = o.z = o.rx = o.ry = o.rz = o.sx = o.sy = 
 const newOff = (): Off => { const o = {} as Off; zero(o); return o; };
 
 interface Env { u: number; amp: number; sgn: number; o: Off }
-interface Act { name: string; who: Who; dur: number; fx?: (e: Env) => void; clip?: [string, number]; bold?: boolean; cls?: MonsterClass[]; weapon?: boolean }
+// seq — бой с тенью: стойка Melee_Unarmed_Idle, затем клипы по очереди (без меча и щита), потом обычная стойка; train — только на тренировке
+interface Act { name: string; who: Who; dur: number; fx?: (e: Env) => void; clip?: [string, number]; bold?: boolean; cls?: MonsterClass[]; weapon?: boolean; seq?: string[]; train?: boolean }
 
 const PI = Math.PI, TAU = Math.PI * 2;
 const sm = (x: number) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
@@ -45,6 +48,7 @@ export const ACTS: Act[] = [
   { name: 'sigh', who: 'hero', dur: 2.8, fx: ({ u, amp, o }) => { const e = bump(u) * amp; o.y = -0.05 * e; o.rx = 0.11 * e; o.sy = -0.015 * e; } },
   { name: 'shield', who: 'hero', dur: 0, clip: ['Melee_Blocking', 0.75], bold: true },
   { name: 'flourish', who: 'hero', dur: 1.7, bold: true, weapon: true, fx: ({ u, amp, o }) => { const e = hold(u, 0.25) * amp; o.wz = 0.45 * Math.sin(u * TAU * 1.5) * e; o.wy = TAU * sm(u) * amp; o.wx = 0.15 * e; } },
+  { name: 'shadow', who: 'hero', dur: 3, train: true, seq: ['Melee_Unarmed_Attack_Punch_A', 'Melee_Unarmed_Attack_Kick'] },
   // ---- монстр ----
   { name: 'nod', who: 'mob', dur: 0, clip: ['Yes', 0.75] },
   { name: 'shake', who: 'mob', dur: 0, clip: ['No', 0.7] },
@@ -72,7 +76,7 @@ const BASE = 3, SPAN = 3;
 const RBASE = 8, RSPAN = 4;
 
 interface Rig { a: Actor; w: THREE.Object3D | null; p: THREE.Vector3; q: THREE.Quaternion; s: THREE.Vector3; wq: THREE.Quaternion; o: Off; fade: number }
-interface Run { act: Act; rig: Rig; t: number; dur: number; sgn: number; clip: boolean }
+interface Run { act: Act; rig: Rig; t: number; dur: number; sgn: number; clip: boolean; restore?: string; steps?: { at: number; clip: string; sp: number }[] }
 
 const E = new THREE.Euler(0, 0, 0, 'YXZ'), EW = new THREE.Euler(0, 0, 0, 'XYZ'), Q = new THREE.Quaternion();
 
@@ -116,6 +120,7 @@ export function createIdleLife(d: IdleDeps) {
     if (c) {
       const same = actorOf(c.act.who) === c.rig.a;
       if (c.clip && same && c.t < c.dur) { const b = c.rig.a.baseName(); if (b) void c.rig.a.play(b, { loop: true, fade: 0.1 }); }
+      if (c.restore && same) void c.rig.a.play(c.restore, { loop: true, fade: 0.12 });
       if (hard || !same) settle(c.rig); else { c.rig.fade = FADE; fading.add(c.rig); }
     }
     if (hard) for (const r of [...fading]) settle(r);
@@ -127,20 +132,31 @@ export function createIdleLife(d: IdleDeps) {
     if (!ws.length) return null;
     const who: Who = ws.length === 1 ? ws[0] : last && rnd() < 0.7 ? (last === 'hero' ? 'mob' : 'hero') : rnd() < 0.5 ? 'hero' : 'mob';
     const a = who === 'hero' ? h! : m!.a;
-    const ok = ACTS.filter(x => x.who === who && !(red && x.bold) && (!x.cls || (m && x.cls.includes(m.cls))) && (!x.clip || a.has(x.clip[0])) && (!x.weapon || d.weapon()) && x.name !== lastAct[who]);
+    const tr = !!d.training?.();
+    const ok = ACTS.filter(x => x.who === who && !(red && x.bold) && (!x.train || tr) && (!x.seq || a.has('Melee_Unarmed_Idle')) && (!x.cls || (m && x.cls.includes(m.cls))) && (!x.clip || a.has(x.clip[0])) && (!x.weapon || d.weapon()) && x.name !== lastAct[who]);
     if (!ok.length) return null;
-    return { act: ok[Math.min(ok.length - 1, Math.floor(rnd() * ok.length))], a };
+    // на тренировке бой с тенью — каждое второе действие героя (если прошлое было не оно)
+    const sh = tr && who === 'hero' ? ok.find(x => x.train) : undefined;
+    if (sh && rnd() < 0.5) return { act: sh, a };
+    const rest = sh ? ok.filter(x => !x.train) : ok;
+    return { act: rest[Math.min(rest.length - 1, Math.floor(rnd() * rest.length))], a };
   }
 
   function start(p: { act: Act; a: Actor }) {
     const { act, a } = p, red = reduced();
     const rig = rigOf(a, act.weapon ? d.weapon() : null);
     if (rig.fade > 0) settle(rig);
-    let dur = act.dur;
+    let dur = act.dur, restore: string | undefined, steps: Run['steps'];
+    if (act.seq) {
+      const sp = 1.2 * (red ? 0.85 : 1); restore = a.baseName() || 'Idle_A'; steps = []; let at = 0.55;
+      a.loop('Melee_Unarmed_Idle', 0.2);
+      for (const c of act.seq) if (a.has(c)) { steps.push({ at, clip: c, sp }); at += a.length(c, sp) * 0.95; }
+      dur = at + 0.3;
+    }
     if (act.clip) { const sp = act.clip[1] * (red ? 0.85 : 1); dur = a.length(act.clip[0], sp) + 0.15; void a.play(act.clip[0], { speed: sp, fade: 0.2 }); }
-    cur = { act, rig, t: 0, dur, sgn: rnd() < 0.5 ? -1 : 1, clip: !!act.clip };
+    cur = { act, rig, t: 0, dur, sgn: rnd() < 0.5 ? -1 : 1, clip: !!act.clip, restore, steps };
     last = act.who; lastAct[act.who] = act.name;
-    wait = Math.max(0.8, (red ? RBASE + rnd() * RSPAN : BASE + rnd() * SPAN) - dur);
+    wait = Math.max(0.8, (red ? RBASE + rnd() * RSPAN : d.training?.() ? 5 + rnd() * 3 : BASE + rnd() * SPAN) - dur);
     idleTrace.fn?.(act.who, act.name, dur);
   }
 
@@ -154,7 +170,8 @@ export function createIdleLife(d: IdleDeps) {
       const same = actorOf(c.act.who) === c.rig.a;
       if (!same) { cur = null; settle(c.rig); return; }
       c.t += dt;
-      if (c.t >= c.dur) { cur = null; settle(c.rig); return; }
+      while (c.steps?.length && c.t >= c.steps[0].at) { const st = c.steps.shift()!; void c.rig.a.play(st.clip, { speed: st.sp, fade: 0.12 }); }
+      if (c.t >= c.dur) { cur = null; settle(c.rig); if (c.restore) void c.rig.a.play(c.restore, { loop: true, fade: 0.2 }); return; }
       const o = c.rig.o; zero(o);
       c.act.fx?.({ u: c.t / c.dur, amp: reduced() ? 0.5 : 1, sgn: c.sgn, o });
       apply(c.rig, 1);
