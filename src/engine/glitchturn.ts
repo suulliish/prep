@@ -48,12 +48,24 @@ function chainSplit(p: string): string[] {
   return out.map(x => x.trim()).filter(Boolean);
 }
 
+/** Режет по «, » только вне скобок: «(7 : 1 = 7 — бір бөлік, 7 · 8 = 56.)» остаётся целым. */
+function commaSplit(p: string): string[] {
+  const out: string[] = []; let depth = 0, from = 0;
+  for (let i = 0; i < p.length; i++) {
+    const c = p[i];
+    if (c === '(' || c === '{' || c === '[') depth++; else if (c === ')' || c === '}' || c === ']') depth = Math.max(0, depth - 1);
+    else if (depth === 0 && c === ',' && /\s/.test(p[i + 1] ?? '')) { out.push(p.slice(from, i)); from = i + 1; while (/\s/.test(p[from] ?? '')) from++; i = from - 1; }
+  }
+  out.push(p.slice(from));
+  return out;
+}
+
 /** Разбор → строки: по переносам, концам предложений и «;»; если их меньше трёх — цепочки «a = b, c = d» по запятой,
  *  потом цепочки «a = b = c» по «=», потом «пояснение: выкладка» по двоеточию. */
 export function solLines(sol: string): string[] {
   const enough = (l: string[]) => l.length >= GLITCH.minLines;
   let parts = sol.split(/\n+/).flatMap(sentences).map(x => x.trim().replace(/;$/, '')).filter(Boolean);
-  if (!enough(parts)) parts = parts.flatMap(p => { const c = p.split(/,\s+/); return c.length > 1 && c.every(x => /[=≈↔]/.test(x)) ? c : [p]; });
+  if (!enough(parts)) parts = parts.flatMap(p => { const c = commaSplit(p); return c.length > 1 && c.every(x => /[=≈↔]/.test(x)) ? c : [p]; });
   if (!enough(parts)) parts = parts.flatMap(chainSplit);
   if (!enough(parts)) parts = parts.flatMap(p => { const m = p.match(/^(.{12,}?\S):\s+(.*\d.*)$/); return m ? [m[1], m[2]] : [p]; });
   return parts;
@@ -180,20 +192,20 @@ function makeFindRe(ans: string): RegExp {
   return new RegExp(String.raw`${frac}(?<![\p{L}\d,.^/⁰¹²³⁴⁵⁶⁷⁸⁹−-])${esc(ans)}(?![\d\p{L}²³]|[,.]\d|/\d|-\p{L})`, 'u');
 }
 const kzPart = (s: string) => s.split(' / ')[0].trim();
-/** «720 кг» → «720», «91%» → «91»: запасной вариант, если строка с единицей не найдена. */
-const bare = (s: string) => s.replace(/\s*(%|°|[\p{L}²³]+\.?)$/u, '');
+/** «720 кг» → «720», «91%» → «91»: запасной вариант, если строка с единицей не найдена. Слитная буква («−17y», «3x») — не единица: такой ответ не обрезаем. */
+const bare = (s: string) => s.replace(/(?<=\d)[%°]$|\s+[\p{L}²³]+\.?$/u, '');   // «91%», «720 кг»; «−17y» — алгебраический ответ, не число с единицей
 
 const gCache = new Map<string, RegExp>();
 const globalRe = (ans: string) => { let re = gCache.get(ans); if (!re) { re = new RegExp(findRe(ans).source, 'gu'); gCache.set(ans, re); if (gCache.size > 500) gCache.clear(); } return re; };
 
-/** Место, где в строке результат: после «=», «Метка:» или «—», в конце фразы (может быть с единицей), не в скобках. Операнд («24 = 2 · 3 · 4», «45 : 9») сюда не попадает. */
+/** Место, где в строке результат: после «=», «Метка:» или «—», в конце фразы (может быть с единицей), не в скобках (inParens — и в скобках). Операнд («24 = 2 · 3 · 4», «45 : 9») сюда не попадает. */
 interface Hit { start: number; end: number; eq: boolean }
-function resultHits(line: string, ans: string): Hit[] {
+function resultHits(line: string, ans: string, inParens = false): Hit[] {
   const out: Hit[] = [];
   for (const m of line.matchAll(globalRe(ans))) {
     const start = m.index!, end = start + m[0].length, before = line.slice(0, start), after = line.slice(end);
     const mark = before.match(/(=|(?<=\S):|—|–)\s*$/);
-    if (!mark || depthAt(before) > 0) continue;
+    if (!mark || (!inParens && depthAt(before) > 0)) continue;
     if (!/^(?:\s*(?:%|°|км\/сағ|[\p{L}²³]{1,8}\.?))?\s*(?:$|[.;,!?)]|\(|—|–)/u.test(after)) continue;
     out.push({ start, end, eq: mark[1] === '=' });
   }
@@ -247,6 +259,9 @@ export function buildGlitch(src: GlitchSrc, rand: () => number = Math.random): G
       const independent = (i: number, x: Hit) => { if (!x.eq) return false; const l = lhsOf(good, i, x); return l !== null && !l.prev && holdsAs(l.t, ans) !== null; };
       for (let i = first; i < good.length; i++) {
         const targets = resultHits(good[i], ans).filter(x => (i === first && x.start === h.start) || (!independent(i, x) && (i > first || x.start > h.start)));
+        // строка-следствие несёт неверное значение целиком: и «Жауабы: W», и пояснение в скобках «(… · 8 = W.)» — иначе в одной строке верный результат рядом с неверным
+        if (i > first && targets.length) for (const x of resultHits(good[i], ans, true)) if (depthAt(good[i].slice(0, x.start)) > 0 && !targets.some(t => t.start === x.start)) targets.push(x);
+        targets.sort((p, q) => p.start - q.start);
         let line = good[i];
         for (const x of targets.reverse()) line = line.slice(0, x.start) + wrong + line.slice(x.end);
         lines[i] = line;

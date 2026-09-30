@@ -314,3 +314,54 @@ describe('реплики', () => {
     expect(GLITCH_SAY.ask).toBe('Қате қай жолдан басталды?');
   });
 });
+
+describe('красная команда: скобки и согласованность следствий', () => {
+  const tpl = (id: string) => (templates as any[]).find(t => t.id === id);
+  const balanced = (l: string) => { let d = 0; for (const c of l) { if (c === '(') d++; if (c === ')') d--; if (d < 0) return false; } return d === 0; };
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+  /** Верный результат как отдельное число (не кусок «15», «1,5», «1/5», «−5»). */
+  const hasNum = (l: string, n: string) => new RegExp(`(?<![\\d,.−/-])${esc(n)}(?![\\d/]|[,.]\\d)`).test(l);
+
+  it('solLines не рвёт скобку по запятой: «(7 : 1 = 7 — бір бөлік, 7 · 8 = 56.)» остаётся одной строкой', () => {
+    const l = solLines('Қалғаны: 1 − 7/8 = 1/8. 7 : 1/8 = 7 · 8/1 = 56. (7 : 1 = 7 — бір бөлік, 7 · 8 = 56.) Жауабы: 56.');
+    expect(l).toContain('(7 : 1 = 7 — бір бөлік, 7 · 8 = 56.) Жауабы: 56.');
+    const s = solLines('56 : 7/8 = 56 · 8/7 = 64. (56 : 7 = 8 — бір бөлік, 8 · 8 = 64.) Жауабы: 64.');
+    expect(s.every(balanced), JSON.stringify(s)).toBe(true);
+    expect(s.some(x => /^8 · 8 = 64\.\) /.test(x))).toBe(false);
+  });
+
+  for (const id of ['frac.find_whole_story', 'frac.find_whole_rest']) {
+    it(`${id}: ни в good, ни в lines нет разорванных скобок; строки-следствия несут только неверный результат`, () => {
+      let turns = 0;
+      for (let s = 1; s <= 300; s++) {
+        const r = rng(s * 131 + 7), it = tpl(id).gen(r), g = buildGlitch(it, () => r.next());
+        if (!g) continue;
+        turns++;
+        for (const l of [...g.good, ...g.lines]) expect(balanced(l), l).toBe(true);
+        expect(g.follows.length).toBeGreaterThan(0);
+        for (const k of g.follows) {
+          expect(g.lines[k], g.lines[k]).toContain(g.wrong);
+          expect(hasNum(g.lines[k], g.right), `верный ${g.right} рядом с неверным ${g.wrong}: «${g.lines[k]}»`).toBe(false);
+        }
+      }
+      expect(turns).toBeGreaterThan(150);   // ход по-прежнему собирается почти всегда
+    });
+  }
+
+  it('eq.collect_like_terms: алгебраический ответ («−17z») не портится обрезком до числа; если ход есть, «Жауабы» согласован', () => {
+    let turns = 0, skipped = 0;
+    for (let s = 1; s <= 300; s++) {
+      const r = rng(s * 17 + 3), it = tpl('eq.collect_like_terms').gen(r), g = buildGlitch(it, () => r.next());
+      const right = it.choices[it.answer].text.split(' / ')[0].trim();
+      if (/[a-zа-я]$/i.test(right)) { expect(g, `ответ «${right}» с переменной`).toBeNull(); skipped++; continue; }
+      if (!g) continue;
+      turns++;
+      const ansLine = g.lines.findIndex(l => l.startsWith('Жауабы'));
+      expect(ansLine).toBeGreaterThanOrEqual(0);
+      expect(g.lines[ansLine]).toContain(g.wrong);
+      expect(g.lines[ansLine]).not.toContain(g.right + '.');
+    }
+    expect(skipped).toBeGreaterThan(10);
+    expect(turns).toBeGreaterThanOrEqual(0);   // ход без переменной в ответе бывает редко (коэффициент 0); главное — он согласован
+  });
+});

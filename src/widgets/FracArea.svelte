@@ -15,6 +15,8 @@
 
   const COL = 'var(--code)', ROW = 'var(--gold)', BOTH = 'var(--glitch)';
   const startD = (t: Fr) => (t.d === 2 ? 3 : 2);
+  // предел числа частей не ниже знаменателя задачи: иначе нужное разрезание не набрать (a.d, b.d, target.d > 8 / 10)
+  const MAXD = $derived(Math.max(8, a.d, b.d)), MAXP = $derived(Math.max(10, target.d));
   const range = (k: number) => Array.from({ length: k }, (_, i) => i);
 
   let finished = $state(false);
@@ -34,7 +36,7 @@
   const prod = $derived(areaProduct(a, b));
   const cur = $derived(phase === 1 ? d1 : d2);
   function setD(nd: number) {
-    if (finished || nd < 2 || nd > 8) return;
+    if (finished || nd < 2 || nd > MAXD) return;
     msg = ''; audio.play('click');
     if (phase === 1) { d1 = nd; cols = Array(nd).fill(false); } else { d2 = nd; rows = Array(nd).fill(false); }
   }
@@ -89,8 +91,9 @@
   let cells = $state<boolean[]>(Array(startD(target)).fill(false));
   const nCells = $derived(cells.filter(Boolean).length);
   const per = $derived(partUnit(total, pd));
+  const partAns = $derived(per !== null ? target.n * per : null);   // результат после решения: target.n · (total : target.d)
   function setPd(nd: number) {
-    if (finished || nd < 2 || nd > 10 || nd === pd) return;
+    if (finished || nd < 2 || nd > MAXP || nd === pd) return;
     pd = nd; cells = Array(nd).fill(false); msg = ''; audio.play('click');
   }
   function tapPart(i: number) { if (finished) return; cells[i] = !cells[i]; msg = ''; audio.play('click'); }
@@ -156,7 +159,7 @@
         {/each}{/each}
       </svg>
       <div class="side">
-        {@render stepper(cur, setD, 2, 8, phase === 1 ? 'Тік бөлік саны' : 'Көлденең бөлік саны')}
+        {@render stepper(cur, setD, 2, MAXD, phase === 1 ? 'Тік бөлік саны' : 'Көлденең бөлік саны')}
         <button class="btn primary chk" onclick={checkMul} disabled={finished}>Тексеру</button>
       </div>
     </div>
@@ -193,7 +196,7 @@
     <p class="msg" class:ok={finished}>{msg || 'Бөліктерді қой: жолақ толғанша.'}</p>
 
   {:else if mode === 'part'}
-    <div class="expr num"><Frac n={target.n} d={target.d} size={26} color={COL} /><span class="op">·</span><b class="big">{total}</b><span class="uu">{unit}</span><span class="op">=</span><b class="q">?</b></div>
+    <div class="expr num"><Frac n={target.n} d={target.d} size={26} color={COL} /><span class="op">·</span><b class="big">{total}</b><span class="uu">{unit}</span><span class="op">=</span>{#if finished && partAns !== null}<b class="big ok">{partAns}</b><span class="uu">{unit}</span>{:else}<b class="q">?</b>{/if}</div>
     <div class="brace" aria-hidden="true"><b class="num">{total} {unit}</b></div>
     <svg viewBox="0 0 {sw} {sh}" class="strip" role="group" aria-label="Жолақ">
       <rect x="2" y="4" width={sw - 4} height={sh - 8} rx="7" fill="var(--paper)" />
@@ -213,13 +216,13 @@
       {#if per !== null && nCells > 0}<span class="sum">{nCells} · {per} = {nCells * per} {unit}</span>{/if}
     </div>
     <div class="ctl">
-      {@render stepper(pd, setPd, 2, 10, 'Бөлік саны')}
+      {@render stepper(pd, setPd, 2, MAXP, 'Бөлік саны')}
       <button class="btn primary chk" onclick={checkPart} disabled={finished}>Тексеру</button>
     </div>
     <p class="msg" class:ok={finished}>{msg || `${target.d} тең бөлікке кес, ${target.n} бөлігін боя.`}</p>
 
   {:else}
-    <div class="expr num"><Frac n={frac.n} d={frac.d} size={26} color={COL} /><span class="op">=</span><b class="big">{known}</b><span class="uu">{unit}</span><span class="op">→</span><b class="q">?</b></div>
+    <div class="expr num"><Frac n={frac.n} d={frac.d} size={26} color={COL} /><span class="op">=</span><b class="big">{known}</b><span class="uu">{unit}</span><span class="op">→</span>{#if finished}<b class="big ok">{frac.d * unitVal}</b><span class="uu">{unit}</span>{:else}<b class="q">?</b>{/if}</div>
     <div class="wrap">
       <div class="brace known" style="width:{(frac.n / frac.d) * 100}%" aria-hidden="true"><b class="num">{known} {unit}</b></div>
       <svg viewBox="0 0 {sw} {sh}" class="strip" role="group" aria-label="Жолақ">

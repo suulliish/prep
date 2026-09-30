@@ -713,12 +713,14 @@ export default [
     gen(r) {
       const kind = r.pick(['stairs', 'corner', 'hole']);
       let cells, kz, ru, full = null;
-      const tail = { kz: ' Қабырғалары ұяшық сызықтарымен жүретін барлық квадратты санаңыз.', ru: ' Считайте все квадраты со сторонами по линиям клеток.' };
+      const tail = kind === 'hole'
+        ? { kz: ' Тек боялған ұяшықтардан толық құралған квадраттарды санаңыз: бос орынды қамтитын квадрат есептелмейді.', ru: ' Считайте только квадраты со сторонами по линиям клеток, целиком составленные из закрашенных клеток: квадрат, закрывающий пустое место, не считается.' }
+        : { kz: ' Қабырғалары ұяшық сызықтарымен жүретін және тек боялған ұяшықтардан тұратын барлық квадратты санаңыз.', ru: ' Считайте все квадраты со сторонами по линиям клеток, составленные только из закрашенных клеток.' };
       if (kind === 'stairs') {
         const n = r.int(3, 6);
         cells = []; for (let c = 0; c < n; c++) for (let row = n - 1 - c; row < n; row++) cells.push([row, c]);
-        kz = `Суретте баспалдақ түріндегі фигура көрсетілген: бағандардың биіктігі солдан оңға қарай 1, 2, ..., ${n} ұяшық. Фигурада барлығы неше квадрат бар?`;
-        ru = `На рисунке фигура-лесенка: высоты столбцов слева направо 1, 2, ..., ${n} клеток. Сколько всего квадратов на фигуре?`;
+        kz = `Суретте баспалдақ түріндегі фигура көрсетілген: бағандардың биіктігі солдан оңға қарай ${n === 3 ? '1, 2, 3' : `1, 2, ..., ${n}`} ұяшық. Фигурада барлығы неше квадрат бар?`;
+        ru = `На рисунке фигура-лесенка: высоты столбцов слева направо ${n === 3 ? '1, 2, 3' : `1, 2, ..., ${n}`} клеток. Сколько всего квадратов на фигуре?`;
       } else if (kind === 'corner') {
         const n = r.int(3, 5), k = r.int(1, n - 2);
         const cr = r.int(0, 1), cc = r.int(0, 1);
@@ -811,9 +813,29 @@ function squaresIn(cells, minK = 1) {
   }
   return cnt;
 }
-/** Рисунок: каждая клетка — отдельный <rect>, чтобы фигура читалась без подписи (currentColor — тема сайта). */
+/** Рисунок: каждая клетка — отдельный <rect> без обводки (закрашена), линии рисуются отдельно: тонкие между закрашенными клетками,
+ *  толстые по внешнему краю фигуры. Края у «дырки» (пустая клетка внутри) НЕ рисуются: там просто пустое место цвета фона. */
 function cellsSvg(cells, rows, cols) {
+  const has = new Set(cells.map(([r, c]) => r + ',' + c));
+  // пустые клетки, до которых можно дойти снаружи (по рамке шире на 1), — внешний фон; остальные пустые — дырки
+  const outside = new Set(); const stack = [[-1, -1]];
+  while (stack.length) {
+    const [r, c] = stack.pop(); const key = r + ',' + c;
+    if (r < -1 || c < -1 || r > rows || c > cols || has.has(key) || outside.has(key)) continue;
+    outside.add(key); stack.push([r + 1, c], [r - 1, c], [r, c + 1], [r, c - 1]);
+  }
+  let inner = '', edge = '';
+  for (const [r, c] of cells) {
+    const x = c * CELL + 2, y = r * CELL + 2;
+    const sides = [[r - 1, c, `M${x} ${y}h${CELL}`], [r, c - 1, `M${x} ${y}v${CELL}`], [r + 1, c, `M${x} ${y + CELL}h${CELL}`], [r, c + 1, `M${x + CELL} ${y}v${CELL}`]];
+    for (const [nr, nc, d] of sides) {
+      const nk = nr + ',' + nc;
+      if (has.has(nk)) { if (nr > r || nc > c) inner += d; } else if (outside.has(nk)) edge += d;   // край к дырке не рисуем
+    }
+  }
   const rects = cells.map(([r, c]) => `<rect x="${c * CELL + 2}" y="${r * CELL + 2}" width="${CELL}" height="${CELL}"/>`).join('');
   const w = cols * CELL + 4, h = rows * CELL + 4;
-  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="max-width:100%;height:auto" xmlns="http://www.w3.org/2000/svg" role="img" fill="rgba(63,240,255,.12)" stroke="currentColor" stroke-width="2" stroke-linejoin="round">${rects}</svg>`;
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="max-width:100%;height:auto" xmlns="http://www.w3.org/2000/svg" role="img" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round">`
+    + `<g fill="rgba(63,240,255,.38)" stroke="none">${rects}</g>`
+    + `<path d="${inner}" stroke-width="1" stroke-opacity=".45"/><path d="${edge}" stroke-width="2.5"/></svg>`;
 }

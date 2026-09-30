@@ -395,3 +395,40 @@ describe('озвучка', () => {
     expect(kzWords(47)).toBe('қырық жеті');
   });
 });
+
+describe('недели 4–7: равные дроби среди вариантов', () => {
+  const WEEKS47 = { ...WEEK4, ...WEEK5, ...WEEK6, ...WEEK7 };
+  const FR = /^(?:(\d+)\s+)?(\d+)\/(\d+)$/;
+  const val = (t: string): number | null => { const m = FR.exec(t.trim()); return m ? (m[1] ? +m[1] : 0) + +m[2] / +m[3] : null; };
+  /** Вопрос прямо просит равную/сокращённую запись — тогда несколько равных дробей в вариантах допустимы. */
+  const asksEquivalent = (text: string) => /қысқарт|тең бөлшек|бөлшекке келтір|\?\/\d+|бірдей мән|тең/.test(text);
+  /** Ошибки: два варианта одного вопроса равны как числа, а вопрос не про равные записи. */
+  function clash(where: string, text: string, choices: string[], out: string[]) {
+    if (asksEquivalent(text) || choices.includes('Тең')) return;   // «Тең» среди вариантов — равенство и есть один из ответов
+    const vs = choices.map(val);
+    for (let i = 0; i < vs.length; i++) for (let j = i + 1; j < vs.length; j++)
+      if (vs[i] !== null && vs[j] !== null && Math.abs(vs[i]! - vs[j]!) < 1e-9) out.push(`${where}: «${choices[i]}» = «${choices[j]}» в «${text.slice(0, 60)}»`);
+  }
+  it('faded / why / final / predict: нет двух равных дробей среди вариантов, если не просят сократить', () => {
+    const bad: string[] = [];
+    for (const [id, steps] of Object.entries(WEEKS47) as [string, any[]][]) for (const s of steps) {
+      if (s.type === 'faded') for (const x of s.steps) if (x.blank) clash(id + ' faded', x.math, x.blank.choices, bad);
+      if (['why', 'final', 'predict', 'quiz'].includes(s.type)) clash(id + ' ' + s.type, s.kz, s.choices, bad);
+    }
+    expect(bad).toEqual([]);
+  });
+  it('blitz: за 400 раундов нет двух равных дробей среди вариантов, если не просят сократить', () => {
+    const bad = new Set<string>();
+    for (const [id, steps] of Object.entries(WEEKS47) as [string, any[]][]) {
+      const b = steps.find(s => s.type === 'blitz'); if (!b) continue;
+      const r = rng(4747);
+      for (let k = 0; k < 400; k++) { const it = b.make(r), out: string[] = []; clash(id + ' blitz', it.q, it.choices, out); out.forEach(o => bad.add(o)); }
+    }
+    expect([...bad].slice(0, 10)).toEqual([]);
+  });
+  it('шаг «12/72 = ▢» просит сократить и не содержит равных вариантов', () => {
+    const st = WEEK6['frac.mul'].filter((s: any) => s.type === 'faded').flatMap((s: any) => s.steps).find((x: any) => x.math.startsWith('12/72'));
+    expect(st.math).toContain('қысқарт');
+    expect(st.blank.choices[st.blank.answer]).toBe('1/6');
+  });
+});

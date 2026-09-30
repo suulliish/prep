@@ -311,10 +311,11 @@
     tries++;
     if (tries === 2) return secondTry(correct);
     const honest = isHonest(timeMs, hintLevel);
-    // лесенка против спешки: реванш не считаем (та же задача только что была); ответ после мини-проверки обнуляет серию
-    const fast = !twin && !wasCheck && isTooFast(timeMs, stemChars(item.kz), hintLevel);
+    // лесенка против спешки: реванш в неё не считаем (та же задача только что была), но монет за слишком быстрый ответ не даёт и он;
+    // ответ после мини-проверки обнуляет серию
+    const fast = !wasCheck && isTooFast(timeMs, stemChars(item.kz), hintLevel);
     if (!twin) streak = wasCheck ? 0 : nextStreak(streak, fast);
-    const act = fast ? rushAction(streak) : 'none';
+    const act = fast && !twin ? rushAction(streak) : 'none';
     answered++;
     if (!twin) { firstTries++; if (correct && hintLevel === 0) firstRight++; }   // реванш — не новый вопрос, в звёзды не идёт
     if (!honest && hintLevel < 4) { honestAll = false; guessed++; }

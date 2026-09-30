@@ -215,6 +215,10 @@ const VERIFY: Record<string, (it: Item) => void> = {
       expect(cells.size).toBe(n[0] * n[0] - n[2] * n[2]);
     } else {
       expect(cells.size).toBe(n[0] * n[0] - 1);
+      // условие явно говорит: считаем только квадраты из закрашенных клеток (квадрат над дыркой не считается)
+      expect(it.kz).toContain('Тек боялған ұяшықтардан толық құралған');
+      expect(it.ru).toContain('целиком составленные из закрашенных клеток');
+      expect(it.ru).toContain('закрывающий пустое место, не считается');
     }
   },
 };
@@ -314,6 +318,49 @@ describe('шаблоны logic7: перестановки, турнир, пос�
       expect(cellsOf(it.figure!.svg).size).toBeGreaterThan(3);
       expect((it.figure!.svg.match(/<rect /g) || []).length).toBe(cellsOf(it.figure!.svg).size);
     }
+  });
+
+  it('квадрат с дыркой: у пустой клетки нет ни заливки, ни линий; ответ = квадраты только из закрашенных клеток, и он не равен счёту «над дыркой»', () => {
+    const r = rng(53); let holes = 0;
+    for (let i = 0; i < 200; i++) {
+      const it: Item = byId['vis.sq_shape'].gen(r);
+      if (!it.kz.includes('бос орын көрінеді')) continue;
+      holes++;
+      const svg = it.figure!.svg, cells = cellsOf(svg), N = nums(it.kz)[0];
+      // единственная пустая клетка
+      const hole = [...Array(N * N).keys()].map(k => [Math.floor(k / N), k % N]).filter(([a, b]) => !cells.has(`${a},${b}`));
+      expect(hole).toHaveLength(1);
+      const [hr, hc] = hole[0], X = hc * 26 + 2, Y = hr * 26 + 2;
+      // пути линий: разбираем отрезки «M x y h/v L» и проверяем, что ни один не лежит на границе дырки
+      const segs: number[][] = [];
+      for (const m of svg.matchAll(/M(\d+) (\d+)([hv])(\d+)/g)) { const x = +m[1], y = +m[2], L = +m[4]; segs.push(m[3] === 'h' ? [x, y, x + L, y] : [x, y, x, y + L]); }
+      expect(segs.length).toBeGreaterThan(0);
+      const holeEdges = [[X, Y, X + 26, Y], [X, Y + 26, X + 26, Y + 26], [X, Y, X, Y + 26], [X + 26, Y, X + 26, Y + 26]];
+      for (const e of holeEdges) expect(segs.some(s => s.join() === e.join()), 'у дырки нарисован край').toBe(false);
+      expect(svg).not.toContain(`x="${X}" y="${Y}"`);
+      // независимый полный перебор: квадрат считается, только если все его клетки закрашены
+      let only = 0, covering = 0;
+      for (let k = 1; k <= N; k++) for (let r0 = 0; r0 + k <= N; r0++) for (let c0 = 0; c0 + k <= N; c0++) {
+        covering++;
+        let ok = true; for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) if (!cells.has(`${r0 + a},${c0 + b}`)) ok = false;
+        if (ok) only++;
+      }
+      expect(ans(it)).toBe(String(only));
+      expect(only).toBeLessThan(covering);
+    }
+    expect(holes).toBeGreaterThan(20);
+  });
+
+  it('лесенка: «1, 2, 3» при n = 3 без многоточия, при n > 3 — «1, 2, ..., n»', () => {
+    const r = rng(59); let n3 = 0, big = 0;
+    for (let i = 0; i < 300; i++) {
+      const it: Item = byId['vis.sq_shape'].gen(r);
+      if (!it.kz.includes('баспалдақ')) continue;
+      const N = nums(it.kz).at(-1)!;
+      if (N === 3) { n3++; expect(it.kz).toContain('1, 2, 3 ұяшық'); expect(it.ru).toContain('1, 2, 3 клеток'); expect(it.kz + it.ru).not.toContain('...'); }
+      else { big++; expect(it.kz).toContain(`1, 2, ..., ${N} ұяшық`); expect(it.ru).toContain(`1, 2, ..., ${N} клеток`); }
+    }
+    expect(n3).toBeGreaterThan(5); expect(big).toBeGreaterThan(5);
   });
 
   it('квадраты: типичная ошибка «только 1×1» присутствует в вариантах', () => {

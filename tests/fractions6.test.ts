@@ -394,3 +394,23 @@ describe('дроби: не копия задач банка', () => {
     for (const t of T) for (const it of items(t.id, 600)) expect(it.kz).not.toMatch(/кептір|240 тең/);
   });
 });
+
+describe('красная команда: варианты и падежи', () => {
+  it('frac.mul_whole: все дроби среди вариантов несократимы, форма не выдаёт ловушку; «умножил и на знаменатель» = исходная дробь', () => {
+    let seen = 0, trap = 0;
+    for (const it of items('frac.mul_whole', 600)) {
+      for (const c of it.choices) {
+        const m = /(\d+)\/(\d+)$/.exec(c.text);
+        if (m) { expect(g(+m[1], +m[2]), `${it.kz} → ${c.text}`).toBe(1); seen++; }
+      }
+      const w = it.choices.find((c: any) => c.tag === 'whole_into_denominator');
+      if (w) { trap++; expect(it.kz, w.text).toContain(w.text); }   // в условии стоит именно эта дробь
+    }
+    expect(seen).toBeGreaterThan(300); expect(trap).toBeGreaterThan(300);
+  });
+  it('«Томирис» получает «-тің» (по последнему гласному), а не «-тың»', () => {
+    let tom = 0;
+    for (const t of T) for (const it of items(t.id, 600)) { expect(it.kz).not.toMatch(/Томирис(тың|ның|дың)/); if (it.kz.includes('Томиристің')) tom++; }
+    expect(tom).toBeGreaterThan(0);
+  });
+});
