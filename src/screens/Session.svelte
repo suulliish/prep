@@ -18,7 +18,7 @@
   import { bankFor, bankToItem, templatesForBank } from '../engine/bank';
   import { recordAttempt, isDone } from '../engine/progress';
   import { isHonest, addMasteryBonus, settleDay, taught, sequenceSlots } from '../engine/planner';
-  import { RUSH, RUSH_SAY, stemChars, isTooFast, rushAction, nextStreak, twinSlot, pickRevengeTpl, changedMarkup, varyAnswerPos, miniCheck, type Seg, type MiniCheck } from '../engine/rush';
+  import { RUSH, RUSH_SAY, stemChars, isTooFast, tooFastMs, rushAction, nextStreak, twinSlot, pickRevengeTpl, changedMarkup, varyAnswerPos, miniCheck, type Seg, type MiniCheck } from '../engine/rush';
   import { GLITCH_SAY, buildGlitch, glitchAllowed, firstGlitchAt, nextGlitchAt, shortMistake, type GlitchTurn as GlitchData } from '../engine/glitchturn';
   import type { Attempt } from '../engine/types';
   import { showReward, queueReward } from '../lib/reward.svelte';
@@ -67,7 +67,7 @@
   let lastCorrect = $state(false);
   let combo = $state(0);
   let honestAll = $state(true);
-  let answered = 0, guessed = 0; // ответы быстрее 5 с без подсказок = угадывание
+  let answered = 0, guessed = 0, honestShare = 1; // ответы быстрее порога (по длине вопроса) без полного разбора = угадывание
   let twin = $state(false);
   let showSol = $state(false);
   let bitText = $state('');
@@ -146,7 +146,7 @@
   async function hit(sup: boolean, crit = combo >= 2) {
     busy = true;
     const alive = mobHp > 0, last = isLastWave();
-    mobHp = Math.max(0, mobHp - (sup ? 2 : 1));   // суперудар в 3D бьёт на 2 (world.ts: dmg), полоска на экране — на столько же
+    mobHp = Math.max(0, mobHp - 1);   // каждый верный ответ — ровно один удар (суперудар убран 30.09: «пусть всё решает» ответ)
     const killed = await W.world?.heroAttack(crit, sup);
     // монеты за побеждённого врага волны (один раз); бас жау мира награждается в finishBoss, когда бой выигран
     if (alive && (killed || (last && mobHp <= 0)) && !(block === 'boss' && last)) earn(enemyCoins(false), sceneCenter(0.2), true);
@@ -310,7 +310,7 @@
     const correct = picked === item.answer;
     tries++;
     if (tries === 2) return secondTry(correct);
-    const honest = isHonest(timeMs, hintLevel);
+    const honest = isHonest(timeMs, hintLevel, tooFastMs(stemChars(item.kz)));   // «наугад» — по длине вопроса (rush.ts), а не жёсткие 5 с
     // лесенка против спешки: реванш в неё не считаем (та же задача только что была), но монет за слишком быстрый ответ не даёт и он;
     // ответ после мини-проверки обнуляет серию
     const fast = !wasCheck && isTooFast(timeMs, stemChars(item.kz), hintLevel);
@@ -340,7 +340,7 @@
       bitText = hintLevel ? 'Дұрыс! Кеңеспен болса да — жақсы.' : combo >= 3 ? 'Керемет серия!' : 'Дұрыс!';
       if (!honest && hintLevel < 4 && !fast) bitText = 'Дұрыс, бірақ тым жылдам! Асықпа — алдымен оқы.';
       bitMood = combo >= 3 ? 'wow' : 'happy';
-      if (battle) { hit(combo > 0 && combo % 3 === 0); if (combo % 3 === 0) say('СУПЕР СОҚҚЫ!'); }
+      if (battle) hit(false);   // серия даёт крит-вспышку (crit = combo ≥ 2), но урон всегда 1
       if (block === 'repair' && hintLevel === 0) { const r = game.save.repairShop.find(x => !x.fixed && x.skill === item!.skill); if (r) { r.fixed = true; floatText('ЖӨНДЕЛДІ', at.x, at.y - 50, '#5ce39c'); } }
       if (confidence === 'unsure') bitText += ' Білмеймін дедің, бірақ таптың — демек, түсінік бар.';
     } else {
@@ -377,7 +377,7 @@
     const correct = k === g.bad;
     const follow = g.follows.includes(k);
     glPick = k; phase = 'feedback'; lastCorrect = correct;
-    const honest = isHonest(timeMs, hint);
+    const honest = isHonest(timeMs, hint, tooFastMs(stemChars(item.kz) + g.lines.join('').length));
     // читать нужно и условие, и все строки: порог «слишком быстро» растёт с их длиной
     const fast = isTooFast(timeMs, stemChars(item.kz) + g.lines.join('').length, hint);
     streak = nextStreak(streak, fast);
@@ -403,9 +403,8 @@
       if (combo >= 3) floatText(`КОМБО ×${combo}`, sceneCenter(0.25).x, sceneCenter(0.25).y, '#3ff0ff', true);
       bitText = (!honest && !fast ? 'Дұрыс, бірақ тым жылдам! Асықпа. ' : '') + `${GLITCH_SAY.right} ${shortMistake(g.tag)}`;
       bitMood = combo >= 3 ? 'wow' : 'happy';
-      const sup = combo % 3 === 0;
-      say(sup ? 'СУПЕР СОҚҚЫ!' : 'Қарсы соққы!');
-      hit(sup, true);   // контрудар всегда с «критом»: ребёнок поймал Глитча
+      say('Қарсы соққы!');
+      hit(false, true);   // контрудар всегда с «критом»: ребёнок поймал Глитча
       twin = false;
     } else {
       combo = 0;
@@ -492,14 +491,15 @@
   async function finish() {
     if (block === 'boss') return finishBoss();
     const b = block;
-    // план дня засчитывается только за честную работу: если больше 30% ответов — наугад, блок не засчитан
-    // план дня засчитывается за честную работу: больше 30% ответов наугад — блок не засчитан
-    // доп. миссия (GAME_LOOP.md 8): 7 верных с первой попытки из 10; быстрые ответы миссию не обнуляют
+    // Минуты — за честные ответы (research D1, решение Султана 30.09): шаг засчитывается всегда, без переигрывания,
+    // а его минуты умножаются на долю честных ответов (не наугад, без полного разбора). Бит говорит, сколько он «принял».
+    // доп. миссия (GAME_LOOP.md 8): 7 верных с первой попытки из 10
     const before = dayRec().minutesToday;
     let counted = true, note = '';
-    if (['warmup', 'new', 'mixed'].includes(block) && answered >= 3 && guessed / answered > 0.3) {
-      counted = false; note = 'Көп жауап тым жылдам берілді (5 секундтан аз). Бұл қадам есептелмеді — асықпай қайта өт.';
-    } else if (block === 'extra' && firstRight < 7) {
+    honestShare = answered ? (answered - guessed) / answered : 1;
+    if (block !== 'repair') { const r = dayRec(); r.honest ??= {}; r.honest[b] = Math.min(r.honest[b] ?? 1, honestShare); }
+    if (guessed > 0) note = `Бит қабылдаған жауап: ${answered - guessed}/${answered}. Асығыс жауап ойын минутын бермейді.`;
+    if (block === 'extra' && firstRight < 7) {
       counted = false; note = `Бірінші әрекеттен ${firstRight} дұрыс, керегі — 7. Миссия есептелмеді, тағы көр!`;
     }
     item = null; phase = 'feedback'; busy = true;
@@ -555,6 +555,7 @@
       {/if}
       <div class="loot">
         <div><b class="num">{result.right}/{result.of}</b><small>бірінші әрекеттен</small></div>
+        {#if answered}<div class:warn={guessed > 0}><b class="num">{answered - guessed}/{answered}</b><small>Бит қабылдады</small></div>{/if}
         <div><b class="num">+{result.xp}</b><small>XP</small></div>
         {#if result.coins}<div class="gold"><b class="num">+{result.coins}</b><small>тиын</small></div>{/if}
         {#if result.minutes}<div class="gold"><b class="num">+{result.minutes}</b><small>мин ойын</small></div>{/if}
@@ -740,6 +741,7 @@
   .loot { display: flex; gap: 8px; width: 100%; }
   .loot > div { flex: 1; display: grid; gap: 2px; padding: 10px 4px; border-radius: 14px; background: var(--deep); border: 3px solid var(--outline); animation: pop-in .4s .5s var(--ease-out) both; }
   .loot b { font-size: 26px; text-shadow: 0 2px 0 var(--outline); }
+  .loot > div.warn b { color: var(--gold); }
   .loot .gold b { color: var(--gold); }
   .loot small { color: var(--dim); font-size: 12px; }
 

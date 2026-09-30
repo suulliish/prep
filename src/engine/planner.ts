@@ -55,7 +55,8 @@ export function blankDay(date: string): DayRecord {
 /** Пересчитать заработок дня по выполненным блокам (минуты — пропорционально плану, с округлением до 5). */
 export function settleDay(rec: DayRecord, plan: Plan, extraTo: 'today' | 'weekend') {
   const total = plan.blocks.reduce((s, b) => s + b.minutes, 0);
-  const done = plan.blocks.filter(b => rec.blocksDone[b.id]).reduce((s, b) => s + b.minutes, 0);
+  // минуты — за честную работу: вклад пройденного шага умножается на долю его честных ответов (research D1)
+  const done = plan.blocks.filter(b => rec.blocksDone[b.id]).reduce((s, b) => s + b.minutes * Math.max(0, Math.min(1, rec.honest?.[b.id] ?? 1)), 0);
   rec.planShare = total ? done / total : 0;
   const extra = rec.extraMissions * EXTRA_MIN;
   const bonus = rec.bonuses.reduce((s, b) => s + b.minutes, 0);

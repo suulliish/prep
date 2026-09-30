@@ -136,3 +136,15 @@ describe('урок сначала (решение семьи 28.09.2026)', () =>
     expect(nextSkill(s, defs)).toBe('b');
   });
 });
+
+// research D1 (30.09): минуты шага — по доле честных ответов, шаг засчитывается всегда
+import { buildPlan as _bp, settleDay as _sd, blankDay as _bd } from '../src/engine/planner';
+describe('минуты за честные ответы', () => {
+  it('половина ответов наугад — половина минут шага; без записи — полные минуты', () => {
+    const plan = { day: '2026-10-05', blocks: [{ id: 'warmup', minutes: 10, skills: [], items: 5 }, { id: 'new', minutes: 10, skills: [], items: 5 }] } as any;
+    const a = _bd('2026-10-05'); a.blocksDone = { warmup: true, new: true }; _sd(a, plan, 'today');
+    const b = _bd('2026-10-05'); b.blocksDone = { warmup: true, new: true }; b.honest = { warmup: 0.5 }; _sd(b, plan, 'today');
+    expect(b.planShare).toBeCloseTo(0.75);
+    expect(b.minutesToday).toBeLessThan(a.minutesToday);
+  });
+});
