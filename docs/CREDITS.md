@@ -28,6 +28,11 @@
 | Survival Kit 2.0 | Kenney | https://kenney.nl/assets/survival-kit | `ozh-survival-kit` | миры 8, 9 |
 | Food Kit 2.0 | Kenney | https://kenney.nl/assets/food-kit | `ozh-food-kit` | мир 9 |
 | Furniture Kit 2.0 | Kenney | https://kenney.nl/assets/furniture-kit | `ozh-furniture-kit` | мир 9 |
+| Resource Bits FREE 1.0 | Kay Lousberg | https://kaylousberg.itch.io/ | `kaykit-resource-bits` | мастерская: бочки, золотые слитки |
+| RPG Tools Bits FREE 1.0 | Kay Lousberg | https://kaylousberg.itch.io/ | `kaykit-rpg-tools-bits` | мастерская: фонарь, карта, канат |
+| Furniture Bits FREE 1.0 | Kay Lousberg | https://kaylousberg.itch.io/ | `kaykit-furniture-bits` | мастерская: кактус, столик, кресло |
+| Platformer Kit | Kenney | https://kenney.nl/assets/platformer-kit | `kenney-platformer-kit` | мастерская: ящик с сокровищем |
+| Cube Pets 2.0 | Kenney | https://kenney.nl/assets/cube-pets | `kenney-cube-pets` | мастерская: питомцы (кот, щенок, лиса, попугай, пингвин, панда) с готовыми анимациями |
 | Interface Sounds | Kenney | https://kenney.nl/assets/interface-sounds | `kenney-interface-sounds` | звуки: правильно, неправильно, подсказка, комбо, опыт, уровень, кристалл, сундук |
 | UI Audio | Kenney | https://kenney.nl/assets/ui-audio | `kenney-ui-audio` | звук: нажатие кнопки |
 | Impact Sounds | Kenney | https://kenney.nl/assets/impact-sounds | `kenney-impact-sounds` | звуки боя: удар, крит, попадание, щит, гул, приземление |

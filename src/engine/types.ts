@@ -41,6 +41,7 @@ export interface DayRecord {
   exception?: 'sick' | 'holiday' | 'vacation';
   spent?: number;            // устарело: таймер игры убран 30.09 (время выдают вне игры), поле осталось в старых сохранениях
   stars?: Record<string, number>; // звёзды уровней дня (id шага → 1..3), GAME_LOOP.md 5
+  coins?: number;            // монеты, заработанные за день (для итога дня), GAME_LOOP.md 5, src/lib/ship.svelte.ts
 }
 
 export interface Settings {
@@ -71,6 +72,9 @@ export interface Save {
   lessonPos?: { skill: string; step: number };  // где остановился в уроке — «Жалғастыру»
   levelStars?: Record<string, number>;
   style?: { trail?: string; cape?: string };  // выбранные награды за звёзды (STAR_REWARDS)       // лучшие звёзды уровня-темы (id темы → 1..3)
+  coins?: number;                             // монеты («тиын»): за ответы и врагов, тратятся в мастерской корабля (src/lib/ship.svelte.ts)
+  shipOwned?: string[];                       // id купленных украшений и питомцев (content/ship_items.mjs)
+  shipPet?: string | null;                    // активный питомец (один) или null
   aiLog?: AiTurn[];                           // вопросы к ИИ-помощнику (видит командир), последние 100
 }
 

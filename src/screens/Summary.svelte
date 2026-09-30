@@ -19,6 +19,7 @@
   const total = todays.length;
   const right = todays.filter(a => a.correct).length;
   const skillsToday = [...new Set(todays.map(a => a.skill))];
+  const coinsToday = dayRec().coins ?? 0;   // тиын за сегодня (ответы, враги, звёзды); тратятся в мастерской корабля
   const acc = total ? Math.round((right / total) * 100) : 0;   // из тех же чисел, что «есеп» и «дұрыс»: 5 из 7 = 71%
   let note = $state<string | null>(null);
   let shownToday = $state(0), shownWeekend = $state(0);
@@ -65,6 +66,7 @@
     <div><b class="num">{total}</b><small>есеп</small></div>
     <div><b class="num">{right}</b><small>дұрыс</small></div>
     <div><b class="num">{acc}%</b><small>дәлдік</small></div>
+    <div class="coinbox"><b class="num">+{coinsToday}</b><small>тиын</small></div>
   </div>
 
   {#if skillsToday.length}
@@ -103,10 +105,11 @@
   .rw b { font-size: 40px; line-height: 1; text-shadow: 0 3px 0 var(--outline); }
   .rw.gold b { color: var(--gold); }
   .rw small { color: var(--dim); font-size: 13px; }
-  .stats3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .stats3 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
   .stats3 div { display: grid; justify-items: center; gap: 2px; padding: 10px 4px; background: var(--deep); border: 3px solid var(--outline); border-radius: 14px; }
   .stats3 b { font-size: 26px; color: var(--code); text-shadow: 0 2px 0 var(--outline); }
   .stats3 small { color: var(--dim); font-size: 12px; }
+  .stats3 .coinbox b { color: var(--gold); }
   .topics { display: grid; gap: 8px; }
   .tp { display: grid; grid-template-columns: 1fr 70px auto; gap: 8px; align-items: center; font-size: 14px; }
   .tp .bar { height: 12px; border-width: 2px; } .tp .bar i { background: linear-gradient(180deg, #ffe38a, var(--gold)); }

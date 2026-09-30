@@ -41,6 +41,10 @@ export interface World {
   bitMood(m: BitMood): void;
   celebrate(color?: number): void;
   openPortal(): void;
+  /** Мастерская: купленные украшения встают на палубу, питомец (id 'pet_…' или null) ходит за героем. Можно звать до загрузки палубы. Каталог: content/ship_items.mjs. */
+  setShipDecor(owned: string[], pet: string | null): void;
+  /** Праздник нового предмета (украшение или питомец): камера летит к нему, он появляется со вспышкой, камера возвращается. Работает в режимах hub и hero. */
+  showDecor(id: string): Promise<void>;
   /** Мир: цвета неба [верх, середина, низ, сияние] (RGB 0..1) и тумана — плавный переход. */
   setTheme(sky: number[][], fog: number): void;
   /** Костюм героя (путь наград). */
@@ -266,6 +270,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     openChest() { return arena.victory(); },
     portalWalk() { return hub.portalWalk(); },
     bitMood(m) { bit.setMood(m); },
+    setShipDecor(owned, pet) { hub.setShipDecor(owned, pet); },
+    showDecor(id) { return hub.showDecor(id); },
     celebrate(color = 0x3ff0ff) { if (mode === 'battle') { arena.celebrate(); return; } hub.celebrate(color); },
     openPortal() { hub.openPortal(); },
     setTheme(sky, fog) { themeTo = sky.map(c => new THREE.Vector3(c[0], c[1], c[2])); fogTo.setHex(fog); },

@@ -4,6 +4,7 @@
   import { W } from './lib/world.svelte';
   import { game, protectStorage } from './lib/store.svelte';
   import { applyLook } from './lib/look';
+  import { syncDecor } from './lib/ship.svelte';
   import MapScreen from './screens/Map.svelte';
   import Hero from './screens/Hero.svelte';
   import Intro from './screens/Intro.svelte';
@@ -18,12 +19,14 @@
   import SoundLab from './screens/SoundLab.svelte';
   import Commander from './screens/Commander.svelte';
   import Album from './screens/Album.svelte';
+  import Workshop from './screens/Workshop.svelte';
 
   let canvas: HTMLCanvasElement;
   onMount(() => {
     protectStorage();
     W.world = createWorld(canvas, { reduceMotion: matchMedia('(prefers-reduced-motion: reduce)').matches });
     applyLook();
+    syncDecor();   // украшения и питомец из мастерской: экран (Hub) монтируется раньше мира, поэтому при холодном старте ставим их здесь
     // облачная синхронизация — отдельным куском, чтобы не тормозить первую загрузку
     import('./lib/cloud.svelte').then(m => m.startCloud()).catch(() => {});
     return () => W.world?.dispose();
@@ -44,6 +47,7 @@
       {:else if game.screen.name === 'album'}<Album />
       {:else if game.screen.name === 'map'}<MapScreen />
       {:else if game.screen.name === 'hero'}<Hero />
+      {:else if game.screen.name === 'workshop'}<Workshop />
       {:else if game.screen.name === 'intro'}<Intro />
       {/if}
     </div>

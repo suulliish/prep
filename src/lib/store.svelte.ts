@@ -18,6 +18,7 @@ function fresh(): Save {
     version: 1, heroName: 'Муртаза', xp: 0, skills: {}, attempts: [], days: {},
     settings: { extraMissionCap: 4, extraTo: 'today', planMinutes: 40 },
     diagnosticDone: false, repairShop: [],
+    coins: 0, shipOwned: [], shipPet: null,   // старые сохранения без этих полей получают их из fresh() при загрузке
   };
 }
 
@@ -44,6 +45,7 @@ export type Screen =
   | { name: 'commander' }
   | { name: 'map' }
   | { name: 'hero' }
+  | { name: 'workshop' }
   | { name: 'intro' };
 
 export const game = $state({

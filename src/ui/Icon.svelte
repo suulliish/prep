@@ -1,7 +1,7 @@
 <script lang="ts">
   // Иконки дизайн-системы (docs/DESIGN_SYSTEM.md 8): SVG 24×24, заливка + тёмный контур, как у кнопок.
   type Name = 'back' | 'sound' | 'mute' | 'gear' | 'map' | 'hero' | 'cards' | 'clock' | 'crystal' | 'fire' | 'bolt' | 'lock'
-    | 'check' | 'cross' | 'star' | 'play' | 'sword' | 'book' | 'flag' | 'bulb' | 'mob' | 'chevron' | 'close';
+    | 'check' | 'cross' | 'star' | 'play' | 'sword' | 'book' | 'flag' | 'bulb' | 'mob' | 'chevron' | 'close' | 'coin' | 'hammer';
   let { name, size = 24, fill = 'currentColor', stroke = 'var(--outline)' }: { name: Name; size?: number; fill?: string; stroke?: string } = $props();
 </script>
 
@@ -29,6 +29,8 @@
   {:else if name === 'flag'}<path d="M5 22V3" fill="none" stroke-width="2.6" /><path d="M5 4h13l-3 4.5L18 13H5z" />
   {:else if name === 'bulb'}<path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z" /><rect x="8.5" y="18" width="7" height="3.5" rx="1.2" />
   {:else if name === 'mob'}<rect x="3" y="4" width="18" height="16" rx="4" /><circle cx="12" cy="11" r="4" fill="#fff" /><circle cx="12" cy="11" r="1.8" fill="var(--outline)" stroke="none" /><path d="M7 20v2M12 20v2M17 20v2" fill="none" />
+  {:else if name === 'coin'}<circle cx="12" cy="12" r="9.5" /><circle cx="12" cy="12" r="5.8" fill="none" stroke="var(--outline)" stroke-width="1.8" /><path d="M9.6 10.2a3.3 3.3 0 0 1 2-1.4" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" />
+  {:else if name === 'hammer'}<path d="M3.5 8.5 9 3l5.5 1.2 2.8 2.8L15 9.3l-1.7-1.7L8 12.9z" /><path d="M11.5 10.5 20.5 19.5a2 2 0 0 1-2.9 2.9L8.6 13.4z" />
   {/if}
 </svg>
 

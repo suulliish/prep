@@ -11,6 +11,8 @@ import { Kit } from './assets';
 import { DEFAULT_LOOK, type HeroLook } from './looks';
 import type { CamMode } from './world';
 import type { BitMood } from './bit3d';
+import { createDecor, planSpots, sampleSurface, findMasts, ITEMS, type Decor } from './decor3d';
+import { createPet, type Pet } from './pet3d';
 
 /** Поза орбитальной камеры: цель, расстояние, углы (см. кадр в world.ts). */
 export interface CamView { target: THREE.Vector3; radius: number; phi: number; theta: number }
@@ -46,6 +48,10 @@ export interface Hub {
   setEnergy(v: number, max: number): void;
   setLook(look: HeroLook): void;
   setCape(c: { color: number; glow: boolean } | null): void;
+  /** Мастерская корабля: поставить купленные украшения на палубу и выбрать питомца (null — без питомца). Можно вызывать до загрузки палубы. */
+  setShipDecor(owned: string[], pet: string | null): void;
+  /** Праздник нового предмета: камера летит к нему, он вырастает со вспышкой, потом камера возвращается. Питомец — камера на нём. */
+  showDecor(id: string): Promise<void>;
   /** Где герой сейчас (мир) — за ним летает Бит. */
   heroWorldPos(v: THREE.Vector3): THREE.Vector3;
   /** Идёт катсцена входа/выхода через портал (Бит отлетает, чтобы не заслонять вихрь). */
@@ -83,6 +89,10 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
   // ---------- Герой ----------
   const fig = new HeroFigure(DEFAULT_LOOK, 1.15), hero = fig.g;   // настоящий герой (модель с анимациями)
   hero.position.set(0, 0, 0); hero.rotation.y = Math.PI / 2; ship.add(hero);
+
+  // ---------- Мастерская: украшения и питомец (decor3d.ts, pet3d.ts) ----------
+  let decor: Decor | null = null, ownedDecor: string[] = [], petId: string | null = null, focusView: CamView | null = null, focusFollow: (() => THREE.Vector3 | null) | null = null, focusTok = 0;
+  const pet: Pet = createPet(ship, () => deck, { hero, km, active: () => (mode === 'hub' || mode === 'hero') && !cutscene && !pulling });
 
   // ---------- Частицы ----------
   const box = new THREE.BoxGeometry(1, 1, 1);
@@ -131,9 +141,13 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
       if (mode === 'hub' || mode === 'hero') { const h0 = home[Math.floor(home.length / 2)]; hero.position.set(h0[0], d.height(h0[0], h0[1]) ?? 0, h0[1]); hero.rotation.y = mode === 'hero' ? PORTAL_FACE + 0.2 : PORTAL_FACE - 0.25; }   // «Кейіпкер» мог открыться до загрузки палубы
       // камера главного меню: между порталом и площадкой перед ним
       views.hub.target.set(px + nx * 2.6, 1.6, pz + nz * 2.6); }
+    // украшения мастерской: места считаются по палубе; площадка у портала, места героя и его дороги по кораблю остаются свободными
+    { const avoid: [number, number, number][] = [[px, pz, 1.9], [portalStand[0], portalStand[1], 1.3], ...home.map(h => [h[0], h[1], 0.75] as [number, number, number])];
+      { const way = d.path(d.stations.mid, portalStand); for (let i = 1; i < way.length; i++) { const a = way[i - 1], b = way[i], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.4)); for (let k = 0; k <= n; k++) avoid.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n, 0.6]); } }   // дорога героя от середины палубы к площадке остаётся открытой
+      decor = createDecor(ship, d, planSpots(sampleSurface(ship, d), avoid), findMasts(ship, d)); decor.set(ownedDecor); }
     // реквизит палубы: готовые бочки, ящики, пушка (Kenney Pirate Kit) у бортов; вокруг них не ходим
     const k = await Kit.load('ship'), e = d.edges().sort((a, b) => a[0] - b[0]);
-    const far = ([x, z]: [number, number]) => Object.values(d.stations).every(s => Math.hypot(s[0] - x, s[1] - z) > 2.2) && Math.hypot(portal.position.x - x, portal.position.z - z) > 3.2;   // площадка у портала свободна
+    const far = ([x, z]: [number, number]) => Object.values(d.stations).every(s => Math.hypot(s[0] - x, s[1] - z) > 2.2) && Math.hypot(portal.position.x - x, portal.position.z - z) > 3.2 && !Object.values(decor?.spots ?? {}).flat().some(s => s && Math.hypot(s.x - x, s.z - z) < 1.5);   // площадка у портала свободна
     let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (const [name, f, h] of [['barrel', 0.1, 1.2], ['crate', 0.22, 1.1], ['cannon', 0.34, 1.3], ['barrel', 0.5, 1.2], ['crate-bottles', 0.62, 1.0], ['cannon', 0.74, 1.3], ['barrel', 0.9, 1.2]] as const) {
       const c = e.slice(Math.floor(e.length * f)).find(far); if (!c) continue;
@@ -167,7 +181,7 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     if (r < 0.55) { fig.play('Sit_Floor_Down').then(() => { if (activity) fig.hold('Sit_Floor_Idle'); }); activity = { until: t + 9 + Math.random() * 5, exit: 'Sit_Floor_StandUp' }; }
     else if (r < 0.7) { fig.hold('Push_Ups'); activity = { until: t + 5, exit: null }; }
     else if (r < 0.8) { fig.hold('Sit_Ups'); activity = { until: t + 5, exit: null }; }
-    else { fig.play('Waving'); nextWander = t + 5; return; }
+    else { fig.play('Waving'); pet.hop(); nextWander = t + 5; return; }
     nextWander = Infinity;
   }
   function endActivity(quick = false) {
@@ -183,7 +197,7 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     tapRay.setFromCamera(ndc, camera);
     if (!deck || cutscene || pulling) return;                             // во время катсцены касания не двигают героя
     // касание самого героя (луч попал в его модель) — он машет в ответ, Бит радуется
-    const wave = () => { if (!walk) { endActivity(true); fig.play('Waving', 1.1); deps.bitMood('happy'); nextWander = now + 6; } };
+    const wave = () => { if (!walk) { endActivity(true); fig.play('Waving', 1.1); pet.hop(); deps.bitMood('happy'); nextWander = now + 6; } };
     if (tapRay.intersectObject(hero, true).length) { wave(); return; }
     // точка на палубе: луч в корпус (нос приподнят над главной палубой), иначе — плоскость главной палубы
     const dh = tapRay.intersectObject(deck.g, true).find(h => !/sail|flag/.test(h.object.name) && !h.object.userData.outline);
@@ -201,7 +215,8 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
   function update(dt: number, t: number) {
     now = t;
     ship.position.y = Math.sin(t * 0.8) * 0.25 * km; ship.rotation.z = Math.sin(t * 0.6) * 0.02 * km; ship.rotation.x = Math.sin(t * 0.5) * 0.015 * km;
-    deck?.update(t, km); air?.update(dt, t, km);
+    deck?.update(t, km); air?.update(dt, t, km); decor?.update(t, km);
+    if (focusView && focusFollow) { const f = focusFollow(); if (f) focusView.target.copy(ship.localToWorld(f)); }
 
     // портал: руны горят по энергии дня, открытый — в полную силу
     portalFx.setPower(portalOpen ? 1.1 : 0.12 + energy * 0.75); portalFx.update(dt, t);
@@ -224,7 +239,8 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     if (deck && !pulling) { const hh = deck.height(hero.position.x, hero.position.z); if (hh != null) hero.position.y += (hh - hero.position.y) * Math.min(1, dt * 14); }
     // анимации героя настоящие: ходьба/стойка меняются сами, радость — разовая
     fig.walking(walking, walking && !!walk?.run); fig.update(dt);
-    if (celebrateT > 0) { celebrateT = 0; fig.play('Cheering', 1.1); }
+    if (celebrateT > 0) { celebrateT = 0; fig.play('Cheering', 1.1); pet.hop(); }
+    pet.update(dt, t);
 
     for (let i = bursts.length - 1; i >= 0; i--) {
       const b = bursts[i]; b.life -= dt;
@@ -233,12 +249,43 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     }
   }
 
+  // ---------- Праздник нового предмета ----------
+  const wait = (sec: number) => new Promise<void>(r => setTimeout(r, sec * 1000));
+  const hider = new Map<string, number>();                          // кто спрятал предмет до появления (номер показа): если показ оборвали, предмет возвращается
+  async function showDecorImpl(id: string) {
+    const it = ITEMS.find(x => x.id === id); if (!it || (mode !== 'hub' && mode !== 'hero') || cutscene || pulling) return;
+    const tok = ++focusTok, isPet = it.slot === 'pet';
+    try {
+      let at: THREE.Vector3 | null = null;
+      if (isPet) { if (pet.id !== id) await pet.set(id); if (tok !== focusTok) return; pet.snap(); at = pet.pos(); focusFollow = () => pet.pos(); }
+      else {
+        hider.set(id, tok); decor?.hide(id);
+        const o = await (decor?.ready(id) ?? Promise.resolve(null)); if (tok !== focusTok || !o) return;
+        decor!.hide(id); at = decor!.focusOf(id); focusFollow = null;
+      }
+      if (!at) return;
+      const high = it.slot === 'mast', w = ship.localToWorld(at.clone());
+      focusView = { target: w, radius: Math.min(views.hub.radius * (high ? 0.62 : 0.4), high ? 15 : 10), phi: high ? 1.3 : 0.95, theta: high || it.slot === 'bow' || isPet ? HUB_THETA : 2.0 };   // палубные и кормовые — с борта повыше, чтобы поручни не закрывали
+      await wait(1.1); if (tok !== focusTok) return;
+      const p = ship.localToWorld(at.clone()); p.y += 0.6;
+      burst(p, 0xffd45a, 44, 4.5); burst(p, 0x3ff0ff, 26, 3.5);
+      if (isPet) { await pet.pop(); pet.hop(); } else { hider.delete(id); fig.play('Cheering', 1.1); await decor!.pop(id); }
+      await wait(1.2);
+    } finally {
+      if (hider.get(id) === tok) { hider.delete(id); decor?.restore(id); }   // показ оборвали (катсцена, другой показ) — предмет не остаётся невидимым
+      if (tok === focusTok) { focusView = null; focusFollow = null; }
+    }
+  }
+  /** Отмена показа предмета: камера возвращается (катсцена портала, бой). */
+  const cancelShow = () => { focusTok++; focusView = null; focusFollow = null; };
+
   const worldPos = (o: THREE.Object3D, dy = 1) => o.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, dy, 0));
 
   return {
     views,
     viewFor(m) {
       if (m === 'hero') { hero.getWorldPosition(views.hero.target); views.hero.target.y += 1.15; }
+      if (focusView && (m === 'hub' || m === 'hero')) return focusView;
       return focusPortal && m === 'hub' ? views.portal : views[m === 'map' ? 'hub' : m];
     },
     update,
@@ -259,11 +306,12 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
             .then(() => { if (tok !== cutToken) return; hero.scale.setScalar(1); pulling = cutscene = false; nextWander = now + 8; const s1 = anyHome(); goTo(s1[0], s1[1], () => { portalOpen = false; celebrateT = 0.6; }); });
         }, 350);
       }
-      mode = m;
+      if (m !== 'hub' && m !== 'hero') cancelShow();
+      mode = m; if (m === 'hub' || m === 'hero') pet.snap();
     },
     portalWalk() {
       if (portalP) return portalP;                                       // повторный вызов — та же катсцена
-      const tok = cutToken; cutscene = focusPortal = true; portalOpen = true; deps.onCutscene();          // портал разгорается, пока герой бежит
+      cancelShow(); const tok = cutToken; cutscene = focusPortal = true; portalOpen = true; deps.onCutscene();          // портал разгорается, пока герой бежит
       portalP = new Promise<void>(res => {
         // герой бежит к порталу, тот вспыхивает, героя затягивает в центр вихря с поворотом — вспышка
         goTo(portalStand[0], portalStand[1], async () => {
@@ -282,12 +330,14 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     heroWalk(x, z) { return new Promise<void>(res => goTo(x, z, res)); },
     tap,
     celebrate(color) { celebrateT = 1.2; burst(worldPos(hero, 2.5), color, 50, 5); },
+    setShipDecor(owned, pid) { ownedDecor = owned.slice(); petId = pid; decor?.set(ownedDecor); pet.set(pid && ITEMS.some(i => i.id === pid && i.slot === 'pet') ? pid : null); },
+    async showDecor(id) { await showDecorImpl(id); },
     openPortal() { portalOpen = true; portalFx.pulse(); burst(portalCenter(), 0x3ff0ff, 90, 7); },
     setEnergy(v, max) { energy = Math.max(0, Math.min(1, v / max)); },
     setLook(look) { fig.setLook(look); },
     setCape(c) { fig.setCape(c); },
     heroWorldPos(v) { return hero.getWorldPosition(v); },
     get inCutscene() { return cutscene; },
-    dispose() { cutToken++; portalFx.dispose(); },
+    dispose() { cutToken++; focusView = null; decor?.dispose(); pet.dispose(); portalFx.dispose(); },
   };
 }

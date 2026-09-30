@@ -4,6 +4,9 @@
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
   import GlitchTurn from '../ui/GlitchTurn.svelte';
+  import CoinChip from '../ui/CoinChip.svelte';
+  import { flyCoins } from '../ui/coinfly';
+  import { answerCoins, enemyCoins, starsCoins, earnCoins, coinsOf } from '../lib/ship.svelte';
   import { toast } from '../ui/notify.svelte';
   import { ReadGate, readMs } from '../lib/readgate.svelte';
   import { solGap, type SolGap } from '../engine/solgap';
@@ -127,15 +130,26 @@
     showBit();
   }
   const gapOpen = $derived(!!gap && !gapDone);
-  let result = $state<{ stars: number; right: number; of: number; xp: number; minutes: number; counted: boolean; note: string } | null>(null);
+  let result = $state<{ stars: number; right: number; of: number; xp: number; minutes: number; coins: number; counted: boolean; note: string } | null>(null);
   const xpStart = game.save.xp;
   function say(text: string) { banner = text; bannerId++; }
   let cine = $state(true);   // катсцена: вход в локацию, мини-босс, победа — панель задачи скрыта
   const isLastWave = () => wave >= waves.length - 1;
+  // Монеты (src/lib/ship.svelte.ts): пишутся в сохранение сразу, а счётчик в шапке растёт, когда монета долетела
+  let shownCoins = $state(coinsOf(game.save)), sessCoins = $state(0);
+  function earn(n: number, from: { x: number; y: number }, sound = false) {
+    if (!(n > 0)) return;
+    earnCoins(n); sessCoins += n;
+    if (sound) audio.play('coins');
+    flyCoins(from, n, d => (shownCoins += d));
+  }
   async function hit(sup: boolean, crit = combo >= 2) {
     busy = true;
+    const alive = mobHp > 0, last = isLastWave();
     mobHp = Math.max(0, mobHp - (sup ? 2 : 1));   // суперудар в 3D бьёт на 2 (world.ts: dmg), полоска на экране — на столько же
     const killed = await W.world?.heroAttack(crit, sup);
+    // монеты за побеждённого врага волны (один раз); бас жау мира награждается в finishBoss, когда бой выигран
+    if (alive && (killed || (last && mobHp <= 0)) && !(block === 'boss' && last)) earn(enemyCoins(false), sceneCenter(0.2), true);
     if (killed && !isLastWave()) {
       await W.world?.killMob(); audio.play('chest');
       wave++; mobHp = waves[wave];
@@ -314,6 +328,7 @@
       if (combo === 3 || combo === 6) react('combo'); else react('correct', 0.4);
       sparksAt(at.x, at.y, ['#5ce39c', '#3ff0ff', '#ffc94a'], combo >= 3 ? 50 : 26);
       if (xp) floatText(`+${xp} XP`, at.x, at.y - 20, '#ffc94a', combo >= 3);
+      earn(answerCoins({ correct, tries, hintLevel, fast }), { x: at.x, y: at.y - 30 });   // быстрый ответ монет не даёт (лесенка против спешки)
       if (combo >= 3) floatText(`КОМБО ×${combo}`, sceneCenter(0.25).x, sceneCenter(0.25).y, '#3ff0ff', true);
       bitText = hintLevel ? 'Дұрыс! Кеңеспен болса да — жақсы.' : combo >= 3 ? 'Керемет серия!' : 'Дұрыс!';
       if (!honest && hintLevel < 4 && !fast) bitText = 'Дұрыс, бірақ тым жылдам! Асықпа — алдымен оқы.';
@@ -371,6 +386,7 @@
       if (combo === 3 || combo === 6) react('combo'); else react('correct', 0.4);
       sparksAt(at.x, at.y, ['#ff6fc6', '#3ff0ff', '#ffc94a'], 50);
       floatText(`+${xp} XP`, at.x, at.y - 20, '#ffc94a', true);
+      earn(answerCoins({ correct, tries: 1, hintLevel: 0, fast }), { x: at.x, y: at.y - 30 });
       if (combo >= 3) floatText(`КОМБО ×${combo}`, sceneCenter(0.25).x, sceneCenter(0.25).y, '#3ff0ff', true);
       bitText = (!honest && !fast ? 'Дұрыс, бірақ тым жылдам! Асықпа. ' : '') + `${GLITCH_SAY.right} ${shortMistake(g.tag)}`;
       bitMood = combo >= 3 ? 'wow' : 'happy';
@@ -448,6 +464,7 @@
       await W.world.killMob(); audio.play('chest'); await W.world.openChest(); W.world.celebrate(0xffc94a); audio.play('levelup');
       if (!game.save.worldsCleared?.includes(w.id)) (game.save.worldsCleared ??= []).push(w.id);
       game.save.xp += 50; persist();
+      earn(enemyCoins(true), sceneCenter(0.3), true);
       floatText('БАС ЖАУ ЖЕҢІЛДІ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#ffc94a', true);
       bitText = `«${w.kz}» әлемінің бас жауы жеңілді! +50 XP. Келесі әлемге портал ашылуға дайын — картаны қара.`; bitMood = 'wow';
     } else {
@@ -455,7 +472,7 @@
       bitText = 'Бас жау шегінді, бірақ жеңілген жоқ. Қателерді шеберханада жөнде де, ертең қайта кел!'; bitMood = 'think';
     }
     phase = 'feedback'; item = null; persist(); cine = false;
-    result = { stars: won ? starsOf() : 0, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: 0, counted: won, note: bitText };
+    result = { stars: won ? starsOf() : 0, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: 0, coins: sessCoins, counted: won, note: bitText };
   }
 
   async function finish() {
@@ -482,11 +499,14 @@
     const got = dayRec().minutesToday - before, stars = counted ? starsOf() : 0;
     if (got > 0) await showReward({ minutes: got, title: b === 'extra' ? 'Қосымша миссия!' : 'Қадам аяқталды!', why: TITLE[b], today: dayRec().minutesToday, weekend: dayRec().minutesWeekend });
     if (stars) {
-      const r = dayRec(); (r.stars ??= {})[b] = Math.max(r.stars[b] ?? 0, stars);
+      const r = dayRec();
+      // 3 звезды: бонус монетами один раз за шаг дня (доп. миссии — каждая отдельный уровень)
+      if (b === 'extra' || (r.stars?.[b] ?? 0) < 3) earn(starsCoins(stars), sceneCenter(0.35), true);
+      (r.stars ??= {})[b] = Math.max(r.stars[b] ?? 0, stars);
       if (b === 'new' && skills[0]) (game.save.levelStars ??= {})[skills[0]] = Math.max(game.save.levelStars[skills[0]] ?? 0, stars);
       persist();
     }
-    result = { stars, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: Math.max(0, got), counted, note };
+    result = { stars, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: Math.max(0, got), coins: sessCoins, counted, note };
     audio.play(counted ? 'energy' : 'hint');
   }
 
@@ -496,7 +516,7 @@
 <Screen scene="strip" cinema={cine} back={result ? undefined : () => go({ name: 'hub' })}>
   {#snippet head()}
     <div class="hd">
-      <div class="t1"><b>{TITLE[block]}</b>{#if combo >= 2 && !result}<span class="combo num">×{combo}</span>{/if}</div>
+      <div class="t1"><b>{TITLE[block]}</b>{#if combo >= 2 && !result}<span class="combo num">×{combo}</span>{/if}<CoinChip value={shownCoins} compact /></div>
       {#if !result}
         <div class="t2">
           <span class="wv">{#each waves as _, k}<i class:done={k < wave} class:on={k === wave}></i>{/each}</span>
@@ -521,6 +541,7 @@
       <div class="loot">
         <div><b class="num">{result.right}/{result.of}</b><small>бірінші әрекеттен</small></div>
         <div><b class="num">+{result.xp}</b><small>XP</small></div>
+        {#if result.coins}<div class="gold"><b class="num">+{result.coins}</b><small>тиын</small></div>{/if}
         {#if result.minutes}<div class="gold"><b class="num">+{result.minutes}</b><small>мин ойын</small></div>{/if}
       </div>
       {#if result.counted && result.stars}
@@ -704,7 +725,7 @@
   .loot .gold b { color: var(--gold); }
   .loot small { color: var(--dim); font-size: 12px; }
 
-  .hd { flex: 1; min-width: 0; display: grid; gap: 6px; }
+  .hd { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .t1 { display: flex; align-items: center; gap: 8px; }
   .t1 b { flex: 1; min-width: 0; font: 900 18px var(--disp); text-shadow: 0 2px 0 var(--outline); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .t2 { display: flex; align-items: center; gap: 8px; }

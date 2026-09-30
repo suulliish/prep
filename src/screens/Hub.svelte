@@ -5,6 +5,7 @@
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
   import Bit from '../ui/Bit.svelte';
+  import CoinChip from '../ui/CoinChip.svelte';
   import { game, go, levelOf } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { ensurePlan, dayRec } from '../lib/session.svelte';
@@ -16,6 +17,7 @@
   import { toast } from '../ui/notify.svelte';
   import { flushRewards, seen, takeLevelUp } from '../lib/reward.svelte';
   import { sparksAt } from '../ui/fx.svelte';
+  import { coinsOf, canAffordSomething, syncDecor } from '../lib/ship.svelte';
   // @ts-ignore
   import { LESSONS } from '../../content/lessons.mjs';
 
@@ -61,6 +63,8 @@
   // Что выросло с прошлого захода на корабль: минуты считаются вверх (пилюля подпрыгивает), XP-полоска доезжает,
   // при новом уровне — праздник «Деңгей N!» (ничего не должно проходить молча).
   let shownMin = $state(seen.minutes ?? dayRec().minutesToday);
+  const coins = $derived(coinsOf(game.save));
+  const afford = $derived(canAffordSomething(game.save));
   let minBump = $state(0);
   let xpFrac = $state(levelOf(seen.xp).into / levelOf(seen.xp).need);
   let xpJump = $state(false);        // мгновенный сброс полоски на 0 после заполнения (новый уровень)
@@ -81,6 +85,7 @@
   onMount(() => {
     W.dim = false; W.world?.clearMob(); W.world?.setMode('hub'); W.world?.bitMood(done ? 'happy' : 'idle');
     W.world?.setEnergy(learnedTotal % 10, 10);
+    syncDecor();   // украшения и питомец из мастерской
     audio.setMood('hub');
     // 1. недоигранная награда (вышли посреди занятия) — показать сейчас
     void flushRewards();
@@ -123,7 +128,7 @@
     if (nextBlock?.id !== id) { toast(`Алдымен: ${BLOCK[nextBlock!.id].kz}`); audio.play('click'); return; }
     start(id);
   }
-  function nav(to: 'map' | 'hero' | 'album') { audio.unlock(); audio.play('click'); go({ name: to }); }
+  function nav(to: 'map' | 'hero' | 'album' | 'workshop') { audio.unlock(); audio.play('click'); go({ name: to }); }
   let muted = $state(audio.settings.master === 0);
   function toggleSound() { audio.unlock(); muted = !muted; audio.save({ master: muted ? 0 : 0.8 }); if (!muted) audio.play('click'); }
 
@@ -155,6 +160,7 @@
     {#key minBump}<span class="pill" class:bump={minBump > 0}><Icon name="clock" fill="var(--gold)" size={22} /><span class="num">{shownMin}</span><small>мин</small></span>{/key}
     <span class="pill"><Icon name="crystal" fill="var(--crystal)" size={22} /><span class="num">{crystals}</span><small>кристалл</small></span>
     <span class="pill"><Icon name="fire" fill="var(--fire)" size={22} /><span class="num">{st.days}</span><small>күн</small></span>
+    <CoinChip value={coins} />
   </div>
   <div class="say"><Bit text={greeting} mood={done ? 'happy' : 'idle'} compact /></div>
   {/snippet}
@@ -233,6 +239,7 @@
       <nav class="menu" aria-label="Мәзір">
         <button class="mi" onclick={() => nav('map')}><Icon name="map" fill="#7ee08f" size={26} /><span>Карта</span>{#if bossReady}<b class="badge">!</b>{/if}</button>
         <button class="mi" onclick={() => nav('hero')}><Icon name="hero" fill="#5ea0ff" size={26} /><span>Кейіпкер</span></button>
+        <button class="mi" onclick={() => nav('workshop')}><Icon name="hammer" fill="var(--gold)" size={26} /><span>Шеберхана</span>{#if afford}<b class="badge">!</b>{/if}</button>
         <button class="mi" onclick={() => nav('album')}><Icon name="cards" fill="var(--crystal)" size={26} /><span>Альбом</span>{#if broken}<b class="badge">{broken}</b>{/if}</button>
       </nav>
     </div>
@@ -251,7 +258,8 @@
   .who .bar i.jump { transition: none; }
 
   .res { display: flex; gap: 6px; justify-content: center; width: 100%; padding: 0 4px; }
-  .res .pill { flex: 1; justify-content: center; min-width: 0; }
+  .res :global(.pill) { flex: 1; justify-content: center; min-width: 0; }
+  @media (max-width: 420px) { .res { gap: 4px; padding: 0; } .res :global(.pill) { padding: 0 8px 0 4px; gap: 4px; } .res :global(.pill small) { font-size: 10px; } }
   .res .pill.bump { animation: pill-bump .6s var(--ease-out); }
   @keyframes pill-bump { 0% { transform: scale(1); } 30% { transform: scale(1.2); box-shadow: 0 0 18px var(--gold); } 100% { transform: scale(1); } }
   .say { padding: 0 4px 6px; width: min(460px, 100%); align-self: flex-start; }
@@ -311,7 +319,7 @@
   .stack { flex: 1; display: grid; gap: 6px; }
   .stack .btn { gap: 10px; }
   /* нижнее меню: панель-«таб-бар», как в мобильных играх */
-  .menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 16px; background: #0b1030aa; border: 3px solid var(--outline); }
+  .menu { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; padding: 3px; border-radius: 16px; background: #0b1030aa; border: 3px solid var(--outline); }
   .mi { position: relative; display: grid; justify-items: center; gap: 1px; padding: 4px 2px 3px; min-height: 52px; font: 800 12px var(--disp); color: var(--ink);
     background: transparent; border: 0; border-radius: 12px; cursor: pointer; }
   .mi:active { transform: translateY(2px); background: #ffffff18; }
