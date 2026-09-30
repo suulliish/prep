@@ -36,10 +36,10 @@ s('frac.common_denominator', 'C', 5, 'Ортақ бөлімге келтіру',
 s('frac.compare', 'C', 5, 'Бөлшектерді салыстыру', 'Сравнение дробей', ['frac.common_denominator', 'frac.magnitude'], { t: ['frac.compare_extreme', 'frac.compare_order', 'frac.compare_true'] });
 s('frac.add_sub', 'C', 5, 'Бөлшектерді қосу және азайту', 'Сложение и вычитание дробей', ['frac.common_denominator'], { t: ['frac.add_same', 'frac.add_diff', 'frac.to_whole', 'frac.rest_of_path'] });
 s('frac.mixed', 'C', 5, 'Аралас сандар', 'Смешанные числа', ['frac.add_sub'], { t: ['frac.mixed_convert', 'frac.mixed_arith', 'frac.mixed_time'] });
-s('frac.mul', 'C', 5, 'Бөлшектерді көбейту', 'Умножение дробей', ['frac.reduce']);
-s('frac.div', 'C', 5, 'Бөлшектерді бөлу', 'Деление дробей', ['frac.mul']);
-s('frac.part_of_number', 'C', 5, 'Санның бөлігін табу', 'Часть от числа', ['frac.mul']);
-s('frac.find_whole', 'C', 5, 'Бөлігі бойынша санды табу', 'Число по его части', ['frac.div'], { t: ['frac.find_whole'] });
+s('frac.mul', 'C', 5, 'Бөлшектерді көбейту', 'Умножение дробей', ['frac.reduce'], { t: ['frac.mul_whole', 'frac.mul_frac', 'frac.mul_mixed', 'frac.mul_size'] });
+s('frac.div', 'C', 5, 'Бөлшектерді бөлу', 'Деление дробей', ['frac.mul'], { t: ['frac.div_whole_by_frac', 'frac.div_frac_by_whole', 'frac.div_frac_frac', 'frac.div_size'] });
+s('frac.part_of_number', 'C', 5, 'Санның бөлігін табу', 'Часть от числа', ['frac.mul'], { t: ['frac.part_of_number_direct', 'frac.part_of_number_more'] });
+s('frac.find_whole', 'C', 5, 'Бөлігі бойынша санды табу', 'Число по его части', ['frac.div'], { t: ['frac.find_whole', 'frac.find_whole_story', 'frac.find_whole_rest'] });
 s('frac.continued', 'C', 'olymp', 'Көп қабатты бөлшектер', 'Многоэтажные дроби', ['frac.div', 'frac.mixed'], { t: ['compute.continued_fraction'] });
 s('frac.telescoping', 'C', 'olymp', 'Телескоптық қосындылар', 'Телескопические суммы', ['frac.add_sub']);
 s('frac.alternating_sum', 'C', 'olymp', 'Кезектесетін қосынды (98 − 97 + …)', 'Знакочередующиеся суммы', ['nat.ops']);
