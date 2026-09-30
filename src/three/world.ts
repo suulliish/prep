@@ -209,7 +209,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     const side = isSide(w, h);
     if (!devLock) CAM.hub.radius = narrow ? 26 : side ? 21 : w / h < 1.5 ? 18 : 22;   // почти квадратное окно (телефон лёжа, панель справа) — ближе
     CAM.portal.radius = narrow ? 13 : 10; CAM.battle.radius = narrow ? 23 : side ? 14 : 13;
-    CAM.hero.radius = narrow ? 10.5 : 7.5;                               // витрина: герой целиком, со шлемом и оружием (скины)
+    // витрина: герой целиком, со шлемом и оружием (скины); на телефоне окно сцены низкое (треть экрана) — камера дальше, иначе ноги уходят под панель
+    CAM.hero.radius = narrow ? 14 : 7.5;
     applyOffset();
   }
   // Раскладка экрана (та же, что в app.css): на широком экране панель справа — сцена сдвигается влево;

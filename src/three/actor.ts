@@ -104,6 +104,9 @@ export class Actor {
   }
   show(part: string, on: boolean) { this.model.traverse(o => { if (o.name === part || o.name === part + '_outline') o.visible = on; }); }
   dispose() {
+    // оборванная разовая анимация (модель меняют посреди радости — смена костюма) завершает свой промис: иначе ждущий навсегда «занят».
+    // Метки (момент удара) при этом не срабатывают: модели уже нет
+    { const s = this.shot; this.shot = null; s?.done?.(); }
     this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.model);
     // клон скелета создаёт свою текстуру костей (Skeleton.computeBoneTexture) — без dispose она копилась с каждым врагом; материалы — копии этого актёра
     const sk = new Set<THREE.Skeleton>();
