@@ -303,7 +303,7 @@
         <div class="hrow"><span class="tag c-example">{CHIP.example}</span><h2 class="h"><MathLine text={step.kz.replace(/^Көр:\s*/, '')} inherit /></h2></div>
         {#if step.scene || fr.scene}
           {#key frame}
-            <Scene name={fr.scene ?? step.scene} s={fr.s} live />
+            <Scene name={fr.scene ?? step.scene} s={fr.s} live hide={curGap && !solved[gapKey] ? curGap.answer : null} />
             {#if fr.math}<div class="paper mline appear"><MathLine text={curGap ? curGap.text : fr.math} fill={curGap && solved[gapKey] ? curGap.answer : null} big ontap={canTap && hasHighlight(curGap ? curGap.text : fr.math) ? readTap : undefined} /></div>{/if}
             {#if gapOpen && curGap}<Gap options={curGap.options} answer={curGap.answer} onsolved={gapSolved} />
             {:else if fr.math && hasHighlight(fr.math) && (gate.on || gate.done)}<p class="tip" class:off={!canTap} aria-hidden={!canTap}>Сары бөлікті түртсең, батырма ашылады</p>{/if}

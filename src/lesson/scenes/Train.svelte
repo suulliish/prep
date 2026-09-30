@@ -4,7 +4,9 @@
   // live/prev (Scene.svelte): в кадре «Көр» цифры по одной падают в вагоны (звук приземления), смена подсветки вагона — подъём.
   import { onMount } from 'svelte';
   import { audio } from '../../lib/audio';
-  let { digits = '4030005', hl = null, zeros = false, broken = false, live = false, prev = null }: { digits?: string; hl?: 'm' | 't' | 'u' | null; zeros?: boolean; broken?: boolean; live?: boolean; prev?: { digits?: string; hl?: string | null } | null } = $props();
+  // hide — закрытое пропуском число: вагон, чьи цифры его составляют, показывает «?» (цифры стоят по одной на место — общая маска Scene их не видит)
+  let { digits = '4030005', hl = null, zeros = false, broken = false, live = false, prev = null, hide = null }: { digits?: string; hl?: 'm' | 't' | 'u' | null; zeros?: boolean; broken?: boolean; live?: boolean; prev?: { digits?: string; hl?: string | null } | null; hide?: string | null } = $props();
+  const hid = $derived(hide ? hide.replace(/\D/g, '') : '');
   const drop = $derived(live && (!prev || prev.digits !== digits));
   const lift = $derived(live && !drop && (prev?.hl ?? null) !== hl && hl !== null);
   onMount(() => {
@@ -30,7 +32,7 @@
     <div class="wagon" class:hl={hl === w.key} class:lift={lift && hl === w.key} class:dim={hl && hl !== w.key} style="animation-delay:{k * 90}ms">
       <span class="name">{NAMES[w.key]}</span>
       <div class="seats">
-        {#each w.seats as d, si}<b class="seat num" class:zero={zeros && d === '0'} style="--o:{w.o + si}">{broken ? '?' : d}</b>{/each}
+        {#each w.seats as d, si}<b class="seat num" class:zero={zeros && d === '0'} style="--o:{w.o + si}">{broken || (hid && w.seats.join('') === hid) ? '?' : d}</b>{/each}
       </div>
       <i class="wheel a"></i><i class="wheel b"></i>
     </div>

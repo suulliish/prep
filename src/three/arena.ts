@@ -345,6 +345,9 @@ export function createArena(d: Deps) {
 
   // ---------- тренировка (урок): вместо врага площадка с манекеном, мишенями и доской (training3d.ts) ----------
   let training: Training | null = null, trainGen = 0;
+  // clear() (уход с экрана) меняет поколение: недоигранное появление врага видит это после каждого ожидания и тихо выходит
+  let clearGen = 0;
+  let bonkQueued: Promise<void> | null = null;
   // желаемое состояние площадки: применяется, когда она уже стоит (шаг урока мог войти раньше)
   const tWant = { glitch: false, left: 0, board: '' };
   function dropTraining() { const t = training; training = null; t?.dispose(); }
@@ -398,7 +401,7 @@ export function createArena(d: Deps) {
 
   let throwQ = 0;
   /** Действие боя в очереди: пока оно идёт, «живое ожидание» молчит. */
-  const act = <T>(fn: () => Promise<T>): Promise<T> => { busy++; idle.stop(); return seq(fn).finally(() => busy--); };
+  const act = <T>(fn: () => Promise<T>): Promise<T> => { busy++; idle.stop(); return seq(() => within(fn(), 12) as Promise<T>).finally(() => busy--); };
   /** Мишень сбита: когда она упала и ушла в землю, счёт уменьшается и на её место встаёт следующая. */
   function knock(tr: Training) { void tr.targetHit().then(() => { if (training === tr && tWant.left > 0) { tWant.left--; tr.targets(Math.min(5, tWant.left)); } }); }
   async function runStrike(kind: HitKind, n: number, stay: boolean) {
@@ -483,12 +486,15 @@ export function createArena(d: Deps) {
     },
     /** Враг выпрыгивает из разлома и рычит; мини-босс/босс — с тряской земли и именем. Катсцена, промис. */
     async spawn(hp: number, kind = 0, mini = false, worldBoss = false) {
+      const cg = clearGen;
       await whenReady();
+      if (cg !== clearGen) return;
       trainGen++; dropTraining();
       if (enemy) { scene.remove(enemy.m.a.g); enemy.m.a.dispose(); enemy = null; }
       const pick = pickEnemy(worldK, kind, mini, worldBoss);
       const big = mini || worldBoss;
       const m = await createMonster(pick.id, pick.scale); rimLight(m.a); prepareEnemy(pick.id, m.a);
+      if (cg !== clearGen) { m.a.dispose(); return; }
       const base = 1, top = m.height + m.hover;
       enemy = { id: pick.id, m, hp, max: hp, boss: big, wb: worldBoss, base, top, live: false, s0: m.a.g.scale.x, dy: 0 };
       const e = enemy, g = m.a.g;
@@ -499,18 +505,23 @@ export function createArena(d: Deps) {
       crack.rotation.x = -Math.PI / 2; crack.position.set(ENEMY_X, 0.03, Z0); crack.scale.setScalar(0.01); scene.add(crack);
       if (big) { shake = 0.9; ring(new THREE.Vector3(ENEMY_X, 0.1, Z0), 0xff2a6a, 6); }
       await tween(big ? 0.6 : 0.3, u => crack.scale.setScalar(Math.max(0.01, ease(u))));
+      // ушли с экрана посреди появления: врага уже убрал clear(), разлом убираем сами, полоску здоровья не показываем
+      if (cg !== clearGen) { drop(crack); return; }
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.9 * pick.scale, 0.9 * pick.scale, 12, 12, 1, true), new THREE.MeshBasicMaterial({ color: 0xff4fb8, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
       beam.position.set(ENEMY_X, 6, Z0); scene.add(beam);
       let bt = 0; fx.push({ update: dt => { bt += dt * 1.6; (beam.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - bt); beam.scale.x = beam.scale.z = 1 - bt * 0.7; if (bt >= 1) { drop(beam); return false; } return true; } });
       burst(new THREE.Vector3(ENEMY_X, 0.5, Z0), [0xff4fb8, 0x8a3cff], 12, 4); vfx.riftBurst(V.set(ENEMY_X, 0, Z0 + 0.2), 0xff4fb8, pick.scale); sfx('boom');
       const y1 = m.hover;
       await tween(0.45, u => { g.position.y = (-m.height - 1) + (y1 + m.height + 1) * easeBack(u); });
+      if (cg !== clearGen) { drop(crack); return; }
       g.position.y = y1; e.live = true; hpBar.visible = true;
       // рык: враг бьёт по воздуху, герой встаёт в стойку
       guard = true; stance(); shake = Math.max(shake, big ? 0.6 : 0.3);
       if (worldBoss) popText('БАС ЖАУ', new THREE.Vector3(ENEMY_X, top + 1.4, Z0), '#ff4fb8', true);   // экраны называют их так же: «бас жау», «күшті жау»
       else if (mini) popText('КҮШТІ ЖАУ', new THREE.Vector3(ENEMY_X, top + 1.4, Z0), '#ff4fb8', true);
-      sfx('growl'); await m.a.play(m.attack(), { speed: 1.2 });
+      // рык ждём не дольше 3 с: модель могли убрать посреди клипа, тогда его конец не наступит никогда
+      sfx('growl'); await within(m.a.play(m.attack(), { speed: 1.2 }), 3);
+      if (cg !== clearGen) { drop(crack); guard = false; return; }
       tween(0.4, u => { (crack.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - u); }).then(() => drop(crack));
       guard = false; stance(); shot(null);
       await wait(0.2);
@@ -684,7 +695,7 @@ export function createArena(d: Deps) {
       burst(new THREE.Vector3(HERO_X, 3, Z0), [0xffcb2e, 0x35e6ff], 12, 5); vfx.sparkleShower(new THREE.Vector3(HERO_X, 2.6, Z0 + 0.5)); },
     /** Освободить ресурсы частиц (сцену выкидывают целиком). */
     dispose() { idle.dispose(); dropTraining(); attacks.dispose(); vfx.dispose(); },
-    clear() { trainGen++; dropTraining(); tWant.glitch = false; tWant.left = 0; tWant.board = ''; trailOn = false; trailOne = null; idle.stop(true); vfx.clear(); if (enemy) { scene.remove(enemy.m.a.g); enemy.m.a.dispose(); enemy = null; } hpBar.visible = false; guard = false; if (hero) { neutral(); hero.g.position.set(HERO_X, 0, Z0); hero.g.rotation.y = Math.PI / 2; } shot(null); },
+    clear() { clearGen++; trainGen++; dropTraining(); tWant.glitch = false; tWant.left = 0; tWant.board = ''; trailOn = false; trailOne = null; idle.stop(true); vfx.clear(); if (enemy) { scene.remove(enemy.m.a.g); enemy.m.a.dispose(); enemy = null; } hpBar.visible = false; guard = false; if (hero) { neutral(); hero.g.position.set(HERO_X, 0, Z0); hero.g.rotation.y = Math.PI / 2; } shot(null); },
     hasEnemy: () => !!enemy,
     hasTraining: () => !!training,
     /** Проверка: состояние площадки (частицы, мишени, глитч) или null, если её нет. */
@@ -694,7 +705,8 @@ export function createArena(d: Deps) {
     /** Удар героя по манекену настоящим клипом атаки: light — обычный, strong — сильный, combo — n-й удар связки (1..3; 3-й с разворота). stay — остаться у манекена для следующего удара. */
     trainStrike(kind: HitKind, n = 1, stay = false) { return act(() => runStrike(kind, n, stay)); },
     /** Неверный ответ: манекен бросается к герою и шлёпает его по макушке (герой вздрагивает). */
-    trainBonk() { return act(runBonk); },
+    // шлепок не копится: пока один ждёт в очереди или идёт, новые ошибки его не добавляют (быстрые ошибки иначе давали десятки секунд шлепков подряд)
+    trainBonk() { if (bonkQueued) return bonkQueued; bonkQueued = act(runBonk).finally(() => { bonkQueued = null; }); return bonkQueued; },
     /** Нашёл ошибку: герой колет «заражённого» манекена, тот разваливается на доски и собирается обратно. */
     trainBreakGlitch() { return act(runBreak); },
     /** Попал в мишень: герой бросает снаряд, мишень падает. Если бросков уже накопилось два (ребёнок отвечает быстрее анимации), мишень падает сразу, без броска. */
@@ -715,7 +727,8 @@ export function createArena(d: Deps) {
   };
   for (const k of ['arrive', 'spawn', 'attack', 'enemyAttack', 'defeat', 'victory'] as const) {
     const f = api[k] as (...a: unknown[]) => Promise<unknown>;
-    (api as Record<string, unknown>)[k] = (...a: unknown[]) => { busy++; idle.stop(); return seq(() => f(...a)).finally(() => busy--); };   // busy — пока есть действие в очереди или в работе
+    // busy — пока есть действие в очереди или в работе. Страховка: одно действие держит очередь не дольше 12 с — зависшая анимация не замораживает бой и урок навсегда
+    (api as Record<string, unknown>)[k] = (...a: unknown[]) => { busy++; idle.stop(); return seq(() => within(f(...a), 12) as Promise<unknown>).finally(() => busy--); };
   }
   return api;
 }
