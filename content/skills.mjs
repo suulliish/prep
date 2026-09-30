@@ -25,20 +25,27 @@ s('div.count_multiples', 'D', 5, 'Еселіктер санын табу', 'Ск
 s('div.star_digit', 'D', 5, 'Жұлдызшаның орнына цифр қою', 'Цифра вместо звёздочки', ['div.rules'], { t: ['div.star_digit_9'] });
 s('div.powers_count', 'D', 5, 'Квадраттар мен кубтар саны', 'Сколько квадратов/кубов', ['nat.powers'], { t: ['div.count_powers'] });
 s('div.last_digit', 'D', 'olymp', 'Дәреженің соңғы цифры', 'Последняя цифра степени', ['nat.powers'], { t: ['div.last_digit_power'] });
-s('div.trailing_zeros', 'D', 'olymp', 'Көбейтіндінің соңындағы нөлдер', 'Нули в конце произведения', ['div.factorization']);
+s('div.trailing_zeros', 'D', 5, 'Көбейтіндінің соңындағы нөлдер', 'Нули в конце произведения', ['div.factorization'], { t: ['div.trailing_zeros_factorial', 'div.trailing_zeros_product'] });
 
 // ---- Обыкновенные дроби ----
-s('frac.concept', 'C', 5, 'Жай бөлшек ұғымы', 'Понятие дроби', ['nat.ops']);
-s('frac.basic_property', 'C', 5, 'Бөлшектің негізгі қасиеті', 'Основное свойство дроби', ['frac.concept']);
-s('frac.reduce', 'C', 5, 'Бөлшекті қысқарту', 'Сокращение дробей', ['frac.basic_property', 'div.gcd']);
-s('frac.common_denominator', 'C', 5, 'Ортақ бөлімге келтіру', 'Общий знаменатель', ['frac.basic_property', 'div.lcm']);
-s('frac.compare', 'C', 5, 'Бөлшектерді салыстыру', 'Сравнение дробей', ['frac.common_denominator']);
-s('frac.add_sub', 'C', 5, 'Бөлшектерді қосу және азайту', 'Сложение и вычитание дробей', ['frac.common_denominator']);
-s('frac.mixed', 'C', 5, 'Аралас сандар', 'Смешанные числа', ['frac.add_sub']);
-s('frac.mul', 'C', 5, 'Бөлшектерді көбейту', 'Умножение дробей', ['frac.reduce']);
-s('frac.div', 'C', 5, 'Бөлшектерді бөлу', 'Деление дробей', ['frac.mul']);
-s('frac.part_of_number', 'C', 5, 'Санның бөлігін табу', 'Часть от числа', ['frac.mul']);
-s('frac.find_whole', 'C', 5, 'Бөлігі бойынша санды табу', 'Число по его части', ['frac.div'], { t: ['frac.find_whole'] });
+// Порядок по docs/PLAN.md (окт: делимость; ноя: дроби-база + весы/нули; дек: × ÷). Планировщик берёт тему с наибольшим весом (C=3 > D,I=2),
+// поэтому без «замков» дроби обгоняли делимость, а × ÷ шли раньше сложения, весов и нулей. Замки (tests/progression.test.ts):
+//  - frac.concept ждёт весь блок делимости (ЕҮОБ, ЕКОЕ, задачи);
+//  - frac.mul (а за ним div/part_of_number/find_whole) ждёт конец базы дробей (frac.mixed) и ноябрьские весы и нули —
+//    так × ÷ идут в декабре; сокращение остаётся на своём месте, сразу после основного свойства (PLAN: ноябрь).
+//  - logic.permutations (комбинаторика — декабрь) ждёт весы, поэтому идёт после цепочки × ÷ (у неё вес выше).
+s('frac.concept', 'C', 5, 'Жай бөлшек ұғымы', 'Понятие дроби', ['nat.ops', 'div.gcd_lcm_word'], { t: ['frac.concept_part', 'frac.concept_equal'] });
+s('frac.magnitude', 'C', 5, 'Бөлшектің шамасы', 'Величина дроби (ориентиры 0, 1/2, 1)', ['frac.concept'], { t: ['frac.magnitude_half', 'frac.magnitude_near', 'frac.magnitude_estimate'] });
+s('frac.basic_property', 'C', 5, 'Бөлшектің негізгі қасиеті', 'Основное свойство дроби', ['frac.concept'], { t: ['frac.equal_missing', 'frac.equal_which'] });
+s('frac.reduce', 'C', 5, 'Бөлшекті қысқарту', 'Сокращение дробей', ['frac.basic_property', 'div.gcd'], { t: ['frac.reduce_lowest', 'frac.reduce_context'] });
+s('frac.common_denominator', 'C', 5, 'Ортақ бөлімге келтіру', 'Общий знаменатель', ['frac.basic_property', 'div.lcm'], { t: ['frac.lcd_find', 'frac.lcd_numerators', 'frac.lcd_factor'] });
+s('frac.compare', 'C', 5, 'Бөлшектерді салыстыру', 'Сравнение дробей', ['frac.common_denominator', 'frac.magnitude'], { t: ['frac.compare_extreme', 'frac.compare_order', 'frac.compare_true'] });
+s('frac.add_sub', 'C', 5, 'Бөлшектерді қосу және азайту', 'Сложение и вычитание дробей', ['frac.common_denominator'], { t: ['frac.add_same', 'frac.add_diff', 'frac.to_whole', 'frac.rest_of_path'] });
+s('frac.mixed', 'C', 5, 'Аралас сандар', 'Смешанные числа', ['frac.add_sub'], { t: ['frac.mixed_convert', 'frac.mixed_arith', 'frac.mixed_time'] });
+s('frac.mul', 'C', 5, 'Бөлшектерді көбейту', 'Умножение дробей', ['frac.reduce', 'frac.mixed', 'div.trailing_zeros', 'logic.weighing'], { t: ['frac.mul_whole', 'frac.mul_frac', 'frac.mul_mixed', 'frac.mul_size'] });
+s('frac.div', 'C', 5, 'Бөлшектерді бөлу', 'Деление дробей', ['frac.mul'], { t: ['frac.div_whole_by_frac', 'frac.div_frac_by_whole', 'frac.div_frac_frac', 'frac.div_size'] });
+s('frac.part_of_number', 'C', 5, 'Санның бөлігін табу', 'Часть от числа', ['frac.mul'], { t: ['frac.part_of_number_direct', 'frac.part_of_number_more'] });
+s('frac.find_whole', 'C', 5, 'Бөлігі бойынша санды табу', 'Число по его части', ['frac.div'], { t: ['frac.find_whole', 'frac.find_whole_story', 'frac.find_whole_rest'] });
 s('frac.continued', 'C', 'olymp', 'Көп қабатты бөлшектер', 'Многоэтажные дроби', ['frac.div', 'frac.mixed'], { t: ['compute.continued_fraction'] });
 s('frac.telescoping', 'C', 'olymp', 'Телескоптық қосындылар', 'Телескопические суммы', ['frac.add_sub']);
 s('frac.alternating_sum', 'C', 'olymp', 'Кезектесетін қосынды (98 − 97 + …)', 'Знакочередующиеся суммы', ['nat.ops']);
@@ -144,7 +151,7 @@ s('word.mixture_dilution', 'B', 6, 'Ерітіндіні сұйылту', 'Ра�
 s('word.drying', 'B', 6, 'Кептіру есептері', 'Задачи на высушивание', ['pct.find_whole'], { t: ['pct.drying'] });
 
 // ---- Закономерности ----
-s('pat.sequences', 'H', 5, 'Сандар тізбегі', 'Числовые последовательности', ['nat.ops']);
+s('pat.sequences', 'H', 5, 'Сандар тізбегі', 'Числовые последовательности', ['nat.ops'], { t: ['pat.seq_nth', 'pat.seq_position', 'pat.seq_growing_diff', 'pat.seq_interleaved'] });
 s('pat.bracket', 'H', 5, 'Жақшадағы сан заңдылығы', 'Закономерность с числом в скобках', ['pat.sequences', 'nat.powers'], { t: ['logic.bracket_pattern'] });
 s('pat.function_machine', 'H', 5, 'Кесте бойынша формула', 'Формула по таблице', ['expr.variables']);
 s('pat.arith_progression', 'H', 'olymp', 'Тұрақты айырмалы тізбек', 'Постоянная разность', ['pat.sequences']);
@@ -152,22 +159,22 @@ s('pat.arith_progression', 'H', 'olymp', 'Тұрақты айырмалы тіз
 // ---- Логика словами ----
 s('logic.new_operation', 'I', 5, 'Жаңа амал', 'Новая операция', ['expr.variables'], { t: ['logic.new_operation'] });
 s('logic.clock_angle', 'I', 6, 'Сағат тілдерінің арасындағы бұрыш', 'Угол между стрелками', ['geo.angles_basic', 'frac.mul'], { t: ['logic.clock_angle'] });
-s('logic.calendar', 'I', 5, 'Күнтізбе есептері', 'Календарь', ['div.rules'], { t: ['logic.every_k_days'] });
+s('logic.calendar', 'I', 5, 'Күнтізбе есептері', 'Календарь', ['div.rules'], { t: ['logic.every_k_days', 'logic.cal_weekday_shift', 'logic.cal_days_between', 'logic.cal_years_days', 'logic.cal_weekend_count', 'logic.cal_date_weekday'] });
 s('logic.clock_lag', 'I', 'olymp', 'Қалып қоятын сағат', 'Отстающие часы', ['ratio.units']);
 s('logic.deduction', 'I', 5, 'Кім қайда: кесте әдісі', 'Кто где: таблица', [], { t: ['logic.who_in_which_class'] });
-s('logic.permutations', 'I', 5, 'Қатарға тұру тәсілдері', 'Перестановки', ['nat.ops'], { t: ['logic.line_up'] });
-s('logic.pairs_tournament', 'I', 5, 'Жұптар және турнир', 'Пары и турнир', ['logic.permutations']);
+s('logic.permutations', 'I', 5, 'Қатарға тұру тәсілдері', 'Перестановки', ['nat.ops', 'logic.weighing'], { t: ['logic.line_up', 'logic.perm_digits', 'logic.perm_menu', 'logic.perm_fixed'] });
+s('logic.pairs_tournament', 'I', 5, 'Жұптар және турнир', 'Пары и турнир', ['logic.permutations'], { t: ['logic.tour_pairs', 'logic.tour_double', 'logic.tour_one_more', 'logic.tour_find_n'] });
 s('logic.probability', 'I', 6, 'Ықтималдық', 'Вероятность', ['frac.concept']);
 s('logic.page_digits', 'I', 5, 'Беттерді нөмірлеу', 'Нумерация страниц', ['nat.place_value'], { t: ['logic.page_digits'] });
 s('logic.seat_number', 'I', 5, 'Қатар мен орын нөмірі', 'Ряд и место (деление с остатком)', ['nat.ops']);
-s('logic.weighing', 'I', 'olymp', 'Таразы және гірлер', 'Взвешивания и гири', ['nat.ops']);
+s('logic.weighing', 'I', 5, 'Таразы және гірлер', 'Взвешивания и гири', ['nat.ops'], { t: ['logic.weighing_set', 'logic.weighing_range'] });
 s('logic.pigeonhole', 'I', 'olymp', 'Ең нашар жағдай', 'Наихудший случай', ['nat.ops']);
 s('logic.invariant', 'I', 'olymp', 'Өзгермейтін шама (инвариант)', 'Инвариант', ['nat.ops']);
 s('logic.snail', 'I', 'olymp', 'Ұлу: күндіз көтеріледі, түнде түседі', 'Улитка на столбе', ['nat.ops']);
 
 // ---- Визуальная логика ----
 s('vis.count_segments', 'J', 5, 'Кесінділер санын табу', 'Подсчёт отрезков', [], { fig: true });
-s('vis.count_squares', 'J', 5, 'Квадраттар санын табу', 'Подсчёт квадратов', [], { fig: true });
+s('vis.count_squares', 'J', 5, 'Квадраттар санын табу', 'Подсчёт квадратов', [], { fig: true, t: ['vis.sq_grid', 'vis.sq_square_grid', 'vis.sq_shape'] });
 s('vis.count_triangles', 'J', 5, 'Үшбұрыштар санын табу', 'Подсчёт треугольников', ['vis.count_segments'], { fig: true });
 s('vis.cube_count', 'J', 5, 'Фигурадағы кубиктер саны', 'Кубики в фигуре', ['geo.volume'], { fig: true });
 s('vis.cube_net', 'J', 5, 'Кубтың жазбасы', 'Развёртка куба', [], { fig: true });

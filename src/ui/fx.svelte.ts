@@ -50,6 +50,11 @@ export function flash(color: string) { fx.flash = color; setTimeout(() => (fx.fl
 
 /** Центр 3D-сцены: на широком экране панель справа (см. .stage в app.css), иначе — верхняя часть экрана. */
 export function sceneCenter(yFrac = 0.3) {
+  // телефон в горизонтали: 3D сужен до левой части экрана (html.lsplit, src/app.css) — центр по его ширине
+  if (document.documentElement.classList.contains('lsplit')) {
+    const c = document.querySelector('canvas.world')?.getBoundingClientRect();
+    if (c) return { x: c.left + c.width / 2, y: innerHeight * yFrac };
+  }
   const side = innerWidth >= 1000 && innerWidth / innerHeight >= 1.15;
   const panel = side ? Math.min(540, innerWidth * 0.42) + 24 : 0;
   return { x: (innerWidth - panel) / 2, y: innerHeight * yFrac };

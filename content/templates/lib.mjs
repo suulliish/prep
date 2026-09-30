@@ -141,6 +141,8 @@ function harmony(word) {
   word = word.replace(/я/g, 'а').replace(/ю/g, 'у');
   const vowels = word.match(/[аәеиоөұүыіу]/g) || ['е'];
   // «у» и «и» нейтральны: смотрим на предыдущий гласный; без него «у» — твёрдый, «и» — мягкий
+  // имя на «-ис», «-ир» (Томирис, Әмир): последний слог с «и» даёт мягкое окончание — Томиристің, Әмирге
+  if (vowels[vowels.length - 1] === 'и' && vowels.length > 1) return 'front';
   const strong = vowels.filter(v => v !== 'у' && v !== 'и');
   if (!strong.length) return vowels[vowels.length - 1] === 'у' ? 'back' : 'front';
   return /[аоұы]/.test(strong[strong.length - 1]) ? 'back' : 'front';

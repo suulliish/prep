@@ -12,6 +12,7 @@
   import { WORLDS, energy, cleared, currentWorld, worldOpen, travel } from '../lib/look';
   import type { IsleState, MapLabel } from '../three/map';
   import Icon from '../ui/Icon.svelte';
+  import { toast } from '../ui/notify.svelte';
 
   const plan = ensurePlan();
   const e = $derived(energy());
@@ -37,14 +38,33 @@
   }
   const known = (i: number) => stateOf(i) !== 'fog';
 
-  function build() {
-    W.world?.mapSetup(WORLDS.map((w, i) => ({ id: w.id, a: w.isle[0], b: w.isle[1], state: stateOf(i) })), curIdx);
+  /** hide — мир, который ещё показываем серым (до катсцены открытия). */
+  function build(hide = -1) {
+    W.world?.mapSetup(WORLDS.map((w, i) => ({ id: w.id, a: w.isle[0], b: w.isle[1], state: i === hide ? 'locked' : stateOf(i) })), curIdx);
   }
+  // Катсцена «жаңа әлем ашылды»: самый дальний открытый мир, которого ребёнок ещё не видел открытым.
+  // Что уже показано — отдельная запись в браузере (формат сохранения не трогаем); при первом визите запоминаем без катсцены.
+  const SEEN = 'razlom.mapSeen';
+  const openMax = () => WORLDS.reduce((m, _, i) => (worldOpen(i) ? i : m), 0);
+  function readSeen(): number | null { try { const v = localStorage.getItem(SEEN); return v == null ? null : +v; } catch { return null; } }
+  function writeSeen(v: number) { try { localStorage.setItem(SEEN, String(v)); } catch { /* приватный режим */ } }
 
   onMount(() => {
     W.dim = false; audio.setMood('map');
     sel = curIdx;
-    W.world?.setMode('map'); build();
+    W.world?.setMode('map');
+    const top = openMax(), seen = readSeen();
+    if (seen == null || top <= seen || top === curIdx) { build(); if (seen == null || top > seen) writeSeen(top); }
+    else {
+      build(top); flying = true;
+      setTimeout(async () => {
+        if (gone) return;
+        await W.world?.mapUnveil(top);
+        if (gone) return;                                                // ушли с карты посреди катсцены — покажем в следующий раз
+        writeSeen(top); toast(`Жаңа әлем ашылды: ${WORLDS[top].kz}!`);
+        build(); sel = top; W.world?.mapFocus(top); flying = false;
+      }, 700);
+    }
     W.world?.onMapPick(i => { sel = i; audio.play('click'); });
     let lastFocus = curIdx;
     const tick = () => {
@@ -55,7 +75,8 @@
     };
     raf = requestAnimationFrame(tick);
   });
-  onDestroy(() => { cancelAnimationFrame(raf); W.world?.onMapPick(() => {}); W.world?.setMode('hub'); });
+  let gone = false;
+  onDestroy(() => { gone = true; W.world?.mapAbort(); cancelAnimationFrame(raf); W.world?.onMapPick(() => {}); W.world?.setMode('hub'); });
 
   function pick(i: number) { sel = Math.max(0, Math.min(WORLDS.length - 1, i)); W.world?.mapFocus(sel); audio.play('click'); }
 
@@ -63,6 +84,7 @@
     if (flying || !worldOpen(i) || i === curIdx) return;
     flying = true; audio.play('portal');
     await W.world?.mapTravel(i);
+    if (gone) return;                                                  // перелёт отменён уходом с карты — мир не меняем
     travel(WORLDS[i].id); build(); flying = false; audio.play('levelup');
   }
 
@@ -70,7 +92,7 @@
   const st = $derived(stateOf(sel));
   const need = $derived(WORLDS[sel]?.need ?? 0);
   const STATUS: Record<IsleState, string> = {
-    current: 'Сен осындасың', cleared: 'Босс жеңілді', open: 'Ашық әлем', next: 'Келесі мақсат', locked: 'Жабық', fog: 'Тұманда',
+    current: 'Сен осындасың', cleared: 'Бас жау жеңілді', open: 'Ашық әлем', next: 'Келесі мақсат', locked: 'Жабық', fog: 'Тұманда',
   };
 </script>
 
@@ -78,7 +100,7 @@
   <header class="top panel">
     <button class="ibtn" onclick={() => go({ name: 'hub' })} aria-label="Кемеге қайту"><Icon name="back" fill="#fff" /></button>
     <div class="ttl"><b>Жарық картасы</b><small>{curIdx + 1}-әлем · {WORLDS.length} әлемнің</small></div>
-    <span class="pill" title="Код энергиясы — әр үйренген тақырып +1, кристалл +2"><Icon name="bolt" fill="var(--code)" size={22} /><span class="num">{e}</span><small>энергия</small></span>
+    <span class="pill" title="Код қуаты — әр үйренген тақырып +1, кристалл +2"><Icon name="bolt" fill="var(--code)" size={22} /><span class="num">{e}</span><small>қуат</small></span>
   </header>
 
   <!-- подписи над островами (не перехватывают касания, кроме самой подписи) -->
@@ -106,22 +128,22 @@
 
     {#if st === 'current'}
       {#if cleared(w.id)}
-        <p class="note">Бұл әлем тазартылды. {nextLocked > 0 && nextLocked < WORLDS.length && !WORLDS[nextLocked].arena ? `Келесі әлемге энергия керек: ${e} / ${WORLDS[nextLocked].need}.` : ''}</p>
+        <p class="note">Бұл әлем тазартылды. {nextLocked > 0 && nextLocked < WORLDS.length && !WORLDS[nextLocked].arena ? `Келесі әлемге қуат керек: ${e} / ${WORLDS[nextLocked].need}.` : ''}</p>
       {:else}
-        <p class="note">Бұл әлемді Глитч басып алған. Босты жеңсең — келесі әлемге жол ашылады.</p>
-        <button class="btn gold big block" disabled={!bossReady} onclick={() => { audio.unlock(); audio.play('mission'); go({ name: 'session', block: 'boss' }); }}>⚔ Босспен шайқас</button>
+        <p class="note">Бұл әлемді Глитч басып алған. Бас жауды жеңсең — келесі әлемге жол ашылады.</p>
+        <button class="btn gold big block" class:locked={!bossReady} aria-disabled={!bossReady} onclick={() => { if (!bossReady) { audio.play('click'); toast(bossWhy); return; } audio.unlock(); audio.play('mission'); go({ name: 'session', block: 'boss' }); }}><Icon name={bossReady ? 'sword' : 'lock'} fill={bossReady ? 'var(--outline)' : '#d7dcf5'} size={22} />Бас жаумен шайқас</button>
         {#if bossWhy}<p class="why">{bossWhy}</p>{/if}
       {/if}
     {:else if st === 'cleared' || st === 'open'}
-      <p class="note">{st === 'cleared' ? 'Бұл әлемнің босы жеңілген. Қайта барып, көріністі тамашалауға болады.' : 'Әлем ашық — кемемен ұшып бар.'}</p>
-      <button class="btn primary big block" disabled={flying} onclick={() => flyTo(sel)}>{flying ? 'Ұшып барамыз…' : 'Осында ұшу ✈'}</button>
+      <p class="note">{st === 'cleared' ? 'Бұл әлемнің бас жауы жеңілген. Қайта барып, көріністі тамашалауға болады.' : 'Әлем ашық — кемемен ұшып бар.'}</p>
+      <button class="btn primary big block" disabled={flying} onclick={() => flyTo(sel)}>{flying ? 'Ұшып барамыз…' : 'Осында ұшу'}</button>
     {:else if w.arena}
       <p class="note">Арена — нағыз пробниктер. 2027 жылдың күзінде ашылады.</p>
     {:else if st === 'next'}
       {#if !cleared(WORLDS[sel - 1].id)}
-        <p class="note">Алдымен «{WORLDS[sel - 1].kz}» әлемінің босын жең.</p>
+        <p class="note">Алдымен «{WORLDS[sel - 1].kz}» әлемінің бас жауын жең.</p>
       {:else}
-        <p class="note">Порталға Код энергиясы керек. Әр үйренген тақырып +1, кристалл +2.</p>
+        <p class="note">Порталға Код қуаты керек. Әр үйренген тақырып +1, кристалл +2.</p>
       {/if}
       <div class="meter"><span class="bar"><i style="width:{Math.min(100, (e / need) * 100)}%"></i></span><b class="num">{e} / {need}</b></div>
     {:else}
@@ -162,7 +184,7 @@
   .status { font: 800 11px var(--txt); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
   .status.current { color: var(--code); } .status.cleared { color: var(--ok); } .status.next { color: var(--gold); }
   .note { color: var(--dim); font-size: var(--fs-s); font-weight: 700; text-align: center; }
-  .why { color: var(--gold); font-size: 13px; font-weight: 700; text-align: center; margin-top: -4px; }
+  .why { color: var(--gold); font-size: 15px; font-weight: 800; text-align: center; margin-top: -4px; }
   .block { width: 100%; }
   .meter { display: flex; align-items: center; gap: 10px; }
   .bar { flex: 1; display: block; height: 10px; background: #070a1a; border: 1px solid var(--line-hi); border-radius: 999px; overflow: hidden; }

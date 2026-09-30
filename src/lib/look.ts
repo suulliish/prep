@@ -12,7 +12,7 @@ export interface StarReward { id: string; kind: 'trail' | 'cape'; need: number; 
 export const STAR_REWARDS = SR as StarReward[];
 /** Все звёзды уровней за всё время (сумма лучших звёзд каждого шага каждого дня). */
 export const totalStars = () => Object.values(game.save.days).reduce((s, r) => s + Object.values(r.stars ?? {}).reduce((a, b) => a + b, 0), 0);
-export function wearStyle(kind: 'trail' | 'cape', id: string | undefined) { (game.save.style ??= {})[kind] = id; persist(); applyLook(); }
+export function wearStyle(kind: 'trail' | 'cape', id: string | undefined) { game.save.style ??= {}; game.save.style[kind] = id; persist(); applyLook(); }
 
 export const energy = () => codeEnergy(game.save.skills) as number;
 export const crystals = () => Object.values(game.save.skills).filter(s => s.status === 'mastered' || s.status === 'automatic').length;

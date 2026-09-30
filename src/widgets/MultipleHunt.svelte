@@ -22,7 +22,7 @@
 <style>
   .mh { display: grid; gap: 10px; justify-items: center; }
   .t { font-weight: 800; } .t b { color: var(--code); }
-  .g { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; width: min(100%, 360px); }
+  .g { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; width: min(100%, 360px); }
   .c { aspect-ratio: 1; font-size: 18px; color: var(--ink); background: var(--panel-hi); border: 2px solid var(--line-hi); border-bottom-width: 4px; border-radius: 8px; cursor: pointer; }
   .c.on { background: var(--code); color: var(--void); border-color: #b9fdff; animation: pop-in .3s var(--ease-out); }
   .c.bad { border-color: var(--miss); animation: shake .35s; }

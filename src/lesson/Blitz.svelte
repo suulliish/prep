@@ -1,14 +1,15 @@
 <script lang="ts">
-  // Мини-ойын: серия вопросов, комбо, звёзды, можно переиграть. Быстрое вспоминание (retrieval) в игровой обёртке.
+  // Шағын ойын: серия вопросов, комбо, звёзды, можно переиграть. Быстрое вспоминание (retrieval) в игровой обёртке.
   // seconds = 0 — без таймера: пока тема изучается, меряем точность, а не скорость (ARCHITECTURE 7: таймер
   // только по освоенным темам). Ошибка стоит только комбо.
   import { onDestroy } from 'svelte';
+  import MathLine from './MathLine.svelte';
   import { audio } from '../lib/audio';
   import { sparksAt, floatText, centerOf } from '../ui/fx.svelte';
   // @ts-ignore
   import { rng } from '../../content/templates/lib.mjs';
   type Item = { q: string; choices: string[]; answer: number };
-  let { title, seconds = 0, count, make, ondone, onhit }: { title: string; seconds?: number; count: number; make: (r: any) => Item; ondone: (stars: number) => void; onhit?: (crit: boolean) => void } = $props();
+  let { title, seconds = 0, count, make, ondone, onhit, onphase }: { title: string; seconds?: number; count: number; make: (r: any) => Item; ondone: (stars: number) => void; onhit?: (crit: boolean) => void; onphase?: (p: 'ready' | 'play' | 'over') => void } = $props();
   let phase = $state<'ready' | 'play' | 'over'>('ready');
   let items: Item[] = [];
   let idx = $state(0), right = $state(0), combo = $state(0), best = $state(0);
@@ -16,6 +17,7 @@
   let timer: number | undefined;
   let qBox = $state<HTMLElement>();
   const item = $derived(phase === 'play' ? items[idx] : null);
+  $effect(() => { onphase?.(phase); });   // Lesson прячет реплику Бита, пока идёт игра: вопросу нужно всё место
   const stars = $derived(right >= count ? 3 : right >= Math.ceil(count * 0.7) ? 2 : right >= Math.ceil(count * 0.4) ? 1 : 0);
 
   function start() {
@@ -49,17 +51,17 @@
 <div class="bz">
   {#if phase === 'ready'}
     <div class="intro">
-      <b class="px">{title}</b>
+      <b class="ttl">{title}</b>
       <p>{count} сұрақ · {seconds ? `${seconds} секунд · ` : 'асықпа, дәлдік маңызды · '}қатарынан дұрыс — комбо ★</p>
       <button class="btn gold big" onclick={start}>Бастау!</button>
     </div>
   {:else if phase === 'play' && item}
     <div class="hud"><span class="num">{idx + 1}/{items.length}</span><div class="bar">{#if seconds}<i style="width:{(left / seconds) * 100}%" class:low={left < 10}></i>{:else}<i class="prog" style="width:{(idx / items.length) * 100}%"></i>{/if}</div><span class="num combo" class:on={combo >= 2}>×{combo}</span></div>
     {#key idx}
-      <p class="q appear" bind:this={qBox}>{item.q}</p>
+      <p class="q appear" bind:this={qBox}><MathLine text={item.q} inherit /></p>
       <div class="ch" class:two={item.choices.length === 2}>
         {#each item.choices as c, k}
-          <button class="ans" class:right={flashK !== null && k === item.answer} class:wrong={flashK === k && k !== item.answer} onclick={() => answer(k)}>{c}</button>
+          <button class="ans" class:right={flashK !== null && k === item.answer} class:wrong={flashK === k && k !== item.answer} onclick={() => answer(k)}><MathLine text={c} inherit /></button>
         {/each}
       </div>
     {/key}
@@ -67,25 +69,30 @@
     <div class="intro">
       <div class="stars">{#each [1, 2, 3] as s}<i class:on={stars >= s}>★</i>{/each}</div>
       <p><b>{right}</b> / {count} дұрыс · ең ұзақ серия ×{best}</p>
-      <button class="btn ghost" onclick={start}>Тағы ойнау ↻</button>
+      <button class="btn again" onclick={start}>Тағы ойнау ↻</button>
     </div>
   {/if}
 </div>
 
 <style>
-  .bz { display: grid; gap: 14px; min-height: 220px; align-content: center; }
+  .bz { display: grid; gap: 12px; align-content: center; }
   .intro { display: grid; gap: 10px; justify-items: center; text-align: center; }
-  .intro b.px { font-size: 30px; color: var(--gold); }
+  /* заголовок на бумаге: тёмный текст с золотой полосой (золото на светлом не читается); пиксельный шрифт только для логотипа */
+  .intro b.ttl { font: 900 26px/1.15 var(--disp); color: var(--paper-ink); background: linear-gradient(transparent 62%, var(--gold) 62%); padding: 0 6px; }
+  /* «Тағы ойнау» стоит на светлой бумаге: обычная синяя кнопка с белым текстом (ghost = белый по белому) */
+  .again { --c: #3f63f0; --e: #2340b8; --t: var(--ink); }
   .hud { display: flex; align-items: center; gap: 10px; }
   .bar { flex: 1; height: 14px; border-radius: 999px; overflow: hidden; background: var(--paper-2); border: 3px solid var(--outline); }
   .bar i { display: block; height: 100%; background: var(--code); transition: width .1s linear; }
   .bar i.low { background: var(--miss); }
   .bar i.prog { background: var(--ok); transition: width .3s var(--ease-out); }
   .combo { color: var(--paper-dim); } .combo.on { color: var(--code-deep); }
-  .q { font-size: 26px; font-weight: 800; text-align: center; }
-  .ch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .ch .ans { justify-content: center; }
+  .q { font-size: clamp(21px, 6.2vw, 26px); line-height: 1.3; font-weight: 800; text-align: center; }
+  .ch { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .ch .ans { justify-content: center; text-align: center; min-height: 52px; }
   .ch .ans.wrong { animation: shake .35s; }
   .stars { display: flex; gap: 8px; font-size: 48px; }
   .stars i { font-style: normal; color: var(--paper-line); -webkit-text-stroke: 2px var(--outline); } .stars i.on { color: var(--gold); animation: pop-in .4s var(--ease-out); }
+  @media (max-height: 720px) { .bz { gap: 8px; } .ch .ans { min-height: 44px; } .q { font-size: 20px; } .stars { font-size: 38px; } }
+  @media (max-width: 999.98px) and (max-height: 560px) and (min-aspect-ratio: 23/20) { .bz { gap: 6px; } .hud { gap: 8px; } .bar { height: 10px; } .q { font-size: 16px; } .ch .ans { min-height: 40px; padding: 3px 6px; } .stars { font-size: 32px; gap: 4px; } .intro { gap: 6px; } .intro b.ttl { font-size: 20px; } .intro p { font-size: 14px; } .intro .btn { min-height: 44px; padding: 6px 18px 10px; } }
 </style>

@@ -37,12 +37,19 @@ export function derivedHints(sol: Text, templateId: string, answer: string): Tex
   ];
 }
 
-export function makeItem(skillId: string): Item | null {
-  const def = skillById[skillId];
-  const ids: string[] = def?.templates ?? [];
+/** Шаблоны навыка (id). Пустой список — навык без генератора. */
+export const templatesOf = (skillId: string): string[] => skillById[skillId]?.templates ?? [];
+/** id шаблона, а не задачи банка. */
+export const isTemplateId = (id: string) => !!byId[id];
+
+/** Новая задача навыка. `tpl` — взять именно этот шаблон (для «егіз»/реванша: тот же шаблон, новые числа);
+ *  `avoidKz` — не выдавать дословно этот текст (до 6 попыток: у шаблонов с малым перебором числа могут совпасть). */
+export function makeItem(skillId: string, opts: { tpl?: string; avoidKz?: string } = {}): Item | null {
+  const ids = templatesOf(skillId);
   if (!ids.length) return null;
-  const t = byId[R.pick(ids)];
-  const it = t.gen(R);
+  const tid = opts.tpl && ids.includes(opts.tpl) ? opts.tpl : null;
+  let t = byId[tid ?? R.pick(ids)], it = t.gen(R);
+  for (let k = 0; k < 6 && opts.avoidKz && it.kz === opts.avoidKz; k++) { if (!tid) t = byId[R.pick(ids)]; it = t.gen(R); }
   return {
     source: t.id, skill: skillId, kz: it.kz, ru: it.ru, choices: it.choices, answer: it.answer,
     sol: it.sol, hints: it.hints ?? derivedHints(it.sol, t.id, it.choices[it.answer].text), figure: it.figure,

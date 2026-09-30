@@ -72,7 +72,7 @@
   }
   function reset() { localStorage.removeItem('razlom.save.v1'); location.reload(); }
   const lessonIds = Object.keys(LESSONS);
-  function mark(id: string, v: 'ok' | 'fix') { (game.save.kzReview ??= {})[id] = v; persist(); }
+  function mark(id: string, v: 'ok' | 'fix') { game.save.kzReview ??= {}; game.save.kzReview[id] = v; persist(); }
 </script>
 
 <div class="wrap">

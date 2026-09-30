@@ -5,6 +5,10 @@ import propPct from './proportion_percent.mjs';
 import wordGeo from './word_geometry.mjs';
 import logic from './logic.mjs';
 import g5 from './grade5_basics.mjs';
+import fractions5 from './fractions5.mjs';
+import fractions6 from './fractions6.mjs';
+import logic5 from './logic5.mjs';
+import logic7 from './logic7.mjs';
 
-export const templates = [...g5, ...compute, ...equations, ...propPct, ...wordGeo, ...logic];
+export const templates = [...g5, ...compute, ...equations, ...propPct, ...wordGeo, ...logic, ...fractions5, ...fractions6, ...logic5, ...logic7];
 export const byId = Object.fromEntries(templates.map(t => [t.id, t]));

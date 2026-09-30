@@ -1,11 +1,15 @@
-// Звуковой движок: эффекты генерируются кодом (Web Audio), музыка — процедурный чиптюн без слов.
+// Звуковой движок: эффекты — готовые семплы Kenney (CC0, public/sfx/*.mp3), музыка — процедурный чиптюн без слов.
+// Семплы подгружаются и декодируются после первого нажатия (unlock). Пока семпл не загружен
+// (первый запуск офлайн, сеть упала, формат не декодируется) звук синтезируется кодом, как раньше.
 // Исследования: фоновая музыка слегка мешает чтению и памяти, но улучшает настроение
 // (Kämpfe, Sedlmeier, Renkewitz 2011). Поэтому музыка играет на карте, в бою и в меню,
 // а во время решения задачи и урока по умолчанию стихает («режим фокуса»).
 
 export type Sfx =
   | 'click' | 'correct' | 'wrong' | 'hit' | 'crit' | 'combo' | 'xp' | 'chest'
-  | 'crystal' | 'levelup' | 'portal' | 'hint' | 'energy' | 'mission';
+  | 'crystal' | 'levelup' | 'portal' | 'hint' | 'energy' | 'mission'
+  // звуки боя в момент действия на сцене (src/three/arena.ts): взмах, попадание, щит, рык, гул появления, приземление, монеты
+  | 'slash' | 'impact' | 'block' | 'growl' | 'boom' | 'land' | 'coins';
 
 export type Mood = 'hub' | 'battle' | 'map' | 'victory' | 'focus' | 'silent';
 
@@ -24,6 +28,30 @@ function loadSettings(): AudioSettings {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...DEFAULTS }; }
 }
 
+// ---------- Семплы ----------
+// Файл public/sfx/<имя>.mp3 (mono, 44.1 кГц, mp3 — как и голос Бита: играет на всех iOS/Safari без запасных форматов).
+// gain — баланс громкости (файлы нормированы по RMS), vary — случайный сдвиг высоты ±доля, чтобы частые звуки не «пулемётили».
+interface SampleDef { gain: number; vary?: number }
+export const SAMPLES: Partial<Record<Sfx, SampleDef>> = {
+  click: { gain: 0.9, vary: 0.04 }, correct: { gain: 1 }, wrong: { gain: 0.85 },
+  hit: { gain: 1, vary: 0.04 }, crit: { gain: 1, vary: 0.03 }, combo: { gain: 0.9 }, xp: { gain: 0.8, vary: 0.04 },
+  chest: { gain: 1 }, crystal: { gain: 1 }, levelup: { gain: 1 }, portal: { gain: 0.9 },
+  hint: { gain: 0.85 }, energy: { gain: 0.9, vary: 0.03 }, mission: { gain: 1 },
+  slash: { gain: 0.8, vary: 0.04 }, impact: { gain: 1, vary: 0.04 }, block: { gain: 0.95, vary: 0.04 },
+  growl: { gain: 0.9, vary: 0.04 }, boom: { gain: 1, vary: 0.03 }, land: { gain: 0.9, vary: 0.04 }, coins: { gain: 1.15, vary: 0.04 },
+};
+const sampleUrl = (name: Sfx) => `${import.meta.env.BASE_URL}sfx/${name}.mp3`;
+/** Комбо идёт по мажорной гамме (полутоны над базовой нотой), а не подряд по полутонам: звучит как мелодия. */
+const COMBO_SCALE = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16];
+const RETRY_MS = 20000;
+/** Семпл, который не скачался за это время, считается упавшим (и будет перезапрошен): иначе «вечный» запрос навсегда оставался бы в ожидании. */
+export const FETCH_TIMEOUT_MS = 8000;
+
+function decode(ctx: AudioContext, data: ArrayBuffer): Promise<AudioBuffer> {
+  // старый Safari знает только вариант с колбэками
+  return new Promise((res, rej) => { const p = ctx.decodeAudioData(data, res, rej); if (p && typeof p.catch === 'function') p.then(res, rej); });
+}
+
 class AudioEngine {
   settings = loadSettings();
   private ctx: AudioContext | null = null;
@@ -34,10 +62,19 @@ class AudioEngine {
   private mood: Mood = 'silent';
   private seq: Sequencer | null = null;
   private voiceEl: HTMLAudioElement | null = null;
+  private samples = new Map<Sfx, AudioBuffer>();
+  private pending = new Set<Sfx>();
+  private failed = new Set<Sfx>();
+  private lastRetry = 0;
+  private stats = { sample: 0, synth: 0 };
 
   /** Вызывать из обработчика нажатия: браузер разрешает звук только после действия пользователя. */
   unlock() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (this.failed.size && Date.now() - this.lastRetry > RETRY_MS) this.loadSamples(); // сеть могла вернуться
+      return;
+    }
     const Ctx = window.AudioContext || (window as any).webkitAudioContext;
     if (!Ctx) return;
     this.ctx = new Ctx();
@@ -53,6 +90,34 @@ class AudioEngine {
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.applyVolumes();
     if (this.mood !== 'silent') this.setMood(this.mood, true);
+    this.loadSamples();
+  }
+
+  /** Скачивает и декодирует ещё не загруженные семплы. Ошибка одного не мешает остальным (для него работает синтез). */
+  private loadSamples() {
+    const ctx = this.ctx; if (!ctx || typeof fetch !== 'function') return;
+    this.lastRetry = Date.now();
+    for (const name of Object.keys(SAMPLES) as Sfx[]) {
+      if (this.samples.has(name) || this.pending.has(name)) continue;
+      this.pending.add(name); this.failed.delete(name);
+      const ac = typeof AbortController === 'function' ? new AbortController() : null;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      // гонка с таймером: сработает и там, где fetch игнорирует abort
+      const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => { ac?.abort(); rej(new Error('timeout')); }, FETCH_TIMEOUT_MS); });
+      const load = fetch(sampleUrl(name), ac ? { signal: ac.signal } : undefined)
+        .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.arrayBuffer(); })
+        .then(b => decode(ctx, b));
+      load.catch(() => {});   // проигравшая гонку ошибка не должна оставаться необработанной
+      Promise.race([load, timeout])
+        .then(buf => { this.samples.set(name, buf); })
+        .catch(() => { this.failed.add(name); })
+        .finally(() => { clearTimeout(timer); this.pending.delete(name); });
+    }
+  }
+
+  /** Состояние семплов: для отладки и тестов. */
+  sfxStatus() {
+    return { state: this.ctx?.state ?? 'none', loaded: [...this.samples.keys()], failed: [...this.failed], pending: [...this.pending], ...this.stats };
   }
 
   save(patch: Partial<AudioSettings>) {
@@ -95,16 +160,45 @@ class AudioEngine {
 
   /** Реплика Бита (mp3 из scripts/voice). Музыка приглушается на время речи. */
   say(url: string) {
-    if (this.voiceEl) this.voiceEl.pause();
+    if (this.voiceEl) { this.voiceEl.pause(); this.voiceDone(); }
     const el = new Audio(url);
     el.volume = this.settings.voice * this.settings.master;
     this.voiceEl = el;
-    el.onended = el.onpause = () => this.applyVolumes();
-    el.play().then(() => this.applyVolumes()).catch(() => {});
+    el.onpause = () => this.applyVolumes();
+    el.onended = () => { this.applyVolumes(); this.voiceDone(); };
+    el.onerror = () => this.voiceDone();
+    el.play().then(() => this.applyVolumes()).catch(() => this.voiceDone());
+  }
+  /** Бит сейчас говорит вслух (звук включён). Нужно, чтобы кнопка «дальше» ждала конца реплики. */
+  voiceBusy() { const e = this.voiceEl; return !!e && !e.paused && !e.ended && this.settings.voice * this.settings.master > 0.01; }
+  #voiceWaiters: (() => void)[] = [];
+  /** Один раз вызвать, когда реплика закончится (или сразу, если Бит молчит). */
+  whenVoiceDone(cb: () => void) { if (this.voiceBusy()) this.#voiceWaiters.push(cb); else cb(); }
+  private voiceDone() { const w = this.#voiceWaiters; this.#voiceWaiters = []; w.forEach(f => f()); }
+
+  /** rate — множитель высоты/скорости (для семплов); combo — номер удара в серии, поднимает высоту по гамме. */
+  play(name: Sfx, opts: { combo?: number; rate?: number } = {}) {
+    const c = this.ctx; if (!c) return;
+    const buf = this.samples.get(name), def = SAMPLES[name];
+    if (buf && def) {
+      let rate = opts.rate ?? 1;
+      if (name === 'combo') rate *= Math.pow(2, COMBO_SCALE[Math.min(Math.max((opts.combo ?? 1) - 1, 0), COMBO_SCALE.length - 1)] / 12);
+      if (def.vary) rate *= 1 + (Math.random() * 2 - 1) * def.vary;
+      const src = c.createBufferSource(), g = c.createGain();
+      src.buffer = buf; src.playbackRate.value = rate; g.gain.value = def.gain;
+      src.connect(g).connect(this.sfxGain);
+      src.onended = () => { src.disconnect(); g.disconnect(); };
+      src.start(c.currentTime + 0.005);
+      this.stats.sample++;
+      return;
+    }
+    this.stats.synth++;
+    this.synth(name, opts);
   }
 
-  play(name: Sfx, opts: { combo?: number } = {}) {
-    const c = this.ctx; if (!c) return;
+  /** Запасной вариант: звук синтезируется кодом (пока семпл не загружен или не декодировался). */
+  private synth(name: Sfx, opts: { combo?: number }) {
+    const c = this.ctx!;
     const t = c.currentTime + 0.005;
     const out = this.sfxGain;
     switch (name) {
@@ -130,6 +224,13 @@ class AudioEngine {
         noise(c, out, this.noiseBuf, t, 1.2, 500, 0.3, 3000); return sweep(c, out, t, 110, 440, 1.2, 'sine', 0.2);
       case 'hint': return [988, 1319].forEach((f, i) => bell(c, out, t + i * 0.12, f, 0.6, 0.1));
       case 'energy': return sweep(c, out, t, 300, 1200, 0.4, 'triangle', 0.18);
+      case 'slash': noise(c, out, this.noiseBuf, t, 0.16, 2400, 0.35, 700); return sweep(c, out, t, 900, 260, 0.14, 'triangle', 0.08);
+      case 'impact': noise(c, out, this.noiseBuf, t, 0.14, 1100, 0.55); sweep(c, out, t, 180, 45, 0.2, 'sine', 0.35); return tone(c, out, t, 1568, 0.05, 'square', 0.07);
+      case 'block': bell(c, out, t, 1480, 0.35, 0.16); bell(c, out, t + 0.02, 2210, 0.25, 0.1); return noise(c, out, this.noiseBuf, t, 0.06, 3500, 0.3);
+      case 'growl': return sweep(c, out, t, 190, 85, 0.32, 'sawtooth', 0.16);
+      case 'boom': noise(c, out, this.noiseBuf, t, 0.5, 260, 0.5, 90); return sweep(c, out, t, 90, 32, 0.55, 'sine', 0.4);
+      case 'land': noise(c, out, this.noiseBuf, t, 0.09, 500, 0.3); return sweep(c, out, t, 130, 50, 0.12, 'sine', 0.3);
+      case 'coins': return [2093, 2637, 3136, 2637, 3520].forEach((f, i) => bell(c, out, t + i * 0.05, f, 0.35, 0.08));
       case 'mission': return [392, 523, 659, 784].forEach((f, i) => tone(c, out, t + i * 0.1, f, 0.18, 'triangle', 0.18));
     }
   }
@@ -213,3 +314,4 @@ class Sequencer {
 }
 
 export const audio = new AudioEngine();
+if (import.meta.env.DEV && typeof window !== 'undefined') (window as any).__audio = audio; // только dev: проверка декодирования семплов

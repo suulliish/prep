@@ -1,11 +1,12 @@
 <script lang="ts">
+  import MathLine from './MathLine.svelte';
   // Глитч — злодей: одноглазый пиксельный вирус с «рваной» речью.
   let { text, beaten = false }: { text: string; beaten?: boolean } = $props();
 </script>
 
 <div class="gs" class:beaten>
   <div class="face" aria-hidden="true"><i class="eye"><b></b></i><i class="shard a"></i><i class="shard b"></i></div>
-  <p class="bubble">{beaten ? 'Ррр… таптың! Келесіде ұстап аламын!' : text}</p>
+  <p class="bubble">{#if beaten}Ррр… таптың! Келесіде ұстап аламын!{:else}<MathLine {text} inherit />{/if}</p>
 </div>
 
 <style>

@@ -110,7 +110,7 @@
 {/if}
 
 <style>
-  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 5px; border-radius: 16px; background: var(--deep); border: 3px solid var(--outline); }
+  .seg { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; padding: 5px; border-radius: 16px; background: var(--deep); border: 3px solid var(--outline); }
   .seg button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; font: 800 15px var(--disp); color: var(--dim); background: none; border: 0; border-radius: 11px; cursor: pointer; }
   .seg button.on { color: var(--ink); background: var(--panel); box-shadow: inset 0 -3px 0 var(--panel-2), 0 0 0 2px var(--outline); }
   .cnt { min-width: 20px; height: 20px; padding: 0 5px; display: grid; place-items: center; font: 900 12px var(--disp); color: var(--outline); background: var(--gold); border-radius: 10px; border: 2px solid var(--outline); }
@@ -134,7 +134,7 @@
   .cats b { font-size: 13px; color: var(--dim); }
   .grow { flex: 1; }
   .scrim { position: fixed; inset: 0; z-index: var(--z-modal); background: #05071399; }
-  .sheet { position: fixed; z-index: calc(var(--z-modal) + 1); left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); transform: translateX(-50%); width: min(460px, calc(100% - 20px)); display: grid; gap: 8px; animation: pop-in .25s var(--ease-out) both; }
+  .sheet { position: fixed; z-index: calc(var(--z-modal) + 1); left: 0; right: 0; margin-inline: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); width: min(460px, calc(100% - 20px));   /* без transform: анимация pop-in его затирала и карточка уезжала вправо */ display: grid; gap: 8px; animation: pop-in .25s var(--ease-out) both; }
   .rt { display: flex; align-items: center; gap: 8px; font: 900 19px var(--disp); }
   .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
   .btn.dark { --t: var(--paper-ink); --c: var(--paper-2); --e: var(--paper-line); text-shadow: none; }

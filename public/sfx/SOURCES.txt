@@ -1,0 +1,23 @@
+Звуки из паков Kenney (CC0 1.0), склеены/подрезаны/нормированы: mono, 44,1 кГц, mp3 96 кбит/с. Лицензии: docs/CREDITS.md.
+Файл = имя звука в src/lib/audio.ts. Слои (пак/файл; сдвиг высоты в полутонах; задержка):
+click    ui-audio/click2
+correct  interface/confirmation_001
+wrong    interface/bong_001 + он же -3 полутона, +0.11 с (мягкий двухнотный «ой»)
+hit      impact/impactPunch_medium_001 + impactGeneric_light_000
+crit     impact/impactPunch_heavy_000 + impactMetal_heavy_000 + interface/confirmation_003 (-12, +0.09 с)
+combo    interface/pluck_001 (движок поднимает высоту по мажорной гамме)
+xp       interface/pluck_002
+chest    rpg/metalLatch + creak3 (+0.16) + interface/confirmation_004 (+0.5) + rpg/handleCoins (+0.55)
+crystal  interface/confirmation_002 + confirmation_003 (+0.3) + impact/impactBell_heavy_001 (-1)
+levelup  interface/confirmation_004 (x2, +0.32) + impact/impactBell_heavy_000 (-2) + rpg/handleCoins (+0.45)
+portal   rpg/cloth1 (-3) + digital/phaseJump1 (-5) + phaseJump2 (-2, +0.35)
+hint     interface/question_002
+energy   digital/powerUp2
+mission  music-jingles/Steel jingles/STEEL10
+slash    rpg/knifeSlice
+impact   impact/impactPunch_heavy_001 + impactMetal_medium_000
+block    impact/impactPlate_medium_000 + impactMetal_heavy_000
+growl    digital/lowRandom + rpg/creak1 (-4)
+boom     impact/impactSoft_heavy_000 (-7) + impactPlate_heavy_000 (-8)
+land     impact/impactSoft_heavy_000 (-2)
+coins    rpg/handleCoins
