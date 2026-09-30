@@ -265,7 +265,7 @@
       }
       if (phase === 'answer' && /^[1-5]$/.test(e.key)) pick(+e.key - 1);
       else if (phase === 'answer' && e.key === 'Enter' && picked !== null) confirm('sure');
-      else if (phase === 'retry' && e.key === 'Enter') retry();
+      else if (phase === 'retry' && e.key === 'Enter') { if (!busy) { if (gate.on) nudge(); else retry(); } }   // как кнопка: пока «Оқы…» заряжается — не пропускать
       else if (phase === 'feedback' && e.key === 'Enter') next();
     };
     addEventListener('keydown', onKey);
