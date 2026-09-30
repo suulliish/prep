@@ -17,7 +17,7 @@
     automatic: { kz: 'Алтын', c: 'var(--gold)' }, mastered: { kz: 'Кристалл', c: 'var(--crystal)' },
     learned: { kz: 'Үйренді', c: 'var(--code)' }, learning: { kz: 'Зарядталуда', c: '#8c9be0' },
   };
-  let tab = $state<'cards' | 'repair'>('cards');
+  let tab = $state<'cards' | 'repair'>(game.screen.name === 'album' && game.screen.tab ? game.screen.tab : 'cards');
   const st = (id: string) => game.save.skills[id]?.status ?? 'locked';
   const mine = $derived(skillDefs.filter(d => TIER[st(d.id)]).sort((a, b) => ['automatic', 'mastered', 'learned', 'learning'].indexOf(st(a.id)) - ['automatic', 'mastered', 'learned', 'learning'].indexOf(st(b.id))));
   const nextCards = $derived(skillDefs.filter(d => st(d.id) === 'available' && d.templates.length && (LESSONS as Record<string, any[]>)[d.id]).slice(0, 4));
@@ -37,7 +37,7 @@
 <Screen scene="none" title="Альбом" sub={`${mine.length} карта жиналды`} back={() => go({ name: 'hub' })}>
   <div class="seg" role="tablist">
     <button role="tab" class:on={tab === 'cards'} aria-selected={tab === 'cards'} onclick={() => (tab = 'cards')}><Icon name="cards" fill="var(--crystal)" size={20} />Карталар</button>
-    <button role="tab" class:on={tab === 'repair'} aria-selected={tab === 'repair'} onclick={() => (tab = 'repair')}><Icon name="bolt" fill="var(--gold)" size={20} />Шеберхана{#if broken.length}<b class="cnt">{broken.length}</b>{/if}</button>
+    <button role="tab" class:on={tab === 'repair'} aria-selected={tab === 'repair'} onclick={() => (tab = 'repair')}><Icon name="bolt" fill="var(--gold)" size={20} />Жөндеу{#if broken.length}<b class="cnt">{broken.length}</b>{/if}</button>
   </div>
 
   {#if tab === 'cards'}
@@ -82,7 +82,7 @@
     <div class="paper">Әр қате — сынған бөлшек. Жөндеу үшін дәл сондай есепті өзің шығар. Жөнделгені: <b>{fixed}</b>.</div>
     {#if broken.length}
       <ul class="cats">{#each broken.slice(-12) as r}<li style="--cc:var(--miss)"><i class="dot"></i><span>{skillDefs.find(d => d.id === r.skill)?.title.kz}</span></li>{/each}</ul>
-    {:else}<div class="paper empty">Шеберхана бос — сынған бөлшек жоқ!</div>{/if}
+    {:else}<div class="paper empty">Кеме бүтін: сынған бөлшек жоқ!</div>{/if}
   {/if}
 
   {#snippet footer()}

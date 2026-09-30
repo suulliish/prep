@@ -94,11 +94,13 @@ export function choosePet(id: string | null): boolean {
 }
 
 // ---------- 3D-корабль: методы появятся у World (другой агент); до тех пор вызовы молча пропускаются ----------
-type DecorWorld = { setShipDecor?: (owned: string[], pet: string | null) => void; showDecor?: (id: string) => Promise<void> };
+type DecorWorld = { setShipDecor?: (owned: string[], pet: string | null) => void; showDecor?: (id: string) => Promise<void>; setShipDamage?: (n: number) => void };
 /** Отдать миру, что стоит на палубе и кто ходит рядом с героем. */
 export function syncDecor() {
   const w = W.world as unknown as DecorWorld | null;
   if (typeof w?.setShipDecor === 'function') w.setShipDecor(decorIds(game.save), activePet(game.save));
+  // поломки на палубе — неисправленные ошибки из ремонта (Альбом → Жөндеу); починил в ремонте — при возврате в хаб они чинятся на глазах
+  if (typeof w?.setShipDamage === 'function') w.setShipDamage(game.save.repairShop.filter(r => !r.fixed).length);
 }
 /** Праздник: камера показывает новый предмет на месте (Promise завершается, когда показ кончился). */
 export async function showDecor(id: string): Promise<void> {

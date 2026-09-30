@@ -2,7 +2,8 @@
   import { onMount } from 'svelte';
   import { createWorld } from './three/world';
   import { W } from './lib/world.svelte';
-  import { game, protectStorage } from './lib/store.svelte';
+  import { game, go, protectStorage } from './lib/store.svelte';
+  import { audio } from './lib/audio';
   import { applyLook } from './lib/look';
   import { syncDecor } from './lib/ship.svelte';
   import MapScreen from './screens/Map.svelte';
@@ -27,6 +28,8 @@
     W.world = createWorld(canvas, { reduceMotion: matchMedia('(prefers-reduced-motion: reduce)').matches });
     applyLook();
     syncDecor();   // украшения и питомец из мастерской: экран (Hub) монтируется раньше мира, поэтому при холодном старте ставим их здесь
+    // касание поломки на палубе (неисправленная ошибка) — сразу в ремонт; касания работают только в главном меню
+    W.world.onShipDamageTap(() => { if (game.screen.name === 'hub') { audio.play('click'); go({ name: 'album', tab: 'repair' }); } });
     // облачная синхронизация — отдельным куском, чтобы не тормозить первую загрузку
     import('./lib/cloud.svelte').then(m => m.startCloud()).catch(() => {});
     return () => W.world?.dispose();

@@ -55,6 +55,10 @@ export interface World {
   openPortal(): void;
   /** Мастерская: купленные украшения встают на палубу, питомец (id 'pet_…' или null) ходит за героем. Можно звать до загрузки палубы. Каталог: content/ship_items.mjs. */
   setShipDecor(owned: string[], pet: string | null): void;
+  /** Поломки на палубе по числу неисправленных ошибок (hub3d → damage3d). */
+  setShipDamage(n: number): void;
+  /** Что делать, когда ребёнок коснулся поломки (null — ничего). */
+  onShipDamageTap(fn: (() => void) | null): void;
   /** Праздник нового предмета (украшение или питомец): камера летит к нему, он появляется со вспышкой, камера возвращается. Работает в режимах hub и hero. */
   showDecor(id: string): Promise<void>;
   /** Мир: цвета неба [верх, середина, низ, сияние] (RGB 0..1) и тумана — плавный переход. */
@@ -144,7 +148,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
   scene.add(sun);
 
   // ---------- Корабль-хаб ---------- (src/three/hub3d.ts): палуба, портал, герой, частицы; Бит — bit3d.ts
-  const hub = createHub(scene, { quality, km, bitMood: m => bit.setMood(m), onCutscene: () => { userTheta = userPhi = 0; } });
+  let damageTap: (() => void) | null = null;
+  const hub = createHub(scene, { quality, km, bitMood: m => bit.setMood(m), onCutscene: () => { userTheta = userPhi = 0; }, onDamageTap: () => damageTap?.() });
   const bit = createBit(scene);
 
   // ---------- Острова и облака ---------- (src/three/skyscape.ts)
@@ -204,7 +209,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     const side = isSide(w, h);
     if (!devLock) CAM.hub.radius = narrow ? 26 : side ? 21 : w / h < 1.5 ? 18 : 22;   // почти квадратное окно (телефон лёжа, панель справа) — ближе
     CAM.portal.radius = narrow ? 13 : 10; CAM.battle.radius = narrow ? 23 : side ? 14 : 13;
-    CAM.hero.radius = narrow ? 10.5 : 7.5;                               // витрина: герой целиком, со шлемом и оружием (скины)
+    // витрина: герой целиком, со шлемом и оружием (скины); на телефоне окно сцены низкое (треть экрана) — камера дальше, иначе ноги уходят под панель
+    CAM.hero.radius = narrow ? 14 : 7.5;
     applyOffset();
   }
   // Раскладка экрана (та же, что в app.css): на широком экране панель справа — сцена сдвигается влево;
@@ -244,7 +250,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     const C = mode === 'battle' ? CAM.battle : hub.viewFor(mode);
     idle += dt;
     // сам камера не облетает корабль по кругу (сзади паруса закрывают палубу), а покачивается у лучшего ракурса
-    if (!dragging && idle > 2.5 && mode === 'hub' && km === 1 && !devLock) userTheta += (Math.sin(t * 0.08) * 0.22 - userTheta) * Math.min(1, dt * 0.3);
+    // в катсцене (портал) не покачиваемся: угол камеры выбран так, чтобы мачта не закрывала вихрь
+    if (!dragging && idle > 2.5 && mode === 'hub' && !hub.inCutscene && km === 1 && !devLock) userTheta += (Math.sin(t * 0.08) * 0.22 - userTheta) * Math.min(1, dt * 0.3);
     cam.target.lerp(C.target, 0.05); cam.radius += (C.radius - cam.radius) * 0.05; cam.phi += (C.phi + userPhi - cam.phi) * 0.08; cam.theta += (C.theta + userTheta - cam.theta) * 0.08;
     const sh = shakeT > 0 ? (Math.random() - 0.5) * shakeT * 0.6 : 0; shakeT = Math.max(0, shakeT - dt);
     camera.position.set(cam.target.x + cam.radius * Math.sin(cam.phi) * Math.cos(cam.theta) + sh, cam.target.y + cam.radius * Math.cos(cam.phi) + sh, cam.target.z + cam.radius * Math.sin(cam.phi) * Math.sin(cam.theta));
@@ -303,6 +310,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       emoteAt = now; if (result) resultAt = now;
     },
     setShipDecor(owned, pet) { hub.setShipDecor(owned, pet); },
+    setShipDamage(n) { hub.setDamage(n); },
+    onShipDamageTap(fn) { damageTap = fn; },
     showDecor(id) { return hub.showDecor(id); },
     celebrate(color = 0x3ff0ff) { if (mode === 'battle') { arena.celebrate(); return; } hub.celebrate(color); },
     openPortal() { hub.openPortal(); },

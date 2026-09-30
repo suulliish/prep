@@ -54,7 +54,7 @@
   const BOSS_HP = 7;
   const skills = block === 'boss' ? bossSkills() : block === 'extra' ? extraSkills() : block === 'repair' ? [...new Set(broken.map(r => r.skill))].slice(0, 5) : pb?.skills ?? [];
   const total = block === 'boss' ? 10 : block === 'extra' ? 10 : block === 'repair' ? Math.min(8, broken.length + 1) : pb?.items ?? 8;
-  const TITLE: Record<Block, string> = { warmup: 'Жылыну', new: 'Жаңа миссия · жаттығу', mixed: 'Аралас шайқас', extra: 'Қосымша тапсырма', boss: `Бас жау: ${currentWorld().kz}`, repair: 'Шеберхана: жөндеу' };
+  const TITLE: Record<Block, string> = { warmup: 'Жылыну', new: 'Жаңа миссия · жаттығу', mixed: 'Аралас шайқас', extra: 'Қосымша тапсырма', boss: `Бас жау: ${currentWorld().kz}`, repair: 'Кемені жөндеу' };
 
   let idx = $state(0);
   let item = $state<Item | null>(null);
