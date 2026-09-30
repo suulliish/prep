@@ -32,14 +32,15 @@ export const enemyCoins = (isWorldBoss: boolean) => (isWorldBoss ? COINS.boss : 
 /** Монеты за 3 звезды уровня (босса не считаем: у него своя награда). */
 export const starsCoins = (stars: number) => (stars >= 3 ? COINS.stars3 : 0);
 
-export const coinsOf = (s: Save) => Math.max(0, Math.floor(s.coins ?? 0));
+/** Монеты игрока: целое не меньше нуля. Битое сохранение (строка, NaN, Infinity, минус) даёт 0 или ближайшее допустимое, а не NaN на экране. */
+export const coinsOf = (s: Save) => { const n = Number(s.coins); return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0; };
 /** Начислить монеты в сохранение и в запись дня (для итога дня). Возвращает новый баланс. */
 export function addCoins(s: Save, n: number, day: string): number {
   const add = Math.max(0, Math.floor(n));
   if (!add) return coinsOf(s);
   s.coins = coinsOf(s) + add;
   const d = (s.days[day] ??= blankDay(day));
-  d.coins = (d.coins ?? 0) + add;
+  d.coins = coinsOf({ coins: d.coins } as Save) + add;
   return s.coins;
 }
 

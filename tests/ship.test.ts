@@ -50,6 +50,19 @@ describe('монеты: заработок', () => {
     expect(addCoins(s, 2.9, DAY)).toBe(14);   // дробное округляется вниз
   });
   it('старое сохранение без поля coins считается нулём', () => expect(coinsOf(blank())).toBe(0));
+  it('битые монеты в сохранении (строка, NaN, минус, Infinity) читаются как 0, дробные округляются вниз', () => {
+    for (const bad of ['abc', NaN, Infinity, -Infinity, -5, null, undefined, {}, []]) expect(coinsOf(blank({ coins: bad as any })), String(bad)).toBe(0);
+    expect(coinsOf(blank({ coins: 12.9 }))).toBe(12);
+    expect(coinsOf(blank({ coins: '40' as any }))).toBe(40);
+  });
+  it('с битыми монетами баланс не превращается в NaN: начисление считает с нуля, покупка отказывает «не хватает»', () => {
+    const s = blank({ coins: 'abc' as any, days: { [DAY]: { day: DAY, coins: 'xyz' as any } as any } });
+    expect(buyItem(s, 't_deck')).toEqual({ ok: false, reason: 'poor', need: 30 });
+    expect(addCoins(s, 5, DAY)).toBe(5);
+    expect(s.coins).toBe(5);
+    expect(s.days[DAY].coins).toBe(5);
+    expect(Number.isFinite(coinsOf(s))).toBe(true);
+  });
   it('splitCoins делит монеты на доли без потерь', () => {
     for (const [n, k] of [[2, 2], [5, 5], [25, 6], [7, 3], [1, 1]]) {
       const p = splitCoins(n, k);

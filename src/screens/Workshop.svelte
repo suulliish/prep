@@ -15,7 +15,10 @@
 
   let tab = $state<Slot>('deck');
   let ask = $state<ShipItem | null>(null);   // предмет, который хотят купить (шторка подтверждения)
-  let busy = false;
+  // Праздник покупки (камера показывает предмет) и защита от «хвоста» двойного касания: пока идёт праздник и 450 мс после закрытия шторки,
+  // «Кемеге» и «назад» не срабатывают, а невидимый щит ловит касание, которое пришлось бы на кнопку под шторкой.
+  let showing = $state(0), shield = $state(false);
+  const locked = $derived(showing > 0 || shield);
   const coins = $derived(coinsOf(game.save));
   const list = $derived(ITEMS.filter(i => i.slot === tab).sort((a, b) => a.price - b.price));
   const pet = $derived(activePet(game.save));
@@ -38,23 +41,29 @@
     } else void showDecor(it.id);   // уже стоит на палубе: камера снова показывает его
   }
 
-  async function buyNow() {
+  /** Показ нового предмета: не дольше 12 с (питомец может долго грузиться), кнопки выхода закрыты, пока он идёт. Новая покупка не ждёт конца показа: мир сам переключает камеру на новый предмет. */
+  async function celebrate(id: string) {
+    showing++;
+    try { await Promise.race([showDecor(id), new Promise(r => setTimeout(r, 12000))]); } finally { showing--; }
+  }
+
+  function buyNow() {
     const it = ask;
-    if (!it || busy) return;
-    busy = true;
+    if (!it) return;                          // шторка уже закрыта: повторное касание «Алу» ничего не делает
     const r = purchase(it.id);
     ask = null;
-    if (!r.ok) { busy = false; return; }
+    if (!r.ok) return;
+    shield = true; setTimeout(() => (shield = false), 450);
     audio.play('coins'); audio.play('levelup');
     const c = sceneCenter(0.3); sparksAt(c.x, c.y, ['#ffcb2e', '#35e6ff', '#ff4fb8', '#ffffff'], 60, 9);
     toast(it.slot === 'pet' ? `${it.kz} кемеге келді!` : `${it.kz} палубада!`);
     W.world?.bitMood('happy');
-    await showDecor(it.id);
-    busy = false;
+    void celebrate(it.id);
   }
+  const leave = () => { if (!locked) go({ name: 'hub' }); };
 </script>
 
-<Screen scene="short" title="Шеберхана" sub={`Кеме шеберханасы · ${ownedN}/${ITEMS.length}`} back={() => go({ name: 'hub' })}>
+<Screen scene="short" title="Шеберхана" sub={`Кеме шеберханасы · ${ownedN}/${ITEMS.length}`} back={leave}>
   {#snippet right()}<CoinChip value={coins} />{/snippet}
 
   <div class="seg" role="tablist" aria-label="Орын">
@@ -93,10 +102,11 @@
   <p class="earn"><Icon name="coin" fill="var(--gold)" size={16} />Дұрыс жауап +{COINS.correct} · жау +{COINS.enemy} · бас жау +{COINS.boss}</p>
 
   {#snippet footer()}
-    <button class="btn big grow" onclick={() => go({ name: 'hub' })}>Кемеге<Icon name="chevron" fill="var(--outline)" size={20} /></button>
+    <button class="btn big grow" disabled={locked} onclick={leave}>Кемеге<Icon name="chevron" fill="var(--outline)" size={20} /></button>
   {/snippet}
 </Screen>
 
+{#if shield}<div class="shield" role="presentation"></div>{/if}
 {#if ask}
   {@const it = ask}
   <div class="scrim pe" role="presentation" onclick={() => (ask = null)}></div>
@@ -141,6 +151,7 @@
   .earn { margin: 0; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--dim); font: 800 13px var(--txt); text-align: center; }
   .grow { flex: 1; }
 
+  .shield { position: fixed; inset: 0; z-index: calc(var(--z-modal) + 2); }
   .scrim { position: fixed; inset: 0; z-index: var(--z-modal); background: #05071399; animation: fade .2s both; }
   .sheet { position: fixed; z-index: calc(var(--z-modal) + 1); left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); transform: translateX(-50%); width: min(460px, calc(100% - 20px)); display: grid; gap: 10px; animation: sheet-up .25s var(--ease-out) both; }
   .head { display: flex; align-items: center; gap: 12px; }

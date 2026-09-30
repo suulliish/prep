@@ -16,7 +16,9 @@ export interface Pet {
   /** Сменить питомца (null — убрать). Возвращает, когда модель загружена. */
   set(id: string | null): Promise<void>;
   readonly id: string | null;
-  /** Место питомца в системе корабля (для камеры) или null. */
+  /** Дождаться, пока модель нынешнего питомца встанет на палубу (до ms мс, по умолчанию 8 с): true — питомец есть и стоит рядом с героем, false — не дождались или его сменили. */
+  ready(ms?: number): Promise<boolean>;
+  /** Место питомца в системе корабля (для камеры) или null, пока модель не загружена. */
   pos(): THREE.Vector3 | null;
   /** Прыжок радости с танцем (герой машет или радуется). */
   hop(): void;
@@ -35,7 +37,7 @@ export function createPet(ship: THREE.Object3D, deck: () => Deck | null, deps: P
   const g = new THREE.Group(); g.visible = false; ship.add(g);
   let id: string | null = null, actor: Actor | null = null, token = 0;
   let path: [number, number][] = [], pi = 0, repathT = 0, goal: [number, number] = [0, 0];
-  let vis = 0, hopT = 0, moving = false, running = false, popT = -1, baseScale = 1;
+  let vis = 0, hopT = 0, moving = false, running = false, popT = -1, baseScale = 1, loading: Promise<void> = Promise.resolve();
   const near = 1.2, far = 2.0;                                                  // держится на расстоянии от героя: ближе near не подходит, дальше far догоняет
 
   /** Точка рядом с героем, куда можно встать и дойти от героя: на кольце вокруг него, ближе к камере главного меню (с кормы и правого борта), чтобы питомца было видно, а не за героем. */
@@ -52,21 +54,28 @@ export function createPet(ship: THREE.Object3D, deck: () => Deck | null, deps: P
     return d.nearest(hx, hz);
   }
   function place(x: number, z: number) { g.position.set(x, deck()?.height(x, z) ?? deps.hero.position.y, z); }
+  async function load(next: string | null) {
+    const my = ++token;
+    if (next === id && actor) return;
+    if (actor) { g.remove(actor.g); actor.dispose(); actor = null; }
+    id = next; if (!next) { g.visible = false; return; }
+    const it = ITEMS.find(x => x.id === next && x.slot === 'pet'); if (!it) { id = null; return; }
+    const m = await loadDecorModel(it).catch(e => { console.warn('питомец не загрузился', next, e); return null; }); if (my !== token || !m) return;
+    actor = m.actor!; baseScale = actor.g.scale.x; g.add(actor.g); moving = running = false; actor.loop('idle', 0); path = []; vis = 0;
+    const s = spotNear(); if (s) place(s[0], s[1]); else g.position.copy(deps.hero.position);
+    g.rotation.y = deps.hero.rotation.y;
+  }
 
   return {
     get id() { return id; },
-    async set(next) {
-      const my = ++token;
-      if (next === id && actor) return;
-      if (actor) { g.remove(actor.g); actor.dispose(); actor = null; }
-      id = next; if (!next) { g.visible = false; return; }
-      const it = ITEMS.find(x => x.id === next && x.slot === 'pet'); if (!it) { id = null; return; }
-      const m = await loadDecorModel(it); if (my !== token) return;
-      actor = m.actor!; baseScale = actor.g.scale.x; g.add(actor.g); moving = running = false; actor.loop('idle', 0); path = []; vis = 0;
-      const s = spotNear(); if (s) place(s[0], s[1]); else g.position.copy(deps.hero.position);
-      g.rotation.y = deps.hero.rotation.y;
+    set(next) { return (loading = load(next)); },
+    async ready(ms = 8000) {
+      const want = id, until = new Promise<void>(r => setTimeout(r, ms));
+      if (!want) return false;
+      await Promise.race([loading, until]);
+      return id === want && !!actor;                                           // за это время питомца могли сменить или убрать
     },
-    pos() { return actor && g.visible ? g.position.clone() : null; },
+    pos() { return actor ? g.position.clone() : null; },
     hop() { if (!actor || vis < 0.5 || hopT > 0) return; hopT = 0.7; actor.play(actor.has('dance') && Math.random() < 0.5 ? 'dance' : 'gesture-positive', { speed: 1.4 }); },
     pop() { popT = 0; return new Promise<void>(r => setTimeout(r, 800)); },
     snap() { const s = spotNear(); if (s) place(s[0], s[1]); path = []; },

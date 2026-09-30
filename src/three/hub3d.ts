@@ -11,7 +11,7 @@ import { Kit } from './assets';
 import { DEFAULT_LOOK, type HeroLook } from './looks';
 import type { CamMode } from './world';
 import type { BitMood } from './bit3d';
-import { createDecor, planSpots, sampleSurface, findMasts, ITEMS, type Decor } from './decor3d';
+import { createDecor, planSpots, planCircles, connGuard, sampleSurface, findMasts, ITEMS, type Decor, type Guard, type Circle } from './decor3d';
 import { createPet, type Pet } from './pet3d';
 
 /** Поза орбитальной камеры: цель, расстояние, углы (см. кадр в world.ts). */
@@ -74,7 +74,7 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
   // ---------- Корабль ----------
   // готовый корабль Kenney (src/three/deck3d.ts): по его палубе ходит герой; лётная оснастка (двигатели, кристалл под килем) — airship.ts
   const ship = new THREE.Group(); scene.add(ship);
-  let deck: Deck | null = null, air: Airship | null = null;
+  let deck: Deck | null = null, air: Airship | null = null, guard: Guard | null = null, taken: Circle[] = [];
 
   // ---------- Портал ---------- (src/three/portal.ts) на носу; лицом к корме и правому борту — к обычному ракурсу камеры,
   // чтобы с главного экрана был виден вихрь, а не ребро кольца. Герой подходит к нему спереди.
@@ -162,17 +162,27 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
       if (mode === 'hub' || mode === 'hero') { const h0 = home[Math.floor(home.length / 2)]; hero.position.set(h0[0], d.height(h0[0], h0[1]) ?? 0, h0[1]); hero.rotation.y = mode === 'hero' ? PORTAL_FACE + 0.2 : PORTAL_FACE - 0.25; }   // «Кейіпкер» мог открыться до загрузки палубы
       // камера главного меню: между порталом и площадкой перед ним
       views.hub.target.set(px + nx * 2.6, 1.6, pz + nz * 2.6); }
-    // украшения мастерской: места считаются по палубе; площадка у портала, места героя и его дороги по кораблю остаются свободными
-    { const avoid: [number, number, number][] = [[px, pz, 1.9], [portalStand[0], portalStand[1], 1.3], ...home.map(h => [h[0], h[1], 0.75] as [number, number, number])];
-      { const way = d.path(d.stations.mid, portalStand); for (let i = 1; i < way.length; i++) { const a = way[i - 1], b = way[i], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.4)); for (let k = 0; k <= n; k++) avoid.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n, 0.6]); } }   // дорога героя от середины палубы к площадке остаётся открытой
-      decor = createDecor(ship, d, planSpots(sampleSurface(ship, d), avoid), findMasts(ship, d)); decor.set(ownedDecor); }
+    // украшения мастерской: места считаются по палубе. Площадка у портала и места героя свободны, палуба остаётся связной (connGuard): корма, середина и площадка достижимы друг от друга
+    { const avoid: [number, number, number][] = [[px, pz, 1.9], [portalStand[0], portalStand[1], 1.3]], soft = home.map(h => [h[0], h[1], 0.75] as [number, number, number]);
+      const surf = sampleSurface(ship, d), must: [number, number][] = [portalStand, ...Object.values(d.stations)], plan = planSpots(surf, avoid, d, must, soft);
+      guard = connGuard(surf, d, must); taken = planCircles(plan);            // сторож остаётся: реквизит палубы ниже тоже не должен отрезать корму и середину
+      home = home.filter(h => !taken.some(c => Math.hypot(h[0] - c[0], h[1] - c[1]) < c[2] + 0.1));   // место героя под предметом убираем из прогулок
+      // предмет мог отрезать от палубы тупик (борт за пушкой): гасим такие клетки, чтобы касание и прогулка вели только туда, куда герой дойдёт
+      const sweep = () => {
+        const at = (i: number, j: number): [number, number] => [surf.x0 + i * surf.step, surf.z0 + j * surf.step], seen = new Set<string>(), q: [number, number][] = [[Math.round((portalStand[0] - surf.x0) / surf.step), Math.round((portalStand[1] - surf.z0) / surf.step)]];
+        if (!d.walkable(...at(...q[0]))) return;
+        seen.add(q[0] + '');
+        while (q.length) { const [i, j] = q.pop()!; for (const [a, b] of [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]]) { const k = a + ',' + b; if (!seen.has(k) && d.walkable(...at(a, b))) { seen.add(k); q.push([a, b]); } } }
+        for (let i = 0; i < surf.nx; i++) for (let j = 0; j < surf.nz; j++) { const p = at(i, j); if (d.walkable(...p) && !seen.has(i + ',' + j)) d.reserve(p[0], p[1], 0); }
+      };
+      decor = createDecor(ship, d, plan, findMasts(ship, d), sweep); decor.set(ownedDecor); }
     // реквизит палубы: готовые бочки, ящики, пушка (Kenney Pirate Kit) у бортов; вокруг них не ходим
     const k = await Kit.load('ship'), e = d.edges().sort((a, b) => a[0] - b[0]);
     const far = ([x, z]: [number, number]) => Object.values(d.stations).every(s => Math.hypot(s[0] - x, s[1] - z) > 2.2) && Math.hypot(portal.position.x - x, portal.position.z - z) > 3.2 && !Object.values(decor?.spots ?? {}).flat().some(s => s && Math.hypot(s.x - x, s.z - z) < 1.5);   // площадка у портала свободна
     let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (const [name, f, h] of [['barrel', 0.1, 1.2], ['crate', 0.22, 1.1], ['cannon', 0.34, 1.3], ['barrel', 0.5, 1.2], ['crate-bottles', 0.62, 1.0], ['cannon', 0.74, 1.3], ['barrel', 0.9, 1.2]] as const) {
-      const c = e.slice(Math.floor(e.length * f)).find(far); if (!c) continue;
-      const o = k.get(name, { height: h, ground: true }); o.position.set(c[0], d.height(c[0], c[1]) ?? 0, c[1]); o.rotation.y = rnd() * 6.28; ship.add(o); d.reserve(c[0], c[1], 0.9);
+      const c = e.slice(Math.floor(e.length * f)).find(q => far(q) && (!guard || guard.test([...taken, [q[0], q[1], 0.9]]) !== null)); if (!c) continue;   // не отрезает ни корму, ни середину, ни площадку
+      const o = k.get(name, { height: h, ground: true }); o.position.set(c[0], d.height(c[0], c[1]) ?? 0, c[1]); o.rotation.y = rnd() * 6.28; ship.add(o); d.reserve(c[0], c[1], 0.9); taken.push([c[0], c[1], 0.9]);
     }
   }
   loadDeck().catch(e => console.warn('палуба не загрузилась', e));
@@ -189,9 +199,17 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     if (!p.length) { walk = null; res(); return; }
     walk = { path: p, i: 0, res, run };
   };
+  /** Перенос героя со вспышкой (короткие искры там, где был, и там, где встал): вместо полёта сквозь палубу, когда пути нет. */
+  const poofTo = (x: number, z: number) => {
+    walk = null; endActivity(true);
+    burst(worldPos(hero, 0.9), 0x3ff0ff, 16, 2.2);
+    hero.position.set(x, deck?.height(x, z) ?? 0, z);
+    burst(worldPos(hero, 0.9), 0x3ff0ff, 16, 2.2);
+  };
   const spot = (k: 'bow' | 'stern' | 'mid' | 'port' | 'star'): [number, number] => deck?.stations[k] ?? [0, 0];
   const WANDER = ['bow', 'stern', 'mid', 'port', 'star'] as const;
-  const anyHome = () => home.length ? home[Math.floor(Math.random() * home.length)] : spot('mid');
+  /** Место прогулки героя: только то, куда ещё можно встать (предмет мог занять клетку). */
+  const anyHome = () => { const ok = home.filter(h => deck?.walkable(h[0], h[1])); return ok.length ? ok[Math.floor(Math.random() * ok.length)] : spot('mid'); };
   let nextWander = 4;
   let celebrateT = 0;
   // Жизнь на палубе в главном меню: дойдя до места, герой чем-то занят — стоит лицом к зрителю, сидит, тренируется, машет.
@@ -245,7 +263,7 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     // живой корабль: герой сам ходит между станциями палубы (нос у портала, корма, середина, борта)
     if (activity && t > activity.until) { endActivity(); nextWander = t + 2.5; }
     if (mode === 'hub' && !walk && !cutscene && km === 1 && deck && t > nextWander) {
-      const st = home.length ? home[Math.floor(Math.random() * home.length)] : spot(WANDER[Math.floor(Math.random() * WANDER.length)]);   // в главном меню гуляет в кадре, у портала
+      const st = home.length ? anyHome() : spot(WANDER[Math.floor(Math.random() * WANDER.length)]);   // в главном меню гуляет в кадре, у портала
       nextWander = t + 5 + Math.random() * 5;
       goTo(st[0], st[1], () => startActivity(t));
     }
@@ -278,7 +296,12 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     const tok = ++focusTok, isPet = it.slot === 'pet';
     try {
       let at: THREE.Vector3 | null = null;
-      if (isPet) { if (pet.id !== id) await pet.set(id); if (tok !== focusTok) return; pet.snap(); at = pet.pos(); focusFollow = () => pet.pos(); }
+      if (isPet) {
+        if (pet.id !== id) void pet.set(id);
+        const ok = await pet.ready();                                    // модель могла ещё грузиться (первая покупка): ждём её, а не фокусируемся на пустоте
+        if (tok !== focusTok || !ok) return;
+        pet.snap(); at = pet.pos(); focusFollow = () => pet.pos();
+      }
       else {
         hider.set(id, tok); decor?.hide(id);
         const o = await (decor?.ready(id) ?? Promise.resolve(null)); if (tok !== focusTok || !o) return;
@@ -335,8 +358,11 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
       cancelShow(); const tok = cutToken; cutscene = focusPortal = true; portalOpen = true; deps.onCutscene();          // портал разгорается, пока герой бежит
       portalP = new Promise<void>(res => {
         // герой бежит к порталу, тот вспыхивает, героя затягивает в центр вихря с поворотом — вспышка
+        // Пути к площадке нет (украшение отрезало героя, он на корме за ним): не летим сквозь корабль, а переносимся со вспышкой
+        if (deck && !deck.path([hero.position.x, hero.position.z], portalStand).length) poofTo(portalStand[0], portalStand[1]);
         goTo(portalStand[0], portalStand[1], async () => {
           if (tok !== cutToken) return res();
+          if (deck && Math.hypot(hero.position.x - portalStand[0], hero.position.z - portalStand[1]) > 1.2) poofTo(portalStand[0], portalStand[1]);   // не дошёл (путь оборвали) — тоже вспышкой, а не рывком через палубу
           hero.rotation.y = Math.atan2(portal.position.x - hero.position.x, portal.position.z - hero.position.z);   // лицом к порталу
           portalFx.pulse(); fig.play('Cheering', 1.6);
           await anim(0.6, () => {}, tok);                                 // камера успевает подлететь, ребёнок видит героя у портала
