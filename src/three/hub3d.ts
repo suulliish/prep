@@ -271,7 +271,8 @@ export function createHub(scene: THREE.Scene, deps: HubDeps): Hub {
     let walking = false;
     if (walk) {
       const tg = walk.path[walk.i], dx = tg[0] - hero.position.x, dz = tg[1] - hero.position.z, L = Math.hypot(dx, dz);
-      if (L < 0.1) { if (++walk.i >= walk.path.length) { const r = walk.res; walk = null; hero.rotation.y = mode === 'hub' ? PORTAL_FACE - 0.25 : Math.PI / 2; r(); } }
+      // дошёл до клетки пути, а путь продолжается — он всё ещё идёт: иначе на каждой клетке кадр «стоит» и шаг начинается заново
+      if (L < 0.1) { if (++walk.i >= walk.path.length) { const r = walk.res; walk = null; hero.rotation.y = mode === 'hub' ? PORTAL_FACE - 0.25 : Math.PI / 2; r(); } else walking = true; }
       else { walking = true; const st = Math.min(L, dt * (walk.run ? 7 : 3.4)); hero.position.x += dx / L * st; hero.position.z += dz / L * st;
         hero.rotation.y += Math.atan2(Math.sin(Math.atan2(dx, dz) - hero.rotation.y), Math.cos(Math.atan2(dx, dz) - hero.rotation.y)) * Math.min(1, dt * 12); }
     }

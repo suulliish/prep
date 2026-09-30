@@ -98,7 +98,8 @@ export function createPet(ship: THREE.Object3D, deck: () => Deck | null, deps: P
       let walking = false;
       if (path.length && pi < path.length) {
         const tg = path[pi], ex = tg[0] - g.position.x, ez = tg[1] - g.position.z, L = Math.hypot(ex, ez);
-        if (L < 0.12) pi++;
+        // промежуточная клетка пути — питомец всё ещё идёт (иначе цикл ходьбы начинается заново на каждой клетке)
+        if (L < 0.12) { pi++; walking = pi < path.length; }
         else { walking = true; running = dist > 5; const st = Math.min(L, dt * (running ? 6.2 : 3.8));
           g.position.x += ex / L * st; g.position.z += ez / L * st;
           g.rotation.y += Math.atan2(Math.sin(Math.atan2(ex, ez) - g.rotation.y), Math.cos(Math.atan2(ex, ez) - g.rotation.y)) * Math.min(1, dt * 12); }
