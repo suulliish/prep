@@ -87,6 +87,16 @@ export function mentions(text: string, v: string): boolean {
   const esc = v.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
   return new RegExp(`(^|[^\\d/,])${esc}(?![\\d/]|,\\d)`).test(text);
 }
+/** Ответ v «виден» в тексте: как отдельное число, как числитель или знаменатель чужой дроби («11» в «11/4»),
+ *  а для дроби a/b — если в тексте есть и a, и b по отдельности («3 · 3 = 9, 4 · 3 = 12» раскрывает 9/12). */
+export function revealed(text: string, v: string): boolean {
+  if (!text) return false;
+  if (mentions(text, v)) return true;
+  const fr = v.match(/^(\d+)\/(\d+)$/);
+  if (fr) return mentions(text, fr[1]) && mentions(text, fr[2]);
+  if (/^\d+$/.test(v)) return new RegExp(`(^|[^\\d])${v}/\\d|\\d/${v}(?!\\d)`).test(text);
+  return false;
+}
 /** Кадр «Көр»: закрыть первое [подсвеченное] число или дробь, если это безопасно (рядом нет знака сравнения, верный вариант единственный,
  *  и подпись кадра caption сама не называет это число — иначе ответ читается прямо под пропуском). */
 export function frameGap(math: string, rnd: () => number = Math.random, caption = ''): LessonGap | null {
@@ -96,7 +106,7 @@ export function frameGap(math: string, rnd: () => number = Math.random, caption 
     const inner = m[1], at = m.index!;
     const before = math.slice(0, at), after = math.slice(at + m[0].length);
     if (CMP_OPS.test(before.trimEnd().slice(-1)) || CMP_OPS.test(after.trimStart().slice(0, 1))) continue;   // «10 > [8]»: подойдут и 7, и 9
-    if (caption && mentions(caption, inner)) continue;
+    if (caption && revealed(caption, inner)) continue;
     const fr = parseFrac(inner), isNum = NUM.test(inner);
     if (!isNum && !(fr && fr.whole === null)) continue;
     const plain = (before + '▢' + after).replace(/[[\]]/g, '');
@@ -109,23 +119,24 @@ export function frameGap(math: string, rnd: () => number = Math.random, caption 
 }
 
 /** Строка правила: результат после «=» (или средний класс «4 | 030 | 005») через solGap. */
-export function ruleGap(line: string, rnd: () => number = Math.random): LessonGap | null {
+export function ruleGap(line: string, rnd: () => number = Math.random, others = ''): LessonGap | null {
   const g = solGap(line, '', rnd);
-  return g ? { text: g.before + '▢' + g.after, answer: g.answer, options: g.options } : null;
+  if (!g || revealed(`${g.before} ${g.after} ${others}`, g.answer)) return null;   // ответ не должен читаться в той же или соседней строке
+  return { text: g.before + '▢' + g.after, answer: g.answer, options: g.options };
 }
 
 /** План пропусков шага: кадры «Көр» — в каждом втором из тех, где есть что закрыть; «Есте сақта» — одна строка. */
 export function planGaps(skill: string, i: number, step: any): StepGaps | null {
   if (!step || step.noGap) return null;
   if (step.type === 'example') {
-    const cand: (LessonGap | null)[] = step.frames.map((f: any, k: number) => (f.noGap || !f.math ? null : frameGap(f.math, seeded(`${skill}:${i}:${k}`), `${f.kz ?? ''} ${step.kz ?? ''}`)));
+    const cand: (LessonGap | null)[] = step.frames.map((f: any, k: number) => (f.noGap || !f.math ? null : frameGap(f.math, seeded(`${skill}:${i}:${k}`), `${f.kz ?? ''} ${step.kz ?? ''} ${JSON.stringify(f.s ?? step.s ?? {})}`)));
     const idx = cand.flatMap((g, k) => (g ? [k] : []));
     const take = new Set(idx.filter((_, j) => j % 2 === 0));
     return take.size ? { frames: cand.map((g, k) => (take.has(k) ? g : null)) } : null;
   }
   if (step.type === 'rule') {
     for (let k = 0; k < step.lines.length; k++) {
-      const g = ruleGap(step.lines[k], seeded(`${skill}:${i}:r${k}`));
+      const g = ruleGap(step.lines[k], seeded(`${skill}:${i}:r${k}`), step.lines.filter((_: string, m: number) => m !== k).join(' '));
       if (g) return { rule: { line: k, gap: g } };
     }
   }

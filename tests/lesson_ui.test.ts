@@ -97,9 +97,12 @@ describe('frameGap — пропуск в кадре «Көр»', () => {
 
 describe('ruleGap — пропуск в правиле', () => {
   it('результат после «=»', () => {
-    const g = ruleGap('Қалғанын сұраса: 8 − 3 = 5, жауабы 5/8.', seeded('a'))!;
+    const g = ruleGap('Қалғанын сұраса: 8 − 3 = 5 бөлік.', seeded('a'))!;
     expect(g.answer).toBe('5');
     expect(g.text).toContain('8 − 3 = ▢');
+  });
+  it('ответ виден в той же строке («жауабы 5/8») — null', () => {
+    expect(ruleGap('Қалғанын сұраса: 8 − 3 = 5, жауабы 5/8.', seeded('a'))).toBeNull();
   });
   it('строка без чисел — null', () => { expect(ruleGap('Бөліктер тең болмаса — бөлшек жоқ.', seeded('a'))).toBeNull(); });
 });
@@ -119,7 +122,7 @@ describe('planGaps — «в каждом втором кадре», флаг noG
     expect(planGaps('s', 9, { type: 'rule', kz: 'r', lines: ['8 − 3 = 5'], noGap: true })).toBeNull();
   });
   it('правило: одна строка', () => {
-    const p = planGaps('s', 9, { type: 'rule', kz: 'r', lines: ['Бөлім — төменгі сан.', '8 − 3 = 5, жауабы 5/8.'] })!;
+    const p = planGaps('s', 9, { type: 'rule', kz: 'r', lines: ['Бөлім — төменгі сан.', '8 − 3 = 5 бөлік қалды.'] })!;
     expect(p.rule!.line).toBe(1);
   });
   it('другие типы шагов — null', () => { expect(planGaps('s', 0, { type: 'goal' })).toBeNull(); });
@@ -157,5 +160,19 @@ describe('пропуск не подсказан подписью', () => {
   it('frameGap не закрывает число из подписи', () => {
     expect(_fg('[8] тең бөлік', () => 0.3, 'Пиццаны 8 тең бөлікке кестік.')).toBeNull();
     expect(_fg('[8] тең бөлік', () => 0.3, 'Пиццаны кестік.')).not.toBeNull();
+  });
+});
+
+// red-team 30.09: ответ пропуска читался на экране (сцена, соседняя строка правила, разложенная дробь)
+import { revealed as _rev, ruleGap as _rg } from '../src/lesson/gap';
+describe('ответ пропуска не виден на экране', () => {
+  it('revealed: числитель чужой дроби, разложенная дробь', () => {
+    expect(_rev('2 · 4 + 3 = ▢, жауабы 11/4', '11')).toBe(true);
+    expect(_rev('3 · 3 = 9, 4 · 3 = 12', '9/12')).toBe(true);
+    expect(_rev('{"rows":[{"n":9,"d":12}]}', '9/12')).toBe(true);
+    expect(_rev('8 бөлік', '5')).toBe(false);
+  });
+  it('ruleGap не закрывает число, которое стоит в соседней строке', () => {
+    expect(_rg('2 · 4 + 3 = 11', () => 0.3, 'жауабы 11/4')).toBeNull();
   });
 });
