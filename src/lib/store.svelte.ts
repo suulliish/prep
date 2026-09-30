@@ -40,7 +40,7 @@ export type Screen =
   | { name: 'lesson'; skill: string; replay?: boolean }
   | { name: 'summary' }
   | { name: 'diagnostic' }
-  | { name: 'album' }
+  | { name: 'album'; tab?: 'cards' | 'repair' }
   | { name: 'sound' }
   | { name: 'commander' }
   | { name: 'map' }

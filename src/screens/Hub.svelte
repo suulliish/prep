@@ -85,7 +85,7 @@
   onMount(() => {
     W.dim = false; W.world?.clearMob(); W.world?.setMode('hub'); W.world?.bitMood(done ? 'happy' : 'idle');
     W.world?.setEnergy(learnedTotal % 10, 10);
-    syncDecor();   // украшения и питомец из мастерской
+    syncDecor();   // украшения и питомец из мастерской (и поломки = неисправленные ошибки)
     audio.setMood('hub');
     // 1. недоигранная награда (вышли посреди занятия) — показать сейчас
     void flushRewards();

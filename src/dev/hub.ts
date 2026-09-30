@@ -2,6 +2,7 @@
 // В консоли: __w.portalWalk(), __w.openPortal(), __w.setMode('portal'), __w.celebrate()
 // Мастерская: &decor=all|id1,id2&pet=pet_fox (в консоли: __w.showDecor('cannon'), __w.setShipDecor([...], 'pet_cat'))
 // Карта: hub.html?mode=map&cur=0&act=unveil — открытие мира cur+1
+// Поломки корабля: &damage=0..6 (в консоли __w.setShipDamage(n); отдельная страница поломок — damage.html)
 import { createWorld, type CamMode } from '../three/world';
 // @ts-ignore — модуль .mjs без типов
 import { WORLDS, OUTFITS } from '../../content/worlds.mjs';
@@ -12,6 +13,8 @@ const q = new URLSearchParams(location.search);
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const w = createWorld(canvas, { quality: (q.get('q') as 'high' | 'low') || 'high' });
 (window as any).__w = w;
+const dmg = q.get('damage');
+if (dmg !== null) w.setShipDamage(+dmg);
 const W = WORLDS[+(q.get('world') || 0)];
 w.setTheme(W.sky, W.fog);
 const o = OUTFITS.find((x: any) => x.id === (q.get('outfit') || 'cyan')) ?? OUTFITS[0];
