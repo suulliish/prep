@@ -7,6 +7,10 @@ export interface Mark { at: number; fn: () => void }   // at — доля кли
 interface PlayOpts { speed?: number; fade?: number; marks?: Mark[]; hold?: boolean; loop?: boolean }
 
 /** Модель + микшер. Базовая анимация зациклена (стойка, ходьба), разовые (удар, блок) играются поверх и возвращаются к ней. */
+// Жесты «не для боя» (радость, взмах, почесать голову, осмотреться, сесть, покачаться) — без меча и щита в руках: с оружием они выглядят нелепо.
+// Удар, блок, стойка, ходьба — с оружием. Правило общее для корабля, карты, урока и боя.
+const UNARMED = /^(Sit_|Push_Ups|Sit_Ups|Waving|Cheering|Idle_B|Interact|Use_Item|Lie_|Dance)/;
+
 export class Actor {
   readonly g = new THREE.Group();
   readonly mixer: THREE.AnimationMixer;
@@ -21,7 +25,7 @@ export class Actor {
     this.mixer.addEventListener('finished', e => {
       const s = this.shot; if (!s || e.action !== s.a) return;
       if (!s.hold && this.base) this.base.reset().fadeIn(0.15).play(), s.a.fadeOut(0.15);
-      this.shot = null; s.done?.();
+      this.shot = null; if (!s.hold) this.gear(this.baseName()); s.done?.();
     });
   }
   has(name: string) { return this.clips.has(name); }
@@ -38,12 +42,18 @@ export class Actor {
     if (!a.isRunning()) a.reset();
     a.setLoop(THREE.LoopRepeat, Infinity); a.timeScale = speed; a.enabled = true;
     if (this.base) this.base.crossFadeTo(a, fade, false); a.play(); this.base = a;
+    if (!this.shot) this.gear(name);
+  }
+  /** Меч и щит (предметы в слотах рук, userData.gear) видны, только если клип боевой или обычный (UNARMED — нет). */
+  gear(clip: string) {
+    const bare = UNARMED.test(clip);
+    this.model.traverse(o => { if (o.userData.gear) o.visible = !bare; });
   }
   baseName() { return this.base?.getClip().name ?? ''; }
   /** Разовая анимация; промис — когда доиграла. marks — колбэки в нужные моменты клипа. */
   play(name: string, o: PlayOpts = {}): Promise<void> {
     const a = this.act(name); if (!a) return Promise.resolve();
-    this.cut();
+    this.cut(); this.gear(name);
     a.reset(); a.setLoop(o.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity); a.clampWhenFinished = !!o.hold; a.timeScale = o.speed ?? 1; a.enabled = true;
     if (this.base) this.base.fadeOut(o.fade ?? 0.1); a.fadeIn(o.fade ?? 0.1).play();
     if (o.loop) { this.base = a; return Promise.resolve(); }

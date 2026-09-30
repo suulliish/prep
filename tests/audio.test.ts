@@ -193,6 +193,7 @@ const PC: Record<Track, number[]> = {   // допустимые классы н�
   map: [9, 11, 0, 2, 4, 5, 7],          // A минор (аэолийский)
   battle: [2, 4, 5, 7, 9, 10, 0],       // D минор
   victory: [2, 4, 6, 7, 9, 11, 1],      // D мажор
+  training: [7, 9, 10, 0, 2, 4, 5],     // G дорийский
 };
 const PITCHED = new Set(['pluck', 'bass', 'flute', 'bell']);
 const KINDS = new Set(['pluck', 'bass', 'flute', 'bell', 'kick', 'tom', 'tak', 'shake', 'pad']);
@@ -205,7 +206,7 @@ function walk(track: Track, seed: number) {
 }
 
 describe('музыка: композиция', () => {
-  for (const track of ['hub', 'map', 'battle', 'victory'] as Track[]) {
+  for (const track of ['hub', 'map', 'battle', 'victory', 'training'] as Track[]) {
     it(`${track}: события в границах такта, ноты в ладу, флейта одноголосна`, () => {
       for (const seed of [1, 2, 3]) for (const bar of walk(track, seed)) {
         expect(bar.evs.length).toBeGreaterThan(0);
@@ -239,11 +240,15 @@ describe('музыка: композиция', () => {
     expect(fan).toBeGreaterThanOrEqual(3); expect(fan).toBeLessThanOrEqual(4.5);
     expect(v.slice(0, 2).every(b => b.track === 'victory')).toBe(true);
     expect(v.slice(2).every(b => b.track === 'hub')).toBe(true);
+    // тренировка (урок): 40–60 с и заметно медленнее и тише боя
+    expect(loop('training')).toBeGreaterThan(40); expect(loop('training')).toBeLessThan(60);
+    const tb = 60 / (TRACKS.training.tickSec * 4);
+    expect(tb).toBeGreaterThanOrEqual(70); expect(tb).toBeLessThan(bpm - 20);
   });
 
   it('вариации: тот же seed — та же музыка, другой seed — другие заполнения; петля не буквальный повтор', () => {
     const sig = (track: Track, seed: number) => JSON.stringify(walk(track, seed).map(b => b.evs));
-    for (const t of ['hub', 'map', 'battle'] as Track[]) {
+    for (const t of ['hub', 'map', 'battle', 'training'] as Track[]) {
       expect(sig(t, 11)).toBe(sig(t, 11));
       expect(sig(t, 11)).not.toBe(sig(t, 12));
       const w = walk(t, 11), n = TRACKS[t].bars;
@@ -252,7 +257,7 @@ describe('музыка: композиция', () => {
   });
 
   it('плотность: событий в секунду умеренно (низкая нагрузка на слабых телефонах)', () => {
-    for (const t of ['hub', 'map', 'battle'] as Track[]) {
+    for (const t of ['hub', 'map', 'battle', 'training'] as Track[]) {
       const w = walk(t, 3), n = w.reduce((s, b) => s + b.evs.length, 0), sec = w.reduce((s, b) => s + b.len, 0);
       expect(n / sec, t).toBeLessThan(25);   // сейчас: hub ~7, map ~16, battle ~18 событий/с
     }
@@ -298,7 +303,7 @@ describe('музыка: звук', () => {
   });
 
   it('бюджет узлов: создаётся мало узлов на секунду музыки (переиспользование голосов)', () => {
-    for (const t of ['hub', 'map', 'battle'] as Track[]) {
+    for (const t of ['hub', 'map', 'battle', 'training'] as Track[]) {
       const c: any = new MusicCtx(), out = c.createGain();
       const s = new Sequencer(c, out, c.createBuffer(1, 44100, 44100), t, 9);
       const base = c.total; s.start(false); s.pump(60);
@@ -317,9 +322,9 @@ describe('музыка: движок', () => {
 
   it('каждое настроение запускается без ошибок и планирует ноты вперёд по таймеру', async () => {
     const { audio } = await freshMusic();
-    audio.unlock();
+    audio.unlock(); audio.save({ musicInFocus: 'quiet' });   // урок-тренировка подчиняется «фокусу»: при «выкл» трек не крутится
     const ctx: MusicCtx = (audio as any).ctx;
-    for (const m of ['hub', 'map', 'battle', 'victory'] as const) {
+    for (const m of ['hub', 'map', 'battle', 'victory', 'training'] as const) {
       const before = ctx.starts;
       expect(() => audio.setMood(m)).not.toThrow();
       expect(ctx.starts, m).toBeGreaterThan(before);
@@ -362,6 +367,18 @@ describe('музыка: движок', () => {
     expect((audio as any).seq).not.toBeNull();
     expect(last(musicGainTargets(audio))).toBeCloseTo(0.4 * 0.25, 5);
     audio.setMood('hub'); expect(last(musicGainTargets(audio))).toBeCloseTo(0.4, 5);
+  });
+
+  it('тренировка (урок) подчиняется «фокусу»: «выкл» — тишина, «тихо» — свой трек на 25%', async () => {
+    const { audio } = await freshMusic();
+    audio.unlock(); audio.save({ music: 0.4, musicInFocus: 'off' });
+    audio.setMood('training');
+    expect((audio as any).seq).toBeNull();
+    expect(last(musicGainTargets(audio))).toBeCloseTo(0, 5);
+    audio.save({ musicInFocus: 'quiet' });
+    expect((audio as any).seq?.track).toBe('training');
+    expect(last(musicGainTargets(audio))).toBeCloseTo(0.4 * 0.25, 5);
+    audio.setMood('battle'); expect((audio as any).seq.track).toBe('battle'); expect(last(musicGainTargets(audio))).toBeCloseTo(0.4, 5);
   });
 
   it('голос Бита приглушает музыку до 35%, потом громкость возвращается', async () => {

@@ -13,6 +13,7 @@
   import { SPOT_KZ } from '../three/spots';
   import { game, go, persist, skillDefs } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
+  import type { Technique } from '../three/world';
   import { ensurePlan, completeBlock, dayRec } from '../lib/session.svelte';
   import { makeItem, mistakeText, skillTitle, templatesOf, isTemplateId, type Item } from '../engine/items';
   import { bankFor, bankToItem, templatesForBank } from '../engine/bank';
@@ -32,6 +33,8 @@
   const ruleOf = (id: string) => ((LESSONS as Record<string, any[]>)[id] ?? []).find(s => s.type === 'rule') as { lines: string[] } | undefined;
   import { sparksAt, floatText, centerOf, flash, sceneCenter } from '../ui/fx.svelte';
   import { nb, longestChunk } from '../ui/text';
+  // @ts-ignore
+  import { techniqueOf } from '../../content/techniques.mjs';
 
   type Block = 'warmup' | 'new' | 'mixed' | 'extra' | 'boss' | 'repair';
   let { block }: { block: Block } = $props();
@@ -143,11 +146,16 @@
     if (sound) audio.play('coins');
     flyCoins(from, n, d => (shownCoins += d));
   }
+  // приём темы: только если урок пройден (или тема уже выучена); удар красивее (цвет, вид, название над героем), урон всё равно 1
+  function techFor(skill: string | undefined): Technique | null {
+    const t = (skill ? techniqueOf(skill) : null) as Technique | null, st = skill ? game.save.skills[skill] : undefined;
+    return t && (st?.lessonDone || isDone(st)) ? t : null;
+  }
   async function hit(sup: boolean, crit = combo >= 2) {
     busy = true;
     const alive = mobHp > 0, last = isLastWave();
     mobHp = Math.max(0, mobHp - 1);   // каждый верный ответ — ровно один удар (суперудар убран 30.09: «пусть всё решает» ответ)
-    const killed = await W.world?.heroAttack(crit, sup);
+    const killed = await W.world?.heroAttack(crit, sup, techFor(item?.skill));
     // монеты за побеждённого врага волны (один раз); бас жау мира награждается в finishBoss, когда бой выигран
     if (alive && (killed || (last && mobHp <= 0)) && !(block === 'boss' && last)) earn(enemyCoins(false), sceneCenter(0.2), true);
     if (killed && !isLastWave()) {

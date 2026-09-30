@@ -1,6 +1,6 @@
 <script lang="ts">
   // Альбом: мои карты тем, ближайшие карты (с названием темы — что открыть дальше), разделы с прогрессом,
-  // шеберхана (ремонт ошибок). docs/DESIGN_SYSTEM.md 12.6: пустое — это приглашение к действию, а не стена замков.
+  // шеберхана (ремонт ошибок), приёмы («Тәсілдер»: у каждой темы свой приём удара, открывается уроком темы). docs/DESIGN_SYSTEM.md 12.6: пустое — это приглашение к действию, а не стена замков.
   import { onMount } from 'svelte';
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -10,6 +10,8 @@
   import { toast } from '../ui/notify.svelte';
   // @ts-ignore
   import { LESSONS } from '../../content/lessons.mjs';
+  // @ts-ignore
+  import { TECHNIQUES } from '../../content/techniques.mjs';
 
   const CAT: Record<string, string> = { A: 'Теңдеулер', B: 'Мәтінді есептер', C: 'Есептеу', D: 'Бөлінгіштік', E: 'Геометрия', F: 'Пропорция', G: 'Пайыз', H: 'Заңдылық', I: 'Логика', J: 'Көрнекі логика', K: 'Координаталар' };
   const CC: Record<string, string> = { A: '#35e6ff', B: '#ffcb2e', C: '#3ddc6e', D: '#a77bff', E: '#ff9a3d', F: '#5ea0ff', G: '#ff4fb8', H: '#d6f24a', I: '#c0c8ff', J: '#ff7de0', K: '#7dffd4' };
@@ -23,8 +25,14 @@
   const nextCards = $derived(skillDefs.filter(d => st(d.id) === 'available' && d.templates.length && (LESSONS as Record<string, any[]>)[d.id]).slice(0, 4));
   const cats = Object.keys(CAT);
   const catStat = (c: string) => { const all = skillDefs.filter(d => d.cat === c); return { all: all.length, got: all.filter(d => ['learned', 'mastered', 'automatic'].includes(st(d.id))).length }; };
-  const ruleOf = (id: string) => (game.save.skills[id]?.lessonDone || ['learned', 'mastered', 'automatic'].includes(st(id)) ? (LESSONS as Record<string, any[]>)[id]?.find(s => s.type === 'rule') : undefined);
+  const lessonPassed = (id: string) => !!game.save.skills[id]?.lessonDone || ['learned', 'mastered', 'automatic'].includes(st(id));
+  const ruleOf = (id: string) => (lessonPassed(id) ? (LESSONS as Record<string, any[]>)[id]?.find(s => s.type === 'rule') : undefined);
   let openCard = $state<string | null>(null);
+  let openTech = $state<string | null>(null);
+  type Tech = { skill: string; kz: string; color: number; fx: 'arc' | 'pierce' | 'split' | 'multi' | 'spin' };
+  const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
+  const techs = $derived((TECHNIQUES as Tech[]).map(t => ({ ...t, theme: skillDefs.find(d => d.id === t.skill)?.title.kz ?? '', open: lessonPassed(t.skill) })));
+  const techsOpen = $derived(techs.filter(t => t.open).length);
   const broken = $derived(game.save.repairShop.filter(r => !r.fixed));
   const fixed = $derived(game.save.repairShop.filter(r => r.fixed).length);
   onMount(() => { W.dim = true; audio.setMood('hub'); });
@@ -32,7 +40,18 @@
     audio.play('click');
     if (ruleOf(id)) openCard = id; else toast('Бұл картаның ережесі сабақтан кейін ашылады');
   }
+  function tapTech(id: string) { audio.play('click'); openTech = id; }
 </script>
+
+{#snippet fxIcon(fx: string, c: string)}
+  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke={c} stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    {#if fx === 'arc'}<path d="M4 19Q12 -1 20 19" />
+    {:else if fx === 'pierce'}<path d="M3 12h16M14 6l6 6-6 6" />
+    {:else if fx === 'split'}<path d="M4 4h10L4 14zM20 10v10H10z" fill={c} stroke-width="1.5" />
+    {:else if fx === 'multi'}<path d="M4 19L8 5M10 19l4-14M16 19l4-14" />
+    {:else}<path d="M12 4a8 8 0 1 0 8 8" /><path d="M20 3v7h-7" />{/if}
+  </svg>
+{/snippet}
 
 <Screen scene="none" title="Альбом" sub={`${mine.length} карта жиналды`} back={() => go({ name: 'hub' })}>
   <div class="seg" role="tablist">
@@ -78,6 +97,23 @@
         <li style="--cc:{CC[c]}"><i class="dot"></i><span>{CAT[c]}</span><span class="bar"><i style="width:{(k.got / Math.max(1, k.all)) * 100}%"></i></span><b class="num">{k.got}/{k.all}</b></li>
       {/each}
     </ul>
+
+    <h2 class="h">Тәсілдер <b class="tcount">{techsOpen}/{techs.length}</b></h2>
+    <div class="tgrid">
+      {#each techs as t (t.skill)}
+        {#if t.open}
+          <button class="tech" style="--tc:{hex(t.color)}" onclick={() => tapTech(t.skill)}>
+            <span class="fx">{@render fxIcon(t.fx, hex(t.color))}</span>
+            <span class="tt"><b>{t.kz}</b><small>{t.theme}</small></span>
+          </button>
+        {:else}
+          <div class="tech locked">
+            <span class="fx"><Icon name="lock" fill="#c4cfff" size={20} /></span>
+            <span class="tt"><b>{t.kz}</b><small>Сабақтан кейін</small></span>
+          </div>
+        {/if}
+      {/each}
+    </div>
   {:else}
     <div class="paper">Әр қате — сынған бөлшек. Жөндеу үшін дәл сондай есепті өзің шығар. Жөнделгені: <b>{fixed}</b>.</div>
     {#if broken.length}
@@ -93,6 +129,20 @@
     {/if}
   {/snippet}
 </Screen>
+
+{#if openTech}
+  {@const t = techs.find(x => x.skill === openTech)}
+  {#if t}
+    <div class="scrim" role="presentation" onclick={() => (openTech = null)}></div>
+    <div class="sheet paper" role="dialog" aria-modal="true" aria-label={t.kz} style="--tc:{hex(t.color)}">
+      <b class="rt"><span class="fx big">{@render fxIcon(t.fx, hex(t.color))}</span>{t.kz}</b>
+      <p class="theme">{t.theme}</p>
+      {#each ruleOf(t.skill)?.lines ?? [] as l}<p>{l}</p>{/each}
+      <p class="how">Шайқаста осы тақырыптың есебінде батыр осы тәсілмен соғады.</p>
+      <div class="row"><button class="btn ghost dark" onclick={() => (openTech = null)}>Жабу</button></div>
+    </div>
+  {/if}
+{/if}
 
 {#if openCard}
   {@const d = skillDefs.find(x => x.id === openCard)}
@@ -137,5 +187,22 @@
   .sheet { position: fixed; z-index: calc(var(--z-modal) + 1); left: 0; right: 0; margin-inline: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); width: min(460px, calc(100% - 20px));   /* без transform: анимация pop-in его затирала и карточка уезжала вправо */ display: grid; gap: 8px; animation: pop-in .25s var(--ease-out) both; }
   .rt { display: flex; align-items: center; gap: 8px; font: 900 19px var(--disp); }
   .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+  .tcount { font: 900 14px var(--disp); color: var(--dim); margin-left: 6px; }
+  .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .tech { position: relative; display: flex; align-items: center; gap: 8px; min-height: 60px; padding: 8px 8px 8px 14px; text-align: left; font: inherit; color: var(--ink); cursor: pointer;
+    background: linear-gradient(180deg, #2d4fe0, #1d35a6); border: 3px solid var(--outline); border-radius: 14px; box-shadow: 0 3px 0 var(--outline); overflow: hidden; }
+  .tech::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: var(--tc, #5b6699); }
+  .tech:active { transform: translateY(2px); }
+  .tech.locked { cursor: default; background: #1a2a7a; opacity: .8; --tc: #5b6699; }
+  .tech.locked:active { transform: none; }
+  .fx { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--outline); border: 2px solid var(--tc, #5b6699); }
+  .tech.locked .fx { background: #2b3a8f; border-color: #5b6699; }
+  .fx.big { width: 40px; height: 40px; }
+  .tt { min-width: 0; display: grid; gap: 2px; }
+  .tt b { font: 800 14px/1.15 var(--disp); overflow-wrap: anywhere; }
+  .tt small { font: 700 11px/1.15 var(--txt); color: var(--dim); }
+  .tech.locked .tt b { color: var(--dim); }
+  .theme { font-weight: 800; color: var(--paper-dim); }
+  .how { color: var(--paper-dim); font-style: italic; }
   .btn.dark { --t: var(--paper-ink); --c: var(--paper-2); --e: var(--paper-line); text-shadow: none; }
 </style>

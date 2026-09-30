@@ -5,7 +5,9 @@
   import { tick } from 'svelte';
   import { audio } from '../lib/audio';
   type Step = { math: string; kz?: string; blank?: { choices: string[]; answer: number; why?: string } };
-  let { task, steps, ondone }: { task: string; steps: Step[]; ondone: (clean: boolean) => void } = $props();
+  // onstep — верно вписан очередной пропуск (k-й по счёту), onmiss — ошибка: урок-тренировка отвечает ударом связки и шлепком манекена
+  let { task, steps, ondone, onstep, onmiss }: { task: string; steps: Step[]; ondone: (clean: boolean) => void; onstep?: (k: number) => void; onmiss?: () => void } = $props();
+  let hits = 0;
   let shown = $state(1);
   let filled = $state<Record<number, string>>({});
   let wrong = $state<{ at: number; pick: number } | null>(null);
@@ -19,8 +21,8 @@
   }
   function pick(k: number) {
     const b = steps[cur].blank!;
-    if (k !== b.answer) { wrong = { at: cur, pick: k }; misses++; missHere++; audio.play('wrong'); return; }
-    filled[cur] = b.choices[k]; wrong = null; missHere = 0; audio.play('correct');
+    if (k !== b.answer) { wrong = { at: cur, pick: k }; misses++; missHere++; audio.play('wrong'); onmiss?.(); return; }
+    filled[cur] = b.choices[k]; wrong = null; missHere = 0; audio.play('correct'); onstep?.(++hits);
     if (shown === steps.length) ondone(misses === 0);
   }
   $effect(() => { if (steps.length === 1 && !steps[0].blank) ondone(true); });

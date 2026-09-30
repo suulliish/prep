@@ -1,5 +1,5 @@
-// Проверка боя без входа и экранов (только для разработки): battle.html?world=0&layout=0&outfit=cyan&mob=0&boss=0 (layout — уголок 0..5)
-// В консоли: __w.heroAttack(), __w.heroAttack(true), __w.heroAttack(false,true), __w.enemyAttack(), __w.killMob(), __w.openChest()
+// Проверка боя без входа и экранов (только для разработки): battle.html?world=0&layout=0&outfit=cyan&mob=0&boss=0 (layout — уголок 0..5); training=1 — вместо монстра тренировочная площадка (урок)
+// В консоли: __w.trainStrike('strong'), __w.trainBonk(), __w.trainBreakGlitch(), __w.trainTargetHit(); __w.heroAttack(), __w.heroAttack(true), __w.heroAttack(false,true), __w.enemyAttack(), __w.killMob(), __w.openChest()
 import { createWorld } from '../three/world';
 import { spotIndex } from '../three/spots';
 // @ts-ignore — модуль .mjs без типов
@@ -22,7 +22,8 @@ addEventListener('resize', () => w.resize());
 (async () => {
   document.getElementById('t')!.textContent = `${W.ru} · ${o.id}`;
   if (q.get('arrive') !== '0') await w.arrive();
-  if (q.get('mob') !== 'none') await w.spawnMob(+(q.get('hp') || 3), +(q.get('mob') || 0), q.get('boss') === '1', q.get('boss') === '2');
+  if (q.get('training') === '1') await w.setTraining(true);
+  else if (q.get('mob') !== 'none') await w.spawnMob(+(q.get('hp') || 3), +(q.get('mob') || 0), q.get('boss') === '1', q.get('boss') === '2');
   (window as any).__ready = true;
   const act = q.get('act'); if (act) { await new Promise(r => setTimeout(r, +(q.get('wait') || 600))); (w as any)[act.split(':')[0]]?.(...(act.split(':')[1] ? JSON.parse(act.split(':')[1]) : [])); }
 })();

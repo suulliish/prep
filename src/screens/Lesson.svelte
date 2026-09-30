@@ -1,12 +1,15 @@
 <script lang="ts">
-  // Урок-миссия (docs/ARCHITECTURE.md 4.6) как бой: вирус Глитча сломал систему корабля, каждый пройденный шаг —
-  // удар по нему в 3D. Мақсат → Қолмен → Болжа → Көр (анимированная сцена) → Өзің → Неге? → Глитчтің қатесі →
-  // Шағын ойын → Есте сақта → возврат к цели (вирус уничтожен, сундук).
+  // Урок-миссия (docs/ARCHITECTURE.md 4.6, GAME_LOOP.md 19) как тренировка: вместо врага на площадке манекен, мишени и доска, полоска показывает
+  // освоение приёма темы. Верный ответ — удар по манекену, неверный — манекен шлёпает героя (бонк), связка на «Өзің», ошибка Глитча — манекен рассыпается на доски,
+  // мишени в мини-игре, в конце «Есте сақта» — карточка приёма. Бой проверяет, тренировка учит: в уроке нет врага, здоровья и атак врага.
+  // Мақсат → Қолмен → Болжа → Көр (анимированная сцена) → Өзің → Неге? → Глитчтің қатесі → Шағын ойын → Есте сақта → возврат к цели (приём освоен).
   import { onMount, tick } from 'svelte';
   import Bit from '../ui/Bit.svelte';
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
   import Confirm from '../ui/Confirm.svelte';
+  import TechCard from '../lesson/TechCard.svelte';
+  import LessonHelper from '../lesson/LessonHelper.svelte';
   import { toast } from '../ui/notify.svelte';
   import { ReadGate, readMs } from '../lib/readgate.svelte';
   import { game, go, persist } from '../lib/store.svelte';
@@ -26,6 +29,8 @@
   import Gap from '../lesson/Gap.svelte';
   import { planGaps, maskText } from '../lesson/gap';
   import { hasHighlight } from '../lesson/rich';
+  // @ts-ignore
+  import { techniqueOf } from '../../content/techniques.mjs';
   import { fitZoom } from '../lesson/fit';
   import Faded from '../lesson/Faded.svelte';
   import BugHunt from '../lesson/BugHunt.svelte';
@@ -63,12 +68,14 @@
   const target = goal?.title ?? skillTitle(skill).kz;
   const CHIP: Record<string, string> = {
     goal: 'Мақсат', widget: 'Қолмен', predict: 'Болжа', example: 'Көр', faded: 'Өзің', why: 'Неге?',
-    bug: 'Глитчтің қатесі', blitz: 'Шағын ойын', rule: 'Есте сақта', final: 'Соңғы соққы', quiz: 'Қалай ойлайсың?', say: 'Бит',
+    bug: 'Глитчтің қатесі', blitz: 'Шағын ойын', rule: 'Есте сақта', final: 'Соңғы сынақ', quiz: 'Қалай ойлайсың?', say: 'Бит',
   };
-  // Шаги-«удары»: всё, где ребёнок что-то делает сам
-  const EXPLAIN = ['widget', 'example', 'faded', 'why', 'bug', 'predict', 'rule'];
+  // Шаги, где ребёнок что-то делает сам (после них «Келесі», а не просто чтение)
   const HIT = (t: string) => !['goal', 'rule', 'say'].includes(t);
-  const maxHp = Math.max(1, steps.filter(s => HIT(s.type)).length);
+  // приём темы: доска, полоска освоения, карточка (content/techniques.mjs)
+  const tech = techniqueOf(skill) as { kz: string; color: number; fx: 'arc' | 'pierce' | 'split' | 'multi' | 'spin' } | null;
+  const techHex = '#' + (tech?.color ?? 0x35e6ff).toString(16).padStart(6, '0');
+  const ruleIdx = steps.findIndex(s => s.type === 'rule');
   const voiced = new Set<string>(VOICED as string[]);
   const voiceUrl = (k: number | string) => (voiced.has(`${skill}_${k}`) ? `${import.meta.env.BASE_URL}voice/lessons/${skill}_${k}.mp3` : '');
 
@@ -80,7 +87,9 @@
   let pick = $state<number | null>(null);
   let showSkip = $state(false);
   let earned = $state(0);
-  let hp = $state(maxHp);
+  let card = $state(false);       // карточка приёма открыта
+  let cardSeen = false;
+  let stepDone = $state(false);   // faded/blitz: шаг завершён (для ИИ-помощника)
   let bugFound = $state(false);
   let won = $state(false);
   let skipTimer: number | undefined;
@@ -96,6 +105,8 @@
   let land = $state(false);
   // D11: пропуски в «Көр» и «Есте сақта» (автоматически, отключается флагом noGap на кадре или шаге)
   const gaps = $derived(planGaps(skill, i, step));
+  // освоение приёма: растёт по шагам урока, 100% после победы в финале
+  const pct = $derived(won ? 100 : Math.round((Math.min(i, steps.length - 1) / steps.length) * 100));
   let solved = $state<Record<string, boolean>>({});
   const curGap = $derived(step.type === 'example' ? gaps?.frames?.[frame] ?? null : step.type === 'rule' ? gaps?.rule?.gap ?? null : null);
   const gapKey = $derived(`${i}:${frame}`);
@@ -106,8 +117,12 @@
   function enter() {
     const s = steps[i];
     ready = ['say', 'goal', 'rule'].includes(s.type) || (s.type === 'example' && s.frames.length <= 1);
-    frame = 0; pick = null; showSkip = false; bugFound = false;
+    frame = 0; pick = null; showSkip = false; bugFound = false; stepDone = false; fadedHits = 0;
     clearTimeout(skipTimer); gate.stop();
+    // тренировочная площадка: глитч и мишени по шагу, доска пишет название приёма
+    W.world?.trainGlitch(s.type === 'bug');
+    W.world?.trainTargets(s.type === 'blitz' ? Math.max(1, s.count) : 2);
+    if (s.type === 'rule' && tech) W.world?.trainBoard(tech.kz);
     if (s.type === 'say') gate.start(readMs(s.kz));
     if (s.type === 'rule') gate.start(readMs(s.kz, ...s.lines));
     if (s.type === 'example') gate.start(readMs(s.kz, frameText(s, 0)));
@@ -123,8 +138,9 @@
     W.dim = false; W.world?.setMode('battle'); W.world?.bitMood('idle');
     const v = W.world?.setSpot(skill);   // урок и практика темы — в одном уголке мира
     if (v !== undefined) setTimeout(() => { const c = sceneCenter(0.3); floatText(`${currentWorld().kz} · ${SPOT_KZ[v]}`, c.x, c.y, '#ffc94a', true); }, 400);
-    (W.world?.arrive() ?? Promise.resolve()).then(() => W.world?.spawnMob(maxHp, currentWorld().mob)).then(() => (cine = false));
-    audio.setMood('focus'); enter();
+    if (tech) W.world?.trainBoard(`Бүгінгі тәсіл: ${tech.kz}`);
+    (W.world?.arrive() ?? Promise.resolve()).then(() => W.world?.setTraining(true)).then(() => (cine = false));
+    audio.setMood('training'); enter();
     return () => { clearTimeout(skipTimer); W.world?.holoClear(true); W.world?.clearMob(); mq.removeEventListener('change', onLand); };
   });
   // «Тірі түсіндіру» (docs/GAME_LOOP.md 17): Бит проецирует голограмму того, о чём кадр; герой на каждый новый кадр кивает или показывает.
@@ -138,18 +154,22 @@
     if (k !== liveKey) { liveKey = k; if (['example', 'goal', 'rule'].includes(st.type)) W.world?.heroEmote(st.type === 'rule' ? 'nod' : 'point'); }
   });
 
-  function strike(crit = false) {
-    if (hp <= 0) return;
-    hp--; W.world?.heroAttack(crit);
-    const c = cardEl ? centerOf(cardEl) : { x: innerWidth / 2, y: innerHeight / 3 };
-    floatText(crit ? 'КРИТ!' : '−1', c.x, Math.max(80, c.y - 160), crit ? '#ffc94a' : '#ff4fb8', crit);
-  }
   function reward(xp: number, big = false) {
     ready = true;
     if (!nextBtn) return;
     const c = centerOf(nextBtn);
     sparksAt(c.x, c.y - 40, ['#3ff0ff', '#5ce39c', '#ffc94a'], big ? 60 : 26);
     if (xp && !replay) { earned += xp; game.save.xp += xp; floatText(`+${xp} XP`, c.x, c.y - 60, '#ffc94a', big); persist(); }
+  }
+  // неверный ответ: манекен шлёпает героя, потом герой чешет голову
+  // сколько пропусков «Өзің» уже вписано: каждый верный — следующий удар связки (onstep)
+  let fadedHits = 0;
+  const bonk = () => { W.world?.trainBonk().then(() => W.world?.heroEmote('scratch')); };
+  // связка на «Өзің»: три удара подряд без клинка в ножнах (без ошибок — с вспышкой на третьем), с ошибками — два
+  function combo(clean: boolean) {
+    const n = clean ? 3 : 2; let last: Promise<void> | undefined;
+    for (let k = 1; k <= n; k++) last = W.world?.trainStrike('combo', k, k < n);
+    if (clean) last?.then(() => W.world?.heroEmote('cheer'));
   }
   function widgetDone() { audio.play('correct'); W.world?.heroEmote('cheer'); reward(0); }
   function go2(k: number) { if (k < 0 || k >= step.frames.length) return; const fresh = k > frame; frame = k; audio.play('click'); if (fresh) gate.start(readMs(frameText(step, k))); if (frame === step.frames.length - 1) ready = true; }
@@ -158,29 +178,35 @@
     if (step.type === 'final' && won) return;
     pick = k;
     const ok = k === step.answer;
-    if (step.type === 'predict') { audio.play(ok ? 'correct' : 'hint'); if (ok) react('correct'); W.world?.heroEmote(ok ? 'cheer' : 'scratch'); reward(ok ? 3 : 0); gate.start(readMs(step.reveal)); showChoices(); return; }
+    if (step.type === 'predict') {
+      audio.play(ok ? 'correct' : 'hint'); if (ok) react('correct');
+      // верно — сильный удар, потом радость; неверно — бонк (манекен шлёпает героя), потом герой чешет голову
+      if (ok) W.world?.trainStrike('strong').then(() => W.world?.heroEmote('cheer')); else bonk();
+      reward(ok ? 3 : 0); gate.start(readMs(step.reveal)); showChoices(); return;
+    }
     if (step.type === 'final') {
-      if (!ok) { audio.play('wrong'); flash('#ff9a6b'); W.world?.enemyAttack(); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake'); return; }
-      won = true; hp = 0; audio.play('crit'); react('win');
-      await W.world?.heroAttack(true);
-      cine = true;
-      await W.world?.killMob();
-      audio.play('chest'); await W.world?.openChest(); W.world?.bitMood('happy');
-      cine = false;
-      audio.play('levelup'); floatText('ЖЕҢІС!', sceneCenter(0.28).x, sceneCenter(0.28).y, '#ffc94a', true);
+      if (!ok) { audio.play('wrong'); flash('#ff9a6b'); bonk(); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake'); return; }
+      won = true; audio.play('crit'); react('win');
+      await W.world?.trainStrike('combo', 3);
+      W.world?.trainCheer(); W.world?.bitMood('happy');
+      audio.play('levelup'); floatText('МЕҢГЕРІЛДІ!', sceneCenter(0.28).x, sceneCenter(0.28).y, techHex, true);
       sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#ffc94a', '#3ff0ff', '#b58cff'], 90, 10);
       reward(20, true); return;
     }
-    audio.play(ok ? 'correct' : 'wrong'); react(ok ? 'correct' : 'wrong'); if (ok) W.world?.heroEmote('cheer'); reward(ok ? 5 : 0);
+    audio.play(ok ? 'correct' : 'wrong'); react(ok ? 'correct' : 'wrong'); reward(ok ? 5 : 0);
+    if (ok) W.world?.trainStrike('light').then(() => W.world?.heroEmote('cheer')); else bonk();
     if (step.why) gate.start(readMs(step.why));
-    if (!ok) W.world?.enemyAttack().then(() => W.world?.heroEmote('scratch'));   // блок, потом почесал голову
     showChoices();
   }
   // после ответа появляется разбор: варианты и кнопка должны остаться в поле зрения
   const showChoices = () => tick().then(() => setTimeout(() => cardEl?.querySelector('.choices')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 80));
 
+  // после «Есте сақта» ребёнок получает карточку приёма; закрыл — идём дальше
   function next() {
-    if (HIT(step.type) && step.type !== 'final') strike(step.type === 'blitz');
+    if (step.type === 'rule' && tech && !replay && !cardSeen) { cardSeen = true; card = true; return; }
+    advance();
+  }
+  function advance() {
     if (i < steps.length - 1) { i++; if (!replay) { game.save.lessonPos = { skill, step: i }; persist(); } enter(); audio.play('click'); return; }
     if (replay) { audio.play('mission'); go({ name: 'album' }); return; }
     (game.save.skills[skill] ??= blankSkill()).lessonDone = true;
@@ -191,7 +217,7 @@
   const isExample = $derived(step.type === 'example' && step.frames.length > 1);
   const moreFrames = $derived(isExample && frame < step.frames.length - 1);
   const primaryLabel = $derived(
-    moreFrames ? 'Келесі кадр' : step.type === 'goal' ? 'Миссияны бастау' : i < steps.length - 1 ? (HIT(step.type) ? 'Соққы беру' : 'Келесі')
+    moreFrames ? 'Келесі кадр' : step.type === 'goal' ? 'Жаттығуды бастау' : i < steps.length - 1 ? 'Келесі'
     : replay ? 'Альбомға қайту' : 'Жаттығуға');
   // D12: «прочитал» — касание подсвеченной части открывает «дальше» раньше таймера (таймер остаётся запасным)
   function readTap(e: Event) {
@@ -230,8 +256,15 @@
   const bitLine = $derived.by(() => {
     if (step.type === 'predict') return pick === null ? `${game.save.heroName}, алдымен болжап көр — қателесуден қорықпа!` : (pick === step.answer ? 'Дәл таптың! ' : 'Қызық болжам! ') + step.reveal;
     if (step.type === 'why' || step.type === 'quiz') return pick === null ? 'Қалай ойлайсың?' : pick === step.answer ? 'Дұрыс! ' + step.why : 'Жақын, бірақ: ' + step.why;
-    if (step.type === 'final') return !won ? (pick === null ? 'Вирус әлсіреді! Соңғы соққы — дұрыс жауап.' : 'Вирус қарсыласып жатыр! Сабақта не үйрендік? Тағы тексер.') : `Жеңіс, ${game.save.heroName}! ` + step.why;
+    if (step.type === 'final') return !won ? (pick === null ? 'Соңғы сынақ! Үйренгеніңді көрсет: дұрыс жауапты таңда.' : 'Жаттығу әлі аяқталған жоқ! Сабақта не үйрендік? Тағы тексер.') : `Тәсіл меңгерілді, ${game.save.heroName}! ` + step.why;
     return '';
+  });
+  // что видит ИИ-помощник (src/lesson/LessonHelper.svelte): шаг как в контенте, пропуск этого кадра, ответил ли ребёнок
+  const answered = $derived(
+    step.type === 'final' ? won : ['predict', 'why', 'quiz'].includes(step.type) ? pick !== null : ['faded', 'blitz'].includes(step.type) ? stepDone : false);
+  const lessonCtx = $derived({
+    skill, title: skillTitle(skill).kz, step, frame: step.type === 'example' ? frame : undefined, gaps, solved: !!solved[gapKey],
+    answered, picked: pick, rule: ruleIdx >= 0 && i > ruleIdx ? (steps[ruleIdx].lines as string[]).join(' ') : undefined,
   });
 </script>
 
@@ -243,7 +276,7 @@
   {#snippet head()}
     <div class="hd">
       <div class="t1"><b>{target}</b>{#if earned}<span class="xp num">+{earned} XP</span>{/if}</div>
-      <div class="t2"><span class="bar glitch hp" aria-label="Вирус күші"><i style="width:{(hp / maxHp) * 100}%"></i></span><span class="cnt">Қадам <b class="num">{i + 1}</b>/{steps.length}</span></div>
+      <div class="t2"><span class="cap">Тәсіл</span><span class="bar hp" role="progressbar" aria-label="Тәсіл" aria-valuemin="0" aria-valuemax="100" aria-valuenow={pct} style="--tc:{techHex}"><i style="width:{pct}%"></i></span><span class="cnt">Қадам <b class="num">{i + 1}</b>/{steps.length}</span></div>
     </div>
   {/snippet}
 
@@ -258,6 +291,7 @@
       {#if step.type === 'say'}
         {#if !land}{@render bitView()}{/if}
       {:else if step.type === 'goal'}
+        {#if tech}<div class="intro"><Bit text={`${game.save.heroName}, бүгін жаттығу алаңындамыз! Соңында «${tech.kz}» тәсілін меңгересің.`} mood="happy" compact /></div>{/if}
         {#if step.scene}<Scene name={step.scene} s={step.s} />{/if}
         {#if !land}{@render bitView()}{/if}
         <div class="paper lock" class:long={step.task.length > 28}><Icon name="lock" fill="var(--gold)" size={28} /><MathLine text={step.task} big={step.task.length <= 28} inherit={step.task.length > 28} /></div>
@@ -286,13 +320,13 @@
         {/if}
       {:else if step.type === 'faded'}
         {#if !land}{@render bitView()}{/if}
-        <div class="paper"><Faded task={step.kz} steps={step.steps} ondone={clean => { if (clean) W.world?.heroEmote('cheer'); reward(clean ? 8 : 3); }} /></div>
+        <div class="paper"><Faded task={step.kz} steps={step.steps} onstep={k => { fadedHits = k; W.world?.trainStrike('combo', Math.min(3, k)); }} onmiss={bonk} ondone={clean => { stepDone = true; if (fadedHits) { if (clean) W.world?.heroEmote('cheer'); } else combo(clean); reward(clean ? 8 : 3); }} /></div>
       {:else if step.type === 'bug'}
         <GlitchSays text={step.kz} beaten={bugFound} />
-        <div class="paper"><BugHunt lines={step.lines} bad={step.bad} follows={step.follows} fix={step.fix} ondone={clean => { bugFound = true; W.world?.heroAttack(clean); reward(clean ? 8 : 3); }} /></div>
+        <div class="paper"><BugHunt lines={step.lines} bad={step.bad} follows={step.follows} fix={step.fix} ondone={clean => { bugFound = true; W.world?.trainBreakGlitch(); reward(clean ? 8 : 3); }} /></div>
       {:else if step.type === 'blitz'}
         {#if !land}{@render bitView()}{/if}
-        <div class="paper"><Blitz title={step.title} count={step.count} make={step.make} onphase={p => (blitzPhase = p)} onhit={crit => W.world?.heroAttack(crit)} ondone={stars => reward(stars * 5, stars === 3)} /></div>
+        <div class="paper"><Blitz title={step.title} count={step.count} make={step.make} onphase={p => (blitzPhase = p)} onhit={() => W.world?.trainTargetHit()} onmiss={() => W.world?.trainTargetMiss()} ondone={stars => { stepDone = true; reward(stars * 5, stars === 3); }} /></div>
       {:else if step.type === 'rule'}
         <div class="paper rule">
           <b><Icon name="star" fill="var(--gold)" size={22} />{step.kz}</b>
@@ -318,6 +352,7 @@
       {/if}
     </div>
   {/key}
+  <LessonHelper ctx={lessonCtx} />
 
   {#snippet footer()}
     {#if showSkip && !ready}<button class="btn ghost" onclick={() => (ready = true)}>Өткізу</button>{/if}
@@ -326,6 +361,8 @@
     </button>
   {/snippet}
 </Screen>
+
+{#if card && tech}<TechCard name={tech.kz} color={tech.color} fx={tech.fx} onclose={() => { card = false; advance(); }} />{/if}
 
 <Confirm open={askExit} title="Миссиядан шығасың ба?" text="Қай қадамда тұрғаның сақталады — кейін осы жерден жалғастырасың."
   yes="Шығу" no="Жалғастыру" onyes={leave} onno={() => (askExit = false)} />
@@ -336,7 +373,10 @@
   .t1 b { flex: 1; min-width: 0; font: 900 18px var(--disp); text-shadow: 0 2px 0 var(--outline); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .xp { color: var(--gold); font-size: 15px; text-shadow: 0 2px 0 var(--outline); }
   .t2 { display: flex; align-items: center; gap: 8px; }
+  .cap { font: 800 13px var(--txt); color: var(--dim); white-space: nowrap; }
   .hp { flex: 1; height: 14px; }
+  .hp > i { background: linear-gradient(180deg, color-mix(in srgb, var(--tc) 55%, #fff), var(--tc)); }
+  .intro { animation: pop-in .3s var(--ease-out) both; }
   .cnt { font-size: 13px; color: var(--dim); white-space: nowrap; }
   .cnt b { color: var(--ink); font-size: 15px; }
 

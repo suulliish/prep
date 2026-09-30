@@ -2,10 +2,12 @@
 // Работает на Cloud Run в проекте Google Cloud бота (Vertex AI, счёт — кредиты Google Cloud).
 // Кнопка на сайте появляется только ПОСЛЕ ответа ученика (docs/ARCHITECTURE.md: ИИ только после
 // заготовленного объяснения) — правильный ответ к этому моменту уже показан, решать за ребёнка нечего.
+// Режим «урок» (mode:'lesson', helper/lesson.mjs): объясняет шаг урока иначе; закрытые числа приходят как ▢ и не раскрываются.
 // Спрашивать могут только вошедшие в облако сайта (Firebase ID token проекта prep-b72a9).
 import http from 'node:http';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { GoogleGenAI } from '@google/genai';
+import { SYSTEM_LESSON, checkLesson, lessonPrompt } from './lesson.mjs';
 
 const FIREBASE_PROJECT = process.env.FIREBASE_PROJECT || 'prep-b72a9';
 const MODELS = (process.env.MODELS || 'gemini-3.7-flash,gemini-3.5-flash').split(',');
@@ -82,7 +84,7 @@ function buildPrompt(b) {
   return contents;
 }
 
-async function ask(contents) {
+async function ask(contents, system) {
   let last;
   for (const model of MODELS) {
     const ctrl = new AbortController();
@@ -91,7 +93,7 @@ async function ask(contents) {
       const r = await Promise.race([
         ai.models.generateContent({
           model, contents,
-          config: { systemInstruction: SYSTEM, temperature: 0.4, maxOutputTokens: 2500, abortSignal: ctrl.signal },
+          config: { systemInstruction: system, temperature: 0.4, maxOutputTokens: 2500, abortSignal: ctrl.signal },
         }),
         new Promise((_, rej) => ctrl.signal.addEventListener('abort', () => rej(new Error('timeout')))),
       ]);
@@ -125,13 +127,19 @@ const server = http.createServer(async (req, res) => {
   for await (const chunk of req) { body += chunk; if (body.length > 20000) return send(res, origin, 413, { error: 'too_big' }); }
   let b;
   try { b = JSON.parse(body); } catch { return send(res, origin, 400, { error: 'bad_json' }); }
-  if (!b?.task?.text || !b?.task?.correct) return send(res, origin, 400, { error: 'no_task' });
+  // режим «урок» (mode:'lesson') — шаг урока; без mode — разобранная задача практики
+  const lesson = b?.mode === 'lesson';
+  if (b?.mode !== undefined && b.mode !== 'practice' && !lesson) return send(res, origin, 400, { error: 'bad_mode' });
+  if (lesson) {
+    const bad = checkLesson(b);
+    if (bad) return send(res, origin, 400, { error: bad });
+  } else if (!b?.task?.text || !b?.task?.correct) return send(res, origin, 400, { error: 'no_task' });
   if (!quotaOk(who.uid)) return send(res, origin, 429, { error: 'quota' });
 
   try {
     const t0 = Date.now();
-    const { text, model } = await ask(buildPrompt(b));
-    console.log(JSON.stringify({ uid: who.uid, model, ms: Date.now() - t0, q: !!b.question }));
+    const { text, model } = await ask(lesson ? lessonPrompt(b) : buildPrompt(b), lesson ? SYSTEM_LESSON : SYSTEM);
+    console.log(JSON.stringify({ uid: who.uid, mode: lesson ? 'lesson' : 'practice', model, ms: Date.now() - t0, q: !!b.question, ...(lesson ? { step: b.step.type, skill: clip(b.topic?.skill, 60) } : {}) }));
     send(res, origin, 200, { text });
   } catch (e) {
     console.error('explain failed', String(e));

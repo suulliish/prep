@@ -14,7 +14,7 @@ export type Sfx =
   // звуки боя в момент действия на сцене (src/three/arena.ts): взмах, попадание, щит, рык, гул появления, приземление, монеты
   | 'slash' | 'impact' | 'block' | 'growl' | 'boom' | 'land' | 'coins';
 
-export type Mood = 'hub' | 'battle' | 'map' | 'victory' | 'focus' | 'silent';
+export type Mood = 'hub' | 'battle' | 'map' | 'victory' | 'training' | 'focus' | 'silent';
 
 export interface AudioSettings {
   master: number;        // 0..1
@@ -137,13 +137,15 @@ class AudioEngine {
     this.settings = { ...this.settings, ...patch };
     try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* приватный режим */ }
     this.applyVolumes();
-    if (focusChanged && this.mood === 'focus') this.setMood('focus', true);
+    if (focusChanged && (this.mood === 'focus' || this.mood === 'training')) this.setMood(this.mood, true);
   }
 
   private musicTarget() {
     const s = this.settings;
     if (this.mood === 'silent' || this.hidden) return 0;
     if (this.mood === 'focus') return s.musicInFocus === 'quiet' ? s.music * 0.25 : 0;
+    // тренировка (урок) — это чтение объяснений: подчиняется тому же правилу «фокус», что и задача (по умолчанию «выкл»), «тихо» — свой мягкий трек на 25%
+    if (this.mood === 'training') return s.musicInFocus === 'quiet' ? s.music * 0.25 : 0;
     return s.music;
   }
 
@@ -162,7 +164,7 @@ class AudioEngine {
     if (this.hidden || this.settings.master <= 0.001 || this.settings.music <= 0.001) this.seq.pause(); else this.seq.resume();
   }
 
-  /** Настроение музыки: hub — спокойно, map — приключение, battle — энергично, focus — задача/урок. */
+  /** Настроение музыки: hub — спокойно, map — приключение, battle — энергично, training — урок-тренировка (тихо), focus — задача. */
   setMood(mood: Mood, force = false) {
     this.mood = mood;
     if (!this.ctx) return;
@@ -170,6 +172,7 @@ class AudioEngine {
     if (mood === 'silent') { this.stopTrack(); return; }
     // фокус: «выкл» — секвенсор не крутится вовсе (экономит батарею); «тихо» — играет что играло (или «Корабль») на 25% громкости
     if (mood === 'focus') { if (this.settings.musicInFocus === 'off') this.stopTrack(); else if (!this.seq) this.startTrack('hub'); return; }
+    if (mood === 'training' && this.settings.musicInFocus === 'off') { this.stopTrack(); return; }
     if (this.seq && this.seq.track === mood && !force) return;
     this.startTrack(mood);
   }
