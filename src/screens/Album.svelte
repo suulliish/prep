@@ -134,7 +134,7 @@
   .cats b { font-size: 13px; color: var(--dim); }
   .grow { flex: 1; }
   .scrim { position: fixed; inset: 0; z-index: var(--z-modal); background: #05071399; }
-  .sheet { position: fixed; z-index: calc(var(--z-modal) + 1); left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); transform: translateX(-50%); width: min(460px, calc(100% - 20px)); display: grid; gap: 8px; animation: pop-in .25s var(--ease-out) both; }
+  .sheet { position: fixed; z-index: calc(var(--z-modal) + 1); left: 0; right: 0; margin-inline: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); width: min(460px, calc(100% - 20px));   /* без transform: анимация pop-in его затирала и карточка уезжала вправо */ display: grid; gap: 8px; animation: pop-in .25s var(--ease-out) both; }
   .rt { display: flex; align-items: center; gap: 8px; font: 900 19px var(--disp); }
   .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
   .btn.dark { --t: var(--paper-ink); --c: var(--paper-2); --e: var(--paper-line); text-shadow: none; }

@@ -8,13 +8,16 @@ export const today = $state({ plan: null as Plan | null });
 export function ensurePlan(): Plan {
   if (!today.plan || today.plan.day !== game.day) {
     refreshAvailability(game.save, skillDefs);
-    today.plan = buildPlan(game.save, skillDefs, game.day);
+    const rec = dayRec();
+    // план дня собирается один раз и хранится в записи дня: перезагрузка страницы не меняет уже начатый день
+    if (!rec.plan || rec.plan.day !== game.day) rec.plan = buildPlan(game.save, skillDefs, game.day);
+    today.plan = JSON.parse(JSON.stringify(rec.plan));
   }
-  game.save.days[game.day] ??= blankDay(game.day);
-  return today.plan;
+  return today.plan!;
 }
 
-export function dayRec() { return (game.save.days[game.day] ??= blankDay(game.day)); }
+// сначала создать запись, потом читать: «(x ??= {})» при первом вызове вернул бы копию, а не состояние Svelte
+export function dayRec() { if (!game.save.days[game.day]) game.save.days[game.day] = blankDay(game.day); return game.save.days[game.day]; }
 
 export function completeBlock(id: BlockId | 'extra') {
   const plan = ensurePlan(), rec = dayRec();
@@ -26,4 +29,4 @@ export function completeBlock(id: BlockId | 'extra') {
   persist();
 }
 
-export function replan() { today.plan = null; ensurePlan(); }
+export function replan() { today.plan = null; if (game.save.days[game.day]) delete game.save.days[game.day].plan; ensurePlan(); }

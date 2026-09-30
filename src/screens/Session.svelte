@@ -516,8 +516,9 @@
       const r = dayRec();
       // 3 звезды: бонус монетами один раз за шаг дня (доп. миссии — каждая отдельный уровень)
       if (b === 'extra' || (r.stars?.[b] ?? 0) < 3) earn(starsCoins(stars), sceneCenter(0.35), true);
-      (r.stars ??= {})[b] = Math.max(r.stars[b] ?? 0, stars);
-      if (b === 'new' && skills[0]) (game.save.levelStars ??= {})[skills[0]] = Math.max(game.save.levelStars[skills[0]] ?? 0, stars);
+      // сначала создать объект в сохранении, потом писать в него: «(x ??= {})[k] = …» пишет в копию, а не в состояние Svelte (звёзды терялись)
+      r.stars ??= {}; r.stars[b] = Math.max(r.stars[b] ?? 0, stars);
+      if (b === 'new' && skills[0]) { game.save.levelStars ??= {}; game.save.levelStars[skills[0]] = Math.max(game.save.levelStars[skills[0]] ?? 0, stars); }
       persist();
     }
     result = { stars, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: Math.max(0, got), coins: sessCoins, counted, note };
