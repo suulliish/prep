@@ -4,7 +4,7 @@
 import { solGap } from '../engine/solgap';
 import { parseFrac, cmp } from '../widgets/fracdraw';
 
-export interface LessonGap { text: string; answer: string; options: string[] }
+export interface LessonGap { text: string; answer: string; options: string[]; /** подпись кадра называет ответ — её прячем до решения (и не озвучиваем) */ mask?: boolean }
 export interface StepGaps { frames?: (LessonGap | null)[]; rule?: { line: number; gap: LessonGap } | null }
 
 /** Детерминированный генератор по строке-ключу: варианты не «прыгают» при перерисовке. */
@@ -98,22 +98,23 @@ export function revealed(text: string, v: string): boolean {
   return false;
 }
 /** Кадр «Көр»: закрыть первое [подсвеченное] число или дробь, если это безопасно (рядом нет знака сравнения, верный вариант единственный,
- *  и подпись кадра caption сама не называет это число — иначе ответ читается прямо под пропуском). */
-export function frameGap(math: string, rnd: () => number = Math.random, caption = ''): LessonGap | null {
+ *  число не нарисовано в сцене scene). Если его называет подпись caption — пропуск ставится с mask: подпись прячет число до решения. */
+export function frameGap(math: string, rnd: () => number = Math.random, caption = '', scene = ''): LessonGap | null {
   const flat = math.replace(/[[\]]/g, '');
   const seen = [...flat.matchAll(/\d+(?: \d{3})*(?:,\d+)?/g)].map(x => x[0]);
   for (const m of math.matchAll(/\[([^\]]+)\]/g)) {
     const inner = m[1], at = m.index!;
     const before = math.slice(0, at), after = math.slice(at + m[0].length);
     if (CMP_OPS.test(before.trimEnd().slice(-1)) || CMP_OPS.test(after.trimStart().slice(0, 1))) continue;   // «10 > [8]»: подойдут и 7, и 9
-    if (caption && revealed(caption, inner)) continue;
+    if (scene && revealed(scene, inner)) continue;                // число нарисовано в сцене — его не спрятать
+    const mask = !!caption && revealed(caption, inner);
     const fr = parseFrac(inner), isNum = NUM.test(inner);
     if (!isNum && !(fr && fr.whole === null)) continue;
     const plain = (before + '▢' + after).replace(/[[\]]/g, '');
     if (holds(plain.replace('▢', inner)) === false) continue;   // кадр сам себе противоречит — не трогаем
     const pool = isNum ? numPool(inner, seen.filter(x => x !== inner)) : fracPool(fr!);
     const options = pickThree(inner, pool, rnd, v => holds(plain.replace('▢', v)) !== true);
-    if (options) return { text: before + '▢' + after, answer: inner, options };
+    if (options) return { text: before + '▢' + after, answer: inner, options, ...(mask ? { mask } : {}) };
   }
   return null;
 }
@@ -129,7 +130,7 @@ export function ruleGap(line: string, rnd: () => number = Math.random, others = 
 export function planGaps(skill: string, i: number, step: any): StepGaps | null {
   if (!step || step.noGap) return null;
   if (step.type === 'example') {
-    const cand: (LessonGap | null)[] = step.frames.map((f: any, k: number) => (f.noGap || !f.math ? null : frameGap(f.math, seeded(`${skill}:${i}:${k}`), `${f.kz ?? ''} ${step.kz ?? ''} ${JSON.stringify(f.s ?? step.s ?? {})}`)));
+    const cand: (LessonGap | null)[] = step.frames.map((f: any, k: number) => (f.noGap || !f.math ? null : frameGap(f.math, seeded(`${skill}:${i}:${k}`), f.kz ?? '', JSON.stringify(f.s ?? step.s ?? {}))));
     const idx = cand.flatMap((g, k) => (g ? [k] : []));
     const take = new Set(idx.filter((_, j) => j % 2 === 0));
     return take.size ? { frames: cand.map((g, k) => (take.has(k) ? g : null)) } : null;
@@ -141,4 +142,14 @@ export function planGaps(skill: string, i: number, step: any): StepGaps | null {
     }
   }
   return null;
+}
+
+/** Спрятать ответ v в подписи (отдельные вхождения; у дроби a/b — и её части): «Пиццаны 8 тең бөлікке» → «Пиццаны ▢ тең бөлікке». */
+export function maskText(text: string, v: string): string {
+  const one = (t: string, x: string) => t.replace(new RegExp(`(^|[^\\d/,])${x.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}(?![\\d/]|,\\d)`, 'g'), '$1▢');
+  const fr = v.match(/^(\d+)\/(\d+)$/);
+  let t = one(text, v);
+  if (fr) t = one(one(t, fr[1]), fr[2]);
+  else if (/^\d+$/.test(v)) t = t.replace(new RegExp(`(^|[^\\d])${v}(?=/\\d)|(\\d/)${v}(?!\\d)`, 'g'), (_m, a, b) => (a !== undefined ? a : b) + '▢');
+  return t;
 }

@@ -12,8 +12,10 @@ import { WEEK3 as W3 } from '../content/lessons_week3.mjs';
 import { WEEK4 as W4 } from '../content/lessons_week4.mjs';
 // @ts-ignore
 import { WEEK5 as W5 } from '../content/lessons_week5.mjs';
-const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>, WEEK3 = W3 as Record<string, any[]>, WEEK4 = W4 as Record<string, any[]>, WEEK5 = W5 as Record<string, any[]>;
-const FULL = { ...WEEK1, ...WEEK2, ...WEEK3, ...WEEK4, ...WEEK5 };
+// @ts-ignore
+import { WEEK6 as W6 } from '../content/lessons_week6.mjs';
+const WEEK1 = W1 as Record<string, any[]>, WEEK2 = W2 as Record<string, any[]>, WEEK3 = W3 as Record<string, any[]>, WEEK4 = W4 as Record<string, any[]>, WEEK5 = W5 as Record<string, any[]>, WEEK6 = W6 as Record<string, any[]>;
+const FULL = { ...WEEK1, ...WEEK2, ...WEEK3, ...WEEK4, ...WEEK5, ...WEEK6 };
 // @ts-ignore
 import { skillById } from '../content/skills.mjs';
 // @ts-ignore
@@ -50,7 +52,7 @@ describe('уроки', () => {
   }
 });
 
-describe('недели 1–5 — полный сценарий', () => {
+describe('недели 1–6 — полный сценарий', () => {
   for (const [id, steps] of Object.entries(FULL) as [string, any[]][]) {
     it(`${id}: цель → … → возврат к цели`, () => {
       const t = steps.map(s => s.type);
@@ -213,10 +215,75 @@ describe('недели 1–5 — полный сценарий', () => {
     }
     function ans_(it: any) { return it.choices[it.answer]; }
   });
+  it('мини-игры недели 6 считают правильно', () => {
+    const r = rng(31), bl = (id: string) => WEEK6[id].find((s: any) => s.type === 'blitz')!;
+    const g = (a: number, b: number): number => (b ? g(b, a % b) : a);
+    // значение варианта («3/4» или «5») как число-дробь [n, d]; сравнение по перекрёстному умножению
+    const val = (t: string) => { const m = /^(\d+)(?:\/(\d+))?$/.exec(t); if (!m) throw new Error('не число: ' + t); return [+m[1], +(m[2] ?? 1)]; };
+    const same = (a: number[], b: number[]) => a[0] * b[1] === b[0] * a[1];
+    const fr = (q: string) => [...q.matchAll(/(\d+)\/(\d+)/g)].map(m => [+m[1], +m[2]]);
+    const digitsOf = (P: number) => { let d = 0; for (let i = 1; i <= P; i++) d += String(i).length; return d; };
+    const onlyRight = (it: any, want: number[]) => {
+      expect(it.choices.filter((c: string) => same(val(c), want)), it.q + it.choices).toHaveLength(1);
+      expect(same(val(it.choices[it.answer]), want), it.q).toBe(true);
+    };
+    for (let k = 0; k < 300; k++) {
+      // frac.mul: произведение, площадь пересечения, «больше или меньше множителя»
+      let it = bl('frac.mul').make(r);
+      if (it.q.startsWith('Квадратты')) {
+        const [d1, d2, n1, n2] = it.q.match(/\d+/g)!.map(Number);
+        expect(n1).toBeLessThan(d1); expect(n2).toBeLessThan(d2);
+        expect(it.choices[it.answer], it.q).toBe(String(n1 * n2));
+      } else if (it.q.includes('көбейтіндісі')) {
+        const [f, gg] = it.q.split(' көбейтіндісі')[0].split(' · ').map((t: string) => val(t)), fv = f[0] / f[1];
+        expect(it.choices).toEqual(['Кіші', 'Үлкен', 'Тең']);
+        expect(it.choices[it.answer], it.q).toBe(fv < 1 ? 'Кіші' : fv > 1 ? 'Үлкен' : 'Тең');
+        expect(gg[0]).toBeGreaterThan(0);
+      } else {
+        const [[a, b], [c, d]] = fr(it.q);
+        onlyRight(it, [a * c, b * d]);
+        expect(it.choices[it.answer]).toBe(`${a * c / g(a * c, b * d)}/${b * d / g(a * c, b * d)}`);   // ответ сокращён
+      }
+      // frac.div: деление на дробь, «сколько поместится», кері сан
+      it = bl('frac.div').make(r);
+      if (it.q.includes('кері саны')) {
+        const [[n, d]] = fr(it.q);
+        onlyRight(it, [d, n]);
+      } else if (it.q.includes('батарея')) {
+        const [w] = it.q.match(/\d+/g)!.map(Number), [[n, d]] = fr(it.q);
+        expect(it.choices[it.answer], it.q).toBe(String((w * d) / n)); expect((w * d) % n).toBe(0);
+      } else if (/^\d+ : 1\//.test(it.q)) {
+        const [a, , kk] = it.q.match(/\d+/g)!.map(Number);
+        onlyRight(it, [a * kk, 1]);
+      } else {
+        const [[a, b], [c, d]] = fr(it.q);
+        onlyRight(it, [a * d, b * c]);
+      }
+      // frac.part_of_number: N : d · n (или остаток)
+      it = bl('frac.part_of_number').make(r);
+      const [N, pn, pd] = it.q.match(/\d+/g)!.map(Number);
+      expect(N % pd).toBe(0);
+      expect(it.choices[it.answer], it.q).toBe(String((N / pd) * (it.q.includes('қалды') ? pd - pn : pn)));
+      // frac.find_whole: бүтін = бөлік : алым · бөлім
+      it = bl('frac.find_whole').make(r);
+      const q = it.q, nn = q.match(/\d+/g)!.map(Number);
+      let whole: number;
+      if (q.startsWith('Жолдың')) { const [a, d, p] = nn; expect(p % (d - a)).toBe(0); whole = (p / (d - a)) * d; }
+      else if (q.startsWith('Санның')) { const [n, d, p] = nn; expect(p % n).toBe(0); whole = (p / n) * d; }
+      else { const [p, n, d] = nn; expect(p % n).toBe(0); whole = (p / n) * d; }
+      expect(it.choices[it.answer], q).toBe(String(whole));
+      // logic.page_digits
+      it = bl('logic.page_digits').make(r);
+      const pg = it.q.match(/\d+/g)!.map(Number);
+      if (it.q.includes('нөмірлеуге неше цифр')) expect(it.choices[it.answer], it.q).toBe(String(digitsOf(pg[0])));
+      else if (it.q.includes('цифр кетті')) { const D = pg[1]; const P = +it.choices[it.answer]; expect(digitsOf(P), it.q).toBe(D); }
+      else expect(it.choices[it.answer], it.q).toBe(String(pg[1] - pg[0] + 1));
+    }
+  });
   it('уроки: сцены и виджеты зарегистрированы, запрещённых слов нет', () => {
     const scenes = readFileSync('src/lesson/Scene.svelte', 'utf8'), lesson = readFileSync('src/screens/Lesson.svelte', 'utf8');
     const avoid: string[] = (GLOSSARY as any).terms.flatMap((t: any) => t.avoid ?? []).filter((w: string) => w.length > 3);
-    for (const [id, steps] of Object.entries({ ...WEEK4, ...WEEK5 })) {
+    for (const [id, steps] of Object.entries({ ...WEEK4, ...WEEK5, ...WEEK6 })) {
       const txt: string[] = [];
       for (const s of steps) {
         if (s.scene) expect(scenes, `${id}: сцена ${s.scene}`).toMatch(new RegExp(`\\b${s.scene}\\b`));

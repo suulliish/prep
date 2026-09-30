@@ -215,3 +215,47 @@ describe('FractionBar: режим equal без target', () => {
     expect(equalDone({ target: { d: 12 }, startD: 3, nd: 6, ops: 5 })).toBe(false);
   });
 });
+
+describe('FracArea: чистые функции и уроки недели 6', () => {
+  it('пересечение закрашенных столбцов и строк = произведение числителей; площадь произведения', async () => {
+    const { overlap, areaProduct, sliceOk } = await import('../src/widgets/fracarea');
+    expect(overlap([true, false], [true, true, true, false])).toBe(3);        // 1/2 · 3/4: 3 клетки из 8
+    expect(overlap([false, false], [true, true])).toBe(0);
+    expect(areaProduct({ n: 1, d: 2 }, { n: 3, d: 4 })).toEqual({ cells: { n: 3, d: 8 }, reduced: { n: 3, d: 8 } });
+    expect(areaProduct({ n: 2, d: 3 }, { n: 3, d: 4 })).toEqual({ cells: { n: 6, d: 12 }, reduced: { n: 1, d: 2 } });
+    expect(sliceOk(4, 3, { n: 3, d: 4 })).toBe(true);
+    expect(sliceOk(8, 6, { n: 3, d: 4 })).toBe(false);                        // эквивалентная нарезка не подходит
+  });
+  it('«сколько поместится»: 3 : 1/4 = 12, 3 : 3/4 = 4; кусок переходит через строку', async () => {
+    const { fitInfo, fitCanPlace, fitDone, fitCells } = await import('../src/widgets/fracarea');
+    expect(fitInfo(3, { n: 1, d: 4 })).toEqual({ total: 12, max: 12, rest: 0 });
+    expect(fitInfo(3, { n: 3, d: 4 })).toEqual({ total: 12, max: 4, rest: 0 });
+    expect(fitCanPlace(11, 3, { n: 1, d: 4 })).toBe(true);
+    expect(fitCanPlace(12, 3, { n: 1, d: 4 })).toBe(false);
+    expect(fitDone(4, 3, { n: 3, d: 4 })).toBe(true);
+    expect(fitDone(3, 3, { n: 3, d: 4 })).toBe(false);
+    expect(fitCells(1, { n: 3, d: 4 })).toEqual([{ row: 0, col: 3 }, { row: 1, col: 0 }, { row: 1, col: 1 }]);
+    expect(fitInfo(2, { n: 3, d: 4 })).toEqual({ total: 8, max: 2, rest: 2 }); // неровно: остаток клеток
+  });
+  it('часть числа и число по части', async () => {
+    const { partUnit, unitChoices } = await import('../src/widgets/fracarea');
+    expect(partUnit(40, 5)).toBe(8);
+    expect(partUnit(40, 3)).toBeNull();
+    expect(unitChoices(35, 5)).toEqual([5, 7, 35]);
+    expect(unitChoices(25, 5)).toEqual([5, 25]);                               // без дублей
+  });
+  it('все виджеты уроков недели 6 получают допустимые props: куски делят бүтін нацело, части делят число', async () => {
+    const { WEEK6 } = (await import('../content/lessons_week6.mjs')) as any;
+    let seen = 0;
+    for (const [id, list] of Object.entries(WEEK6) as [string, any[]][]) {
+      for (const s of list.filter(x => x.type === 'widget' && x.w === 'FracArea')) {
+        const p = s.props; seen++;
+        if (p.mode === 'fit') expect((p.whole * p.piece.d) % p.piece.n, id).toBe(0);
+        if (p.mode === 'part') { expect(p.total % p.target.d, id).toBe(0); expect(p.target.d).toBeLessThanOrEqual(10); }
+        if (p.mode === 'whole') { expect(p.known % p.frac.n, id).toBe(0); expect(p.frac.d).toBeLessThanOrEqual(12); }
+        if (p.mode === 'mul') { expect(p.a.d).toBeLessThanOrEqual(8); expect(p.b.d).toBeLessThanOrEqual(8); }
+      }
+    }
+    expect(seen).toBeGreaterThanOrEqual(6);
+  });
+});

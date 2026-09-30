@@ -23,7 +23,7 @@
   import VOICED from '../../content/voice_lessons.json';
   import MathLine from '../lesson/MathLine.svelte';
   import Gap from '../lesson/Gap.svelte';
-  import { planGaps } from '../lesson/gap';
+  import { planGaps, maskText } from '../lesson/gap';
   import { hasHighlight } from '../lesson/rich';
   import { fitZoom } from '../lesson/fit';
   import Faded from '../lesson/Faded.svelte';
@@ -47,12 +47,13 @@
   import FillOne from '../widgets/FillOne.svelte';
   import Scales from '../widgets/Scales.svelte';
   import ZeroCounter from '../widgets/ZeroCounter.svelte';
+  import FracArea from '../widgets/FracArea.svelte';
 
   // replay — пересмотр из альбома: без XP и без перехода к практике
   let { skill, replay = false }: { skill: string; replay?: boolean } = $props();
   // FractionCircle и FillOne подгоняют себя сами (пицца и мост по высоте); остальные виджеты сжимаются целиком не сильнее 0.8
   const SELF_FIT = ['FractionCircle', 'FillOne'];
-  const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline, MultipleHunt, StarPicker, SetSort, FractionCircle, FractionBar, NumberLine, FillOne, Scales, ZeroCounter };
+  const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline, MultipleHunt, StarPicker, SetSort, FractionCircle, FractionBar, NumberLine, FillOne, Scales, ZeroCounter, FracArea };
   const steps: any[] = (LESSONS as Record<string, any[]>)[skill] ?? [{ type: 'say', kz: 'Бұл тақырыптың сабағы әзірленуде. Бірден жаттығуға көшейік!' }];
   const goal = steps.find(s => s.type === 'goal');
   const target = goal?.title ?? skillTitle(skill).kz;
@@ -199,7 +200,11 @@
     const t = step.type;
     if (t === 'say' || t === 'goal') return { text: step.kz, mood: 'wow', compact: t === 'goal', voice: voiceUrl(i) };
     if (t === 'widget') return { text: step.kz, mood: 'think', compact: true, voice: voiceUrl(i) };
-    if (t === 'example') return fr?.kz ? { text: fr.kz, mood: 'think', compact: true, voice: voiceUrl(`${i}_f${frame}`) } : null;
+    if (t === 'example') {
+      if (!fr?.kz) return null;
+      const hide = !!curGap?.mask && !solved[gapKey];                // подпись называет спрятанное число: до решения прячем его и не озвучиваем
+      return { text: hide ? maskText(fr.kz, curGap!.answer) : fr.kz, mood: 'think', compact: true, voice: hide ? undefined : voiceUrl(`${i}_f${frame}`) };
+    }
     if (t === 'faded') return { text: 'Енді өзің! Бұзылған модульдерді жөнде.', mood: 'think', compact: true };
     if (t === 'blitz') return blitzPhase === 'play' ? null : { text: step.kz, mood: 'wow', compact: true };
     if (['predict', 'why', 'quiz', 'final'].includes(t)) return { text: bitLine, mood: pick === null || pick !== step.answer ? 'think' : 'happy', compact: true };
@@ -260,7 +265,7 @@
         {:else}
           <ol class="paper frames">
             {#each step.frames.slice(0, frame + 1) as f, k}
-              <li class="appear" class:cur={k === frame}>{#if f.math}<MathLine text={k === frame && curGap ? curGap.text : f.math} fill={k === frame && curGap && solved[gapKey] ? curGap.answer : null} big={k === frame} ontap={k === frame && canTap && hasHighlight(f.math) ? readTap : undefined} />{/if}<span><MathLine text={f.kz} inherit /></span></li>
+              <li class="appear" class:cur={k === frame}>{#if f.math}<MathLine text={k === frame && curGap ? curGap.text : f.math} fill={k === frame && curGap && solved[gapKey] ? curGap.answer : null} big={k === frame} ontap={k === frame && canTap && hasHighlight(f.math) ? readTap : undefined} />{/if}<span><MathLine text={k === frame && curGap?.mask && !solved[gapKey] ? maskText(f.kz, curGap.answer) : f.kz} inherit /></span></li>
             {/each}
           </ol>
           {#if gapOpen && curGap}<Gap options={curGap.options} answer={curGap.answer} onsolved={gapSolved} />{/if}
