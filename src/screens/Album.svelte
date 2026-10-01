@@ -9,6 +9,9 @@
   import { audio } from '../lib/audio';
   import { toast } from '../ui/notify.svelte';
   import { isCredited, CREDIT_STEPS, WINDOWS } from '../engine/recall';
+  import { canStartExtra, extraNeedsRepair, REPAIR_FOR_EXTRA, EXTRA_MIN, REPAIR_EXTRA_MAX } from '../engine/planner';
+  import { shipIntegrity, integrityColor, coinsHalved } from '../engine/repair';
+  import { ensurePlan, dayRec } from '../lib/session.svelte';
   // @ts-ignore
   import { LESSONS } from '../../content/lessons.mjs';
   // @ts-ignore
@@ -50,6 +53,9 @@
   };
   const broken = $derived(game.save.repairShop.filter(r => !r.fixed));
   const fixed = $derived(game.save.repairShop.filter(r => r.fixed).length);
+  const integrity = $derived(shipIntegrity(broken.length));
+  // жөндеу вместо доп. миссии: день пройден, доп. миссия ещё есть, поломок ≥ 3 — починка засчитывается как доп. миссия (+15 мин)
+  const extraRepair = $derived(canStartExtra(dayRec(), ensurePlan(), game.save.settings.extraMissionCap) && extraNeedsRepair(broken.length));
   onMount(() => { W.dim = true; audio.setMood('hub'); });
   function tap(id: string) {
     audio.play('click');
@@ -155,6 +161,14 @@
     {/if}
   {:else}
     <div class="paper">Әр қате — сынған бөлшек. Жөндеу үшін дәл сондай есепті өзің шығар. Жөнделгені: <b>{fixed}</b>.</div>
+    <div class="hull" role="img" aria-label="Кеме беріктігі: {integrity}%">
+      <span class="hl">Кеме беріктігі</span>
+      <span class="hb"><i style="width:{integrity}%; background:{integrityColor(integrity)}"></i></span>
+      <b class="num">{integrity}%</b>
+    </div>
+    {#if broken.length}
+      <div class="paper rule">{REPAIR_FOR_EXTRA} ақау болса, қосымша миссия жөндеу арқылы ашылады: барлық ақауды жөнде (бір күнде {REPAIR_EXTRA_MAX}-ға дейін), +{EXTRA_MIN} мин аласың.{#if coinsHalved(broken.length)} Ақау 6-дан көп болса, тиындар жартылай беріледі.{/if}</div>
+    {/if}
     {#if broken.length}
       <ul class="cats">{#each broken.slice(-12) as r}<li style="--cc:var(--miss)"><i class="dot"></i><span>{skillDefs.find(d => d.id === r.skill)?.title.kz}</span></li>{/each}</ul>
     {:else}<div class="paper empty">Кеме бүтін: сынған бөлшек жоқ!</div>{/if}
@@ -162,7 +176,7 @@
 
   {#snippet footer()}
     {#if tab === 'repair' && broken.length}
-      <button class="btn primary big grow" onclick={() => { audio.unlock(); audio.play('mission'); go({ name: 'session', block: 'repair' }); }}>Жөндеуді бастау</button>
+      <button class="btn primary big grow" onclick={() => { audio.unlock(); audio.play('mission'); go({ name: 'session', block: 'repair', ...(extraRepair ? { asExtra: true } : {}) }); }}>{extraRepair ? `Жөндеу миссиясы · +${EXTRA_MIN} мин` : 'Жөндеуді бастау'}</button>
     {:else}
       <button class="btn big grow" onclick={() => go({ name: 'hub' })}>Кемеге</button>
     {/if}
@@ -216,6 +230,11 @@
   .card .bar { height: 10px; border-width: 2px; }
   .rl { position: absolute; right: 8px; bottom: 8px; }
   .empty { text-align: center; color: var(--paper-dim); }
+  .hull { display: flex; align-items: center; gap: 10px; }
+  .hull .hl { font: 800 14px var(--disp); }
+  .hull .hb { flex: 1; height: 14px; border-radius: 999px; background: #0b1030; border: 2px solid var(--outline); overflow: hidden; }
+  .hull .hb i { display: block; height: 100%; border-radius: 999px; }
+  .hull .num { font: 900 16px var(--disp); min-width: 3.4ch; text-align: right; }
   .cats { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
   .cats li { display: grid; grid-template-columns: 14px 1fr 80px auto; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: var(--deep); border: 3px solid var(--outline); font-size: 14px; }
   .cats li .bar { height: 10px; border-width: 2px; } .cats li .bar i { background: var(--cc); }

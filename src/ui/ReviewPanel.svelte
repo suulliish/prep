@@ -15,7 +15,7 @@
   import { mistakeText } from '../engine/items';
   import type { Review, ReviewMode } from '../engine/review';
 
-  let { review, mode, sure = false, fastMs = 0, onnext, children }: { review: Review; mode: ReviewMode; sure?: boolean; fastMs?: number; onnext: () => void; children?: Snippet } = $props();
+  let { review, mode, sure = false, fastMs = 0, easy = false, onnext, children }: { review: Review; mode: ReviewMode; sure?: boolean; fastMs?: number; easy?: boolean; onnext: () => void; children?: Snippet } = $props();
 
   // kind разбора не меняется, пока панель жива (Session пересоздаёт её на каждый разбор), поэтому начальные значения читаем один раз
   // svelte-ignore state_referenced_locally
@@ -34,8 +34,8 @@
   const pre = $derived((fastMs ? `${rushSec(fastMs)} секундта жауап бердің. ` : '') + (sure ? REVIEW_SAY.sureWrong + ' ' : ''));
   const bit = $derived.by(() => {
     const r = review;
-    if (r.kind === 'find') return pre + REVIEW_SAY.find;
-    if (r.kind === 'why') return pre + REVIEW_SAY.why;
+    if (r.kind === 'find') return pre + (easy ? REVIEW_SAY.easyFind : REVIEW_SAY.find);
+    if (r.kind === 'why') return pre + (easy ? REVIEW_SAY.easyWhy : REVIEW_SAY.why);
     if (r.kind === 'glitch') return r.turn.follows.includes(r.picked) ? GLITCH_SAY.followLine : r.picked === r.turn.bad ? GLITCH_SAY.right : GLITCH_SAY.wrongLine;
     if (mode === 'fast') return rushLine(fastMs);
     if (r.kind === 'gap') return mode === 'dunno' ? REVIEW_SAY.gap : pre + REVIEW_SAY.gapErr;

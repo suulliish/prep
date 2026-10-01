@@ -7,6 +7,7 @@ export interface SkillState {
   status: Status;
   lessonDone: boolean;
   learnedAt?: string;        // дата «үйренді»
+  strict?: boolean;          // выучена по порогу «85% с первой попытки в окне 15–20» (01.10); у старых тем флага нет — их судит окно, см. progress.ts
   due?: string;              // дата следующей проверки/повторения
   stage: number;             // ступень интервального повторения
   attempts: number;
@@ -73,6 +74,7 @@ export interface Save {
   worldsCleared?: string[]; // миры, где побеждён босс
   outfit?: string;         // костюм героя (путь наград)
   repairShop: { source: string; skill: string; tag?: string; addedDay: string; fixed?: boolean }[];
+  shipChestFixed?: number;   // сколько починенных поломок уже «потрачено» на сундук за целый корабль (src/engine/repair.ts: claimShipChest)
   kzReview?: Record<string, 'ok' | 'fix'>;   // проверка казахских текстов носителем
   weekendSpent?: Record<string, number>;      // устарело вместе с таймером игры (30.09)
   lessonPos?: { skill: string; step: number };  // где остановился в уроке — «Жалғастыру»

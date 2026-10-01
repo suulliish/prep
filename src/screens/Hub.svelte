@@ -9,7 +9,8 @@
   import { game, go, levelOf, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { ensurePlan, dayRec } from '../lib/session.svelte';
-  import { canStartExtra, planComplete, TODAY_MAX, round5, extraCap } from '../engine/planner';
+  import { canStartExtra, planComplete, TODAY_MAX, round5, extraCap, extraNeedsRepair, REPAIR_FOR_EXTRA, EXTRA_MIN, repairNeed } from '../engine/planner';
+  import { openBreaks, shipIntegrity, integrityColor, coinsHalved, claimShipChest } from '../engine/repair';
   import { isWeekday } from '../engine/dates';
   import { streak } from '../engine/streak';
   import { skillTitle } from '../engine/items';
@@ -17,7 +18,8 @@
   import { toast } from '../ui/notify.svelte';
   import { flushRewards, seen, takeLevelUp } from '../lib/reward.svelte';
   import { sparksAt } from '../ui/fx.svelte';
-  import { coinsOf, canAffordSomething, syncDecor } from '../lib/ship.svelte';
+  import { coinsOf, canAffordSomething, syncDecor, addCoins, ITEMS, itemById, showDecor } from '../lib/ship.svelte';
+  import ShipIcon from '../ui/ShipIcon.svelte';
   import { due as recallDue, backfill as recallBackfill } from '../engine/recall';
   import { hasRule } from '../lesson/recallrule';
   // @ts-ignore
@@ -36,7 +38,14 @@
   const lv = $derived(levelOf(game.save.xp));
   const st = $derived(streak(game.save, game.day));
   const crystals = $derived(Object.values(game.save.skills).filter(s => s.status === 'mastered' || s.status === 'automatic').length);
-  const broken = game.save.repairShop.filter(r => !r.fixed).length;
+  // поломки корабля = неисправленные ошибки (docs/GAME_LOOP.md 18): прочность, ремонтная доп. миссия, подпись Бита
+  const broken = $derived(openBreaks(game.save));
+  const integrity = $derived(shipIntegrity(broken));
+  const needsRepair = $derived(extraNeedsRepair(broken));
+  const repairPhrase = $derived(
+    broken <= 0 ? '' : coinsHalved(broken) ? ` Кемеде ${broken} ақау қалды. Алдымен жөнде!`
+    : needsRepair ? ` Кемеде ${broken} ақау қалды. Жөндейік!` : ` Кемеде ${broken} ақау қалды.`
+  );
   const learnedTotal = Object.values(game.save.skills).filter(s => ['learned', 'mastered', 'automatic'].includes(s.status)).length;
 
   const BLOCK = {
@@ -58,6 +67,8 @@
   const doneN = $derived(plan.blocks.filter(b => rec.blocksDone[b.id]).length);
   const done = $derived(planComplete(rec, plan));
   const extraOk = $derived(canStartExtra(rec, plan, game.save.settings.extraMissionCap));
+  // доп. миссия при ≥ 3 поломках — ремонтная: починил 3, получил её +15 минут (засчитывает бой)
+  const extraRepair = $derived(extraOk && needsRepair);
   const name = $derived(game.save.heroName);
   const bossReady = $derived(weekday && done && !game.save.worldsCleared?.includes(game.save.world ?? 'village') && learnedTotal >= 3);
 
@@ -68,6 +79,7 @@
     : doneN === 0 ? `${name}, бүгін ${plan.blocks.length} қадам. Бастайық!`
     : `Жарайсың! Тағы ${plan.blocks.length - doneN} қадам қалды.`
   );
+  const sayText = $derived(game.save.diagnosticDone ? greeting + repairPhrase : greeting);
 
   // Что выросло с прошлого захода на корабль: минуты считаются вверх (пилюля подпрыгивает), XP-полоска доезжает,
   // при новом уровне — праздник «Деңгей N!» (ничего не должно проходить молча).
@@ -78,6 +90,7 @@
   let xpFrac = $state(levelOf(seen.xp).into / levelOf(seen.xp).need);
   let xpJump = $state(false);        // мгновенный сброс полоски на 0 после заполнения (новый уровень)
   let levelUp = $state<number | null>(null);
+  let chest = $state<{ coins: number; item: string | null } | null>(null);
   let lvlPulse = $state(0);
   function count(from: number, to: number, ms: number, set: (v: number) => void) {
     const t0 = performance.now();
@@ -98,6 +111,11 @@
     audio.setMood('hub');
     // 1. недоигранная награда (вышли посреди занятия) — показать сейчас
     void flushRewards();
+    // 1б. корабль стал целым после ремонта — сундук: монеты и украшение (один раз за «опустошение», src/engine/repair.ts)
+    const chestBase = game.save.shipChestFixed;
+    const prize = claimShipChest(game.save, ITEMS);
+    if (prize) { addCoins(game.save, prize.coins, game.day); persist(); syncDecor(); later(700, () => { chest = prize; audio.play('chest'); sparksAt(innerWidth / 2, innerHeight * 0.4, ['#ffcb2e', '#35e6ff', '#ff4fb8', '#ffffff'], 70, 10); }); }
+    else if (game.save.shipChestFixed !== chestBase) persist();   // первый заход: запомнили точку отсчёта
     // 2. минуты
     const nowMin = dayRec().minutesToday;
     if (seen.minutes !== null && nowMin > seen.minutes) { const from = seen.minutes; later(500, () => { minBump++; audio.play('coins'); count(from, nowMin, 900, v => (shownMin = v)); }); }
@@ -166,6 +184,7 @@
     !game.save.diagnosticDone ? { label: 'Сканерлеуді бастау', go: () => { audio.unlock(); go({ name: 'diagnostic' }); } }
     : !weekday ? { label: 'Картаны ашу', go: () => nav('map') }
     : nextBlock ? { label: resume && nextBlock.id === 'new' ? 'Жалғастыру' : 'Бастау', go: () => start(nextBlock!.id) }
+    : extraRepair ? { label: 'Жөндеуді бастау', go: () => { audio.unlock(); audio.play('energy'); portal(() => go({ name: 'session', block: 'repair', asExtra: true })); } }
     : extraOk ? { label: 'Бастау', go: () => { audio.unlock(); audio.play('energy'); portal(() => go({ name: 'session', block: 'extra' })); } }
     : { label: 'Картаны ашу', go: () => nav('map') }
   );
@@ -190,7 +209,15 @@
     <span class="pill"><Icon name="fire" fill="var(--fire)" size={22} /><span class="num">{st.days}</span><small>күн</small></span>
     <CoinChip value={coins} />
   </div>
-  <div class="say"><Bit text={greeting} mood={done ? 'happy' : 'idle'} compact /></div>
+  {#if game.save.diagnosticDone}
+    <div class="hull" class:low={broken > 0} role="img" aria-label="Кеме беріктігі: {integrity}%{broken ? `, ${broken} ақау` : ''}">
+      <Icon name="hammer" fill={integrityColor(integrity)} size={18} />
+      <span class="hb"><i style="width:{integrity}%; background:{integrityColor(integrity)}"></i></span>
+      <b class="num">{integrity}%</b>
+      {#if coinsHalved(broken)}<span class="hw">Тиындар жартылай: алдымен жөнде!</span>{/if}
+    </div>
+  {/if}
+  <div class="say"><Bit text={sayText} mood={done ? 'happy' : 'idle'} compact /></div>
   {/snippet}
 
   {#if recallOn}
@@ -249,11 +276,19 @@
         {#if nextBlock.id !== 'summary'}<span class="rw"><Icon name="clock" fill="var(--gold)" size={16} />+{reward(nextBlock.minutes)}</span>{/if}
       </button>
     {:else}
+      {#if extraRepair}
+        <button class="quest fin next repair" onclick={primary.go} aria-label="Жөндеу миссиясы: {repairNeed(broken)} ақауды жөнде, +{EXTRA_MIN} минут">
+          <span class="qi" style="--c:var(--gold)"><Icon name="hammer" fill="#fff" size={22} /></span>
+          <span class="qt"><b>Жөндеу миссиясы</b><small>{repairNeed(broken)} ақауды жөнде → +{EXTRA_MIN} мин · {rec.extraMissions} / {extraCap(game.save.settings.extraMissionCap)}</small></span>
+          <span class="rw"><Icon name="clock" fill="var(--gold)" size={16} />+{EXTRA_MIN}</span>
+        </button>
+      {:else}
       <div class="quest fin" class:next={extraOk}>
         <span class="qi" style="--c:var(--ok)"><Icon name="check" fill="#fff" size={22} /></span>
         <span class="qt"><b>{extraOk ? 'Қосымша миссия' : 'Бүгінгі жол бітті'}</b><small>{extraOk ? `+15 мин · ${rec.extraMissions} / ${extraCap(game.save.settings.extraMissionCap)}` : `Қосымша миссиялар: ${rec.extraMissions} / ${extraCap(game.save.settings.extraMissionCap)}`}</small></span>
         {#if extraOk}<span class="rw"><Icon name="clock" fill="var(--gold)" size={16} />+15</span>{/if}
       </div>
+      {/if}
     {/if}
   {/if}
 
@@ -268,6 +303,19 @@
   {/if}
 
   {#if entering}<div class="tapguard" aria-hidden="true"></div>{/if}{#if warp}<div class="warp" aria-hidden="true"></div>{/if}
+
+  {#if chest}
+    <div class="lvlup chest" role="dialog" aria-modal="true" aria-label="Кеме бүтін: сандық">
+      <div class="rays" aria-hidden="true"></div>
+      <div class="lu">
+        <small>КЕМЕ ТОЛЫҚ БҮТІН!</small>
+        <span class="msg">Барлық ақауды жөндедің. Міне, сандық!</span>
+        <span class="prize"><Icon name="coin" fill="var(--gold)" size={34} /><b class="num">+{chest.coins}</b><small>тиын</small></span>
+        {#if chest.item}{@const it = itemById(chest.item)}{#if it}<span class="prize gift"><ShipIcon src={it.icon} size={64} /><span><small>Сыйлық</small><b>{it.kz}</b></span></span>{/if}{/if}
+        <button class="btn primary big" onclick={() => { const id = chest?.item; chest = null; if (id) void showDecor(id); }}><Icon name="check" fill="var(--outline)" size={22} />Тамаша!</button>
+      </div>
+    </div>
+  {/if}
 
   {#if levelUp}
     <div class="lvlup" role="dialog" aria-modal="true" aria-label="Жаңа деңгей {levelUp}">
@@ -310,6 +358,20 @@
   @media (max-width: 420px) { .res { gap: 4px; padding: 0; } .res :global(.pill) { padding: 0 8px 0 4px; gap: 4px; } .res :global(.pill small) { font-size: 10px; } }
   .res .pill.bump { animation: pill-bump .6s var(--ease-out); }
   @keyframes pill-bump { 0% { transform: scale(1); } 30% { transform: scale(1.2); box-shadow: 0 0 18px var(--gold); } 100% { transform: scale(1); } }
+  .hull { display: flex; align-items: center; gap: 8px; width: min(460px, 100%); align-self: flex-start; flex-wrap: wrap; padding: 0 6px 6px; }
+  .hull .hb { flex: 1; min-width: 70px; max-width: 220px; height: 12px; border-radius: 999px; background: #0b1030; border: 2px solid var(--outline); overflow: hidden; }
+  .hull .hb i { display: block; height: 100%; border-radius: 999px; transition: width .6s var(--ease-out); }
+  .hull .num { font: 900 15px var(--disp); color: var(--ink); text-shadow: 0 2px 0 var(--outline); min-width: 3.4ch; }
+  .hull .hw { flex-basis: 100%; font: 800 13px var(--txt); color: #ffd0d0; text-shadow: 0 1px 0 var(--outline); }
+  .quest.fin.repair { background: linear-gradient(180deg, #e0952a, #b36a12); box-shadow: inset 0 -4px 0 #7d4506, 0 0 0 3px var(--gold), 0 3px 0 var(--outline); }
+  .quest.fin.repair .qt small { color: #fff3dc; }
+  .lvlup.chest .lu { gap: 10px; }
+  .lvlup.chest .lu small { font-size: 16px; }
+  .prize { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: #0b1030; border: 3px solid var(--outline); animation: pop-in .4s .5s var(--ease-out) both; }
+  .prize .num { font: 900 28px var(--disp); color: var(--gold); }
+  .prize.gift { border-radius: 18px; animation-delay: .8s; text-align: left; }
+  .prize.gift span { display: grid; gap: 0; }
+  .prize.gift b { font: 800 17px var(--disp); }
   .say { padding: 0 4px 6px; width: min(460px, 100%); align-self: flex-start; }
   @media (min-width: 1000px) and (min-aspect-ratio: 23/20) { .say { width: 100%; } }
 

@@ -8,6 +8,9 @@
   import { streak } from '../engine/streak';
   import { parse, iso } from '../engine/dates';
   import { creditedCount, skillStat, dayStats, isCredited, CREDIT_STEPS } from '../engine/recall';
+  import { attemptDays, daySummary, recentByDay, repairCauses, confLabel, hintLabel, FAST_MS } from '../engine/answers';
+  import { mistakeName } from '../engine/mistakeNames';
+  import { shipIntegrity, openBreaks } from '../engine/repair';
   import { audio } from '../lib/audio';
   // @ts-ignore
   import { LESSONS } from '../../content/lessons.mjs';
@@ -15,7 +18,7 @@
   let unlocked = $state(false);
   let pin = $state('');
   let pinErr = $state('');
-  let tab = $state<'today' | 'recall' | 'settings' | 'skills' | 'kz' | 'ai' | 'data'>('today');
+  let tab = $state<'today' | 'answers' | 'recall' | 'settings' | 'skills' | 'kz' | 'ai' | 'data'>('today');
   let confirmReset = $state(false);
   let importMsg = $state('');
   const hasPin = !!game.save.settings.pin;
@@ -60,6 +63,21 @@
   const STATUS: Record<string, string> = { locked: 'закрыта', available: 'доступна', learning: 'изучается', learned: 'изучена', mastered: 'освоена 💎', automatic: 'автоматизм' };
   const CAT: Record<string, string> = { A: 'Уравнения, выражения', B: 'Текстовые задачи', C: 'Вычисления', D: 'Делимость', E: 'Геометрия', F: 'Пропорции', G: 'Проценты', H: 'Закономерности', I: 'Логика', J: 'Визуальная логика', K: 'Координаты' };
 
+  // «Ответы»: каждый ответ ребёнка по дням, сводка дня (небрежность, скорость, типы ошибок), что ломает корабль
+  let dayPick = $state<string | null>(null);
+  const ansDays = $derived(attemptDays(game.save.attempts));
+  const selDay = $derived(dayPick && ansDays.includes(dayPick) ? dayPick : ansDays[0] ?? game.day);
+  const sum = $derived(daySummary(game.save, selDay));
+  const ansGroups = $derived(recentByDay(game.save.attempts, 100));
+  const causes = $derived(repairCauses(game.save));
+  const skillRu = (id: string) => skillDefs.find(d => d.id === id)?.title.ru ?? id;
+  const secs = (ms: number) => (ms / 1000).toFixed(ms < 10000 ? 1 : 0);
+  const dayName = (d: string) => (d === game.day ? 'сегодня' : dm(d));
+  const brokenNow = $derived(openBreaks(game.save));
+  // отец открывает вкладку на своём устройстве: если вошёл в облако, подтягиваем свежие ответы (один раз за вход в раздел)
+  let ansSynced = false;
+  $effect(() => { if (tab === 'answers' && !ansSynced && C?.cloud.user) { ansSynced = true; void C.syncNow(); } });
+
   // «Повторы»: вспоминает ли ребёнок правила по расписанию (src/engine/recall.ts)
   const rc = $derived(creditedCount(game.save));
   const rcRows = $derived(Object.entries(game.save.recall ?? {})
@@ -101,7 +119,7 @@
     </section>
   {:else}
     <nav class="tabs panel">
-      {#each [['today', 'Сегодня'], ['recall', 'Повторы'], ['settings', 'Настройки'], ['skills', 'Темы'], ['kz', 'Казахский текст'], ['ai', 'Вопросы к ИИ'], ['data', 'Данные']] as [id, name]}
+      {#each [['today', 'Сегодня'], ['answers', 'Ответы'], ['recall', 'Повторы'], ['settings', 'Настройки'], ['skills', 'Темы'], ['kz', 'Казахский текст'], ['ai', 'Вопросы к ИИ'], ['data', 'Данные']] as [id, name]}
         <button class="tab" class:on={tab === id} onclick={() => (tab = id as any)}>{name}</button>
       {/each}
     </nav>
@@ -143,6 +161,62 @@
             <button class="btn" class:on={rec.exception === e} onclick={() => setException(rec.exception === e ? undefined : (e as any))}>{n}</button>
           {/each}
         </div>
+      </section>
+    {:else if tab === 'answers'}
+      <section class="panel card">
+        {#if !game.save.attempts.length}
+          <p class="note">Ответов пока нет: они появятся после первого боя.</p>
+        {:else}
+          <label class="daypick">Сводка за день
+            <select value={selDay} onchange={e => (dayPick = e.currentTarget.value)} aria-label="День для сводки">
+              {#each ansDays.slice(0, 30) as d}<option value={d}>{d === game.day ? `сегодня (${dm(d)})` : dm(d)}</option>{/each}
+            </select>
+          </label>
+          <div class="grid3">
+            <div class="kpi"><span class="label">Верно с первой попытки</span><b class:warn={sum.cleanPct !== null && sum.cleanPct < 85}>{sum.cleanPct === null ? '—' : `${sum.cleanPct}%`}</b><small>{sum.clean} из {sum.n} ответов, без подсказки. Цель: 85% и выше</small></div>
+            <div class="kpi"><span class="label">Быстрее {FAST_MS / 1000} секунд</span><b class:warn={sum.fastPct !== null && sum.fastPct > 30}>{sum.fastPct === null ? '—' : `${sum.fastPct}%`}</b><small>{sum.fast} из {sum.n}: слишком быстрое чтение условия</small></div>
+            <div class="kpi"><span class="label">Корабль</span><b>{shipIntegrity(brokenNow)}%</b><small>поломок сейчас: {brokenNow} (каждая неисправленная ошибка)</small></div>
+          </div>
+          <div class="card-sub">
+            <span class="label">Чаще всего ошибался так (топ-3 за день)</span>
+            {#if sum.topErrors.length}<ol>{#each sum.topErrors as e}<li>{e.name} <b>×{e.n}</b></li>{/each}</ol>{:else}<p class="note">Ошибок в этот день не было.</p>{/if}
+          </div>
+          <div class="card-sub">
+            <span class="label">Небрежность: ошибки в счёте на уже выученных темах</span>
+            {#if sum.careless.length}<ol>{#each sum.careless as c}<li>{skillRu(c.skill)} <b>×{c.n}</b></li>{/each}</ol>
+              <small>Тема выучена, правило он знает: здесь ошибка от спешки. Помогает вопрос «где ты проверил ответ?», а не «почему не старался».</small>
+            {:else}<p class="note">Таких ошибок в этот день нет.</p>{/if}
+          </div>
+
+          <span class="label">Что ломает корабль чаще всего</span>
+          {#if causes.length}
+            <div class="tblwrap"><table class="tbl">
+              <thead><tr><th>Тема</th><th>Поломок всего</th><th>Не починено</th><th>Ошибок в истории</th></tr></thead>
+              <tbody>{#each causes as c}<tr><td>{skillRu(c.skill)}</td><td>{c.total}</td><td class:warn={c.open > 0}>{c.open}</td><td>{c.wrong}</td></tr>{/each}</tbody>
+            </table></div>
+          {:else}<p class="note">Поломок ещё не было.</p>{/if}
+
+          <span class="label">Последние ответы ({ansGroups.reduce((n, g) => n + g.list.length, 0)}), по дням</span>
+          {#each ansGroups as g}
+            {@const ds = daySummary(game.save, g.day)}
+            <div class="dayhead"><b>{dayName(g.day)}</b><small>{g.list.length} в списке · всего за день {ds.n}, верно с первой попытки {ds.cleanPct ?? '—'}%</small></div>
+            <div class="tblwrap"><table class="tbl anslog">
+              <thead><tr><th>Время</th><th>Тема</th><th></th><th>Тип ошибки</th><th>Подсказка</th><th>Уверенность</th></tr></thead>
+              <tbody>
+                {#each g.list as a}
+                  <tr class:bad={!a.correct}>
+                    <td class="t" class:fastc={a.timeMs < FAST_MS}>{secs(a.timeMs)} с</td>
+                    <td>{skillRu(a.skill)}</td>
+                    <td class={a.correct ? 'h-ok' : 'h-no'}>{a.correct ? '✔' : '✘'}</td>
+                    <td>{a.correct ? '' : mistakeName(a.tag)}{#if !a.honest && a.hintLevel < 4} <b class="zt zl">наугад, слишком быстро</b>{/if}</td>
+                    <td>{hintLabel(a.hintLevel) || '—'}</td>
+                    <td>{confLabel(a.confidence)}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table></div>
+          {/each}
+        {/if}
       </section>
     {:else if tab === 'recall'}
       <section class="panel card">
@@ -301,6 +375,14 @@
   .tbl .cells span { display: inline-grid; justify-items: center; margin-right: 6px; font-weight: 800; }
   .tbl .cells i { font: 700 10px var(--txt); font-style: normal; color: var(--dim); }
   .h-ok { color: var(--ok); } .h-help { color: var(--gold); } .h-no { color: var(--miss); }
+  .daypick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .daypick select { font: 700 16px var(--txt); padding: 8px 10px; min-height: 40px; background: var(--deep); color: var(--ink); border: 2px solid var(--line-hi); border-radius: 6px; }
+  .dayhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 6px; }
+  .dayhead small { color: var(--dim); }
+  .tbl.anslog td { vertical-align: middle; }
+  .tbl.anslog tr.bad td { box-shadow: inset 0 0 0 9999px #ff5a6e10; }
+  .tbl.anslog .t { white-space: nowrap; font-weight: 800; }
+  .tbl.anslog .t.fastc { color: var(--gold); }
   .zt { color: var(--gold); font-size: 12px; }
   .zl { margin-left: 6px; }
   .cloud { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line-hi); border-radius: 8px; background: var(--deep); }
