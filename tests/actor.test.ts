@@ -44,3 +44,36 @@ describe('Actor.play: метки', () => {
     expect(hit).toBe(1);
   });
 });
+
+describe('Actor: предметы в руках и переходы поз', () => {
+  const bones = () => {
+    const model = new THREE.Object3D();
+    const r = new THREE.Object3D(); r.name = 'handslot.r'; const l = new THREE.Object3D(); l.name = 'handslot.l';
+    const sword = new THREE.Object3D(); sword.userData.gear = true; r.add(sword);
+    model.add(r, l);
+    const clip = (name: string, d: number) => new THREE.AnimationClip(name, d, [new THREE.NumberKeyframeTrack('.position[x]', [0, d], [0, 1])]);
+    return { a: new Actor(model, [clip('Idle_A', 1), clip('Sit_Floor_Down', 1), clip('Sit_Floor_Idle', 1), clip('Melee_Unarmed_Idle', 1), clip('Ranged_Magic_Shoot', 1), clip('Running_A', 1), clip('Cheering', 1)]), sword, r, l };
+  };
+  it('carry: меч и щит прячутся, пока в руках лук или молоток, и возвращаются, когда предмет убран', () => {
+    const { a, sword, l } = bones(); a.loop('Idle_A', 0); expect(sword.visible).toBe(true);
+    const bow = new THREE.Object3D(); a.carry([{ slot: 'handslot.l', obj: bow }]);
+    expect(bow.parent).toBe(l); expect(sword.visible).toBe(false); expect(a.carrying).toBe(true);
+    a.play('Running_A', { loop: true }); expect(sword.visible).toBe(false);
+    a.carry([]); expect(bow.parent).toBeNull(); expect(sword.visible).toBe(true); expect(a.carrying).toBe(false);
+  });
+  it('бой с тенью и магия идут без меча и щита, обычная стойка и бег — с ними', () => {
+    const { a, sword } = bones();
+    for (const c of ['Melee_Unarmed_Idle', 'Ranged_Magic_Shoot']) { a.play(c, { loop: true }); expect(sword.visible, c).toBe(false); }
+    a.loop('Idle_A', 0); a.play('Idle_A', { loop: true }); expect(sword.visible).toBe(true);
+  });
+  it('settle: жест обрывается, меч и щит появляются сразу, а не после конца жеста', () => {
+    const { a, sword } = bones(); a.loop('Idle_A', 0); void a.play('Cheering'); expect(sword.visible).toBe(false);
+    a.settle(); expect(sword.visible).toBe(true); expect(a.marksPending()).toBe(false);
+  });
+  it('then: после конца разовой анимации сразу зацикленная база (сел → сидит), без возврата в прежнюю стойку', async () => {
+    const { a } = bones(); a.loop('Idle_A', 0);
+    const done = a.play('Sit_Floor_Down', { then: 'Sit_Floor_Idle' });
+    for (let i = 0; i < 15; i++) a.update(0.1);
+    await done; expect(a.baseName()).toBe('Sit_Floor_Idle');
+  });
+});

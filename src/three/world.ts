@@ -7,7 +7,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { createMap, type MapIsle, type MapLabel } from './map';
-import { createArena } from './arena';
+import { createArena, type Technique } from './arena';
+import type { HitKind } from './training3d';
 import { LOOKS, DEFAULT_LOOK } from './looks';
 import { createHub, type CamView } from './hub3d';
 import { createBit, type BitMood } from './bit3d';
@@ -17,7 +18,7 @@ import type { HoloSpec } from './holo_spec';
 import { audio } from '../lib/audio';
 
 export type CamMode = 'hub' | 'battle' | 'portal' | 'map' | 'hero';
-export type { BitMood, HoloSpec };
+export type { BitMood, HoloSpec, Technique, HitKind };
 /** Реакция героя на объяснение: показать (point), кивнуть (nod), порадоваться верному ответу (cheer), почесать голову при ошибке (scratch). */
 export type Emote = 'point' | 'nod' | 'cheer' | 'scratch';
 
@@ -25,11 +26,43 @@ export interface World {
   setEnergy(v: number, max: number): void;
   setMode(m: CamMode): void;
   heroWalk(x: number, z: number): Promise<void>;
-  /** Удар героя в бою; sup — суперудар. Возвращает, повержен ли враг. */
-  heroAttack(crit?: boolean, sup?: boolean): Promise<boolean>;
+  /** Удар героя в бою; sup — суперудар; tech — приём темы (цвет удара, вид, название над героем; урон и время те же); onHit — вызывается в момент касания. Возвращает, повержен ли враг. */
+  heroAttack(crit?: boolean, sup?: boolean, tech?: Technique | null, onHit?: () => void): Promise<boolean>;
   spawnMob(hp: number, kind?: number, boss?: boolean, worldBoss?: boolean): Promise<void>;
-  /** Ход врага при ошибке: снаряд и щит героя (урона нет). */
-  enemyAttack(): Promise<void>;
+  /** Урок = тренировка: вместо врага на его месте площадка (манекен, мишени, доска), без полоски здоровья и атак. off — площадка уходит с анимацией; выход из урока (clearMob) убирает её сразу. Промис — когда площадка встала/ушла. */
+  setTraining(on: boolean): Promise<void>;
+  /** Герой бьёт манекен настоящим ударом: light — обычный, strong — сильный, combo — n-й удар связки 1..3 (3-й с разворота); stay — не возвращаться (следующий удар сразу); variant — номер удара по кругу (рубящий, горизонтальный, колющий, с прыжком, косой). */
+  trainStrike(kind: HitKind, n?: number, stay?: boolean, variant?: number): Promise<void>;
+  /** Тип шага урока: герой занимает нужную позу (разминка на «Мақсат», сидит на «Көр», встаёт на других). Пустая строка — урок кончился. */
+  trainStep(kind: string): void;
+  /** Верный ответ на «Неге?»: манекен замахивается на героя, тот ставит блок и контратакует. */
+  trainBlock(): Promise<void>;
+  /** «Приём освоен» (шаг «Есте сақта»): руки вверх, кольцо света цветом приёма и искры. */
+  trainMastered(color: number): Promise<void>;
+  /** Победа в финале: разбег, прыжок, удар с разворотом, радость, отдых лёжа. Промис — в момент касания удара. */
+  trainVictory(): Promise<void>;
+  /** Неверный ответ: манекен бросается к герою и шлёпает его по макушке, герой вздрагивает. */
+  trainBonk(): Promise<void>;
+  /** «Заражённый» манекен (розовые трещины, экран ERROR) вкл/выкл. */
+  trainGlitch(on: boolean): void;
+  /** Нашёл ошибку: герой колет манекен, тот рассыпается на доски и собирается обратно. */
+  trainBreakGlitch(): Promise<void>;
+  /** Стрельбище: n мишеней (сразу стоят не больше пяти, сбитые заменяются до конца счёта). */
+  trainTargets(n: number): void;
+  /** Попал: герой бросает снаряд, мишень падает. */
+  trainTargetHit(): Promise<void>;
+  /** Промах: мишени вздрагивают. */
+  trainTargetMiss(): void;
+  /** Доска: Бит «пишет» текст (пусто — стереть). */
+  trainBoard(text: string): void;
+  /** Победа: конфетти, салют, манекен подпрыгивает, герой радуется. */
+  trainCheer(): Promise<void>;
+  /** Для проверок: стоит ли площадка и её счётчики (частицы, мишени) или null. */
+  trainingStats(): { particles: number; stars: number; targetsUp: number; glitch: number; shown: number } | null;
+  /** Ход врага при ошибке: снаряд и щит героя (урона нет). brk — щит разбивается (осколки, герой отлетает); quiet — без надписи над героем; onContact — в момент касания щита. */
+  enemyAttack(o?: { brk?: boolean; quiet?: boolean; onContact?: () => void }): Promise<void>;
+  /** Событие на весь экран (экран задачи по фазам): камера подлетает к бойцам; false — общий план. При «уменьшить движение» камера не летит. */
+  eventCam(on: boolean): void;
   /** Герой выходит из портала в локацию. */
   arrive(): Promise<void>;
   /** Тема боевой локации: номер мира, цвета острова. */
@@ -149,7 +182,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
 
   // ---------- Корабль-хаб ---------- (src/three/hub3d.ts): палуба, портал, герой, частицы; Бит — bit3d.ts
   let damageTap: (() => void) | null = null;
-  const hub = createHub(scene, { quality, km, bitMood: m => bit.setMood(m), onCutscene: () => { userTheta = userPhi = 0; }, onDamageTap: () => damageTap?.() });
+  const hub = createHub(scene, { quality, km, bitMood: m => bit.setMood(m), onCutscene: () => { userTheta = userPhi = 0; }, onDamageTap: () => damageTap?.(), sfx: n => audio.play(n) });
   const bit = createBit(scene);
 
   // ---------- Острова и облака ---------- (src/three/skyscape.ts)
@@ -285,9 +318,25 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
       hub.enterMode(m);                                                 // герой возвращается на место / вылетает из портала после боя
       mode = m; userTheta = 0; userPhi = 0; const narrow = (canvas.clientWidth || innerWidth) / (canvas.clientHeight || innerHeight) < 0.8; viewShift = m === 'hub' ? (narrow ? 0.2 : 0.08) : narrow ? 0.24 : 0.12; applyOffset(); },
     heroWalk(x, z) { return hub.heroWalk(x, z); },
-    heroAttack(crit = false, sup = false) { return arena.attack({ crit, sup, dmg: sup ? 2 : 1 }); },
+    heroAttack(crit = false, sup = false, tech = null, onHit) { return arena.attack({ crit, sup, dmg: sup ? 2 : 1, tech, onHit }); },
+    setTraining(on) { return arena.setTraining(on); },
+    trainStrike(kind, n = 1, stay = false, variant) { return arena.trainStrike(kind, n, stay, variant); },
+    trainStep(kind) { arena.trainStep(kind); },
+    trainBlock() { return arena.trainBlock(); },
+    trainMastered(color) { return arena.trainMastered(color); },
+    trainVictory() { return arena.trainVictory(); },
+    trainBonk() { return arena.trainBonk(); },
+    trainGlitch(on) { arena.trainGlitch(on); },
+    trainBreakGlitch() { return arena.trainBreakGlitch(); },
+    trainTargets(n) { arena.trainTargets(n); },
+    trainTargetHit() { return arena.trainTargetHit(); },
+    trainTargetMiss() { arena.trainTargetMiss(); },
+    trainBoard(text) { arena.trainBoard(text); },
+    trainCheer() { return arena.trainCheer(); },
+    trainingStats() { return arena.trainingStats(); },
     spawnMob(hp, kind = 0, boss = false, worldBoss = false) { return arena.spawn(hp, kind, boss && !worldBoss, worldBoss); },
-    enemyAttack() { return arena.enemyAttack(); },
+    enemyAttack(o) { return arena.enemyAttack(o); },
+    eventCam(on) { arena.eventShot(on); },
     arrive() { return arena.arrive(); },
     setArena(k, a, b) { arena.theme(k, a, b); },
     setSpot(seed) { return arena.spot(seed); },

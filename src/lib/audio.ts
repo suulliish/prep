@@ -14,7 +14,7 @@ export type Sfx =
   // звуки боя в момент действия на сцене (src/three/arena.ts): взмах, попадание, щит, рык, гул появления, приземление, монеты
   | 'slash' | 'impact' | 'block' | 'growl' | 'boom' | 'land' | 'coins';
 
-export type Mood = 'hub' | 'battle' | 'map' | 'victory' | 'focus' | 'silent';
+export type Mood = 'hub' | 'battle' | 'map' | 'victory' | 'training' | 'focus' | 'silent';
 
 export interface AudioSettings {
   master: number;        // 0..1
@@ -137,13 +137,15 @@ class AudioEngine {
     this.settings = { ...this.settings, ...patch };
     try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* приватный режим */ }
     this.applyVolumes();
-    if (focusChanged && this.mood === 'focus') this.setMood('focus', true);
+    if (focusChanged && (this.mood === 'focus' || this.mood === 'training')) this.setMood(this.mood, true);
   }
 
   private musicTarget() {
     const s = this.settings;
     if (this.mood === 'silent' || this.hidden) return 0;
     if (this.mood === 'focus') return s.musicInFocus === 'quiet' ? s.music * 0.25 : 0;
+    // тренировка (урок) — это чтение объяснений: подчиняется тому же правилу «фокус», что и задача (по умолчанию «выкл»), «тихо» — свой мягкий трек на 25%
+    if (this.mood === 'training') return s.musicInFocus === 'quiet' ? s.music * 0.25 : 0;
     return s.music;
   }
 
@@ -162,7 +164,7 @@ class AudioEngine {
     if (this.hidden || this.settings.master <= 0.001 || this.settings.music <= 0.001) this.seq.pause(); else this.seq.resume();
   }
 
-  /** Настроение музыки: hub — спокойно, map — приключение, battle — энергично, focus — задача/урок. */
+  /** Настроение музыки: hub — спокойно, map — приключение, battle — энергично, training — урок-тренировка (тихо), focus — задача. */
   setMood(mood: Mood, force = false) {
     this.mood = mood;
     if (!this.ctx) return;
@@ -170,6 +172,7 @@ class AudioEngine {
     if (mood === 'silent') { this.stopTrack(); return; }
     // фокус: «выкл» — секвенсор не крутится вовсе (экономит батарею); «тихо» — играет что играло (или «Корабль») на 25% громкости
     if (mood === 'focus') { if (this.settings.musicInFocus === 'off') this.stopTrack(); else if (!this.seq) this.startTrack('hub'); return; }
+    if (mood === 'training' && this.settings.musicInFocus === 'off') { this.stopTrack(); return; }
     if (this.seq && this.seq.track === mood && !force) return;
     this.startTrack(mood);
   }
@@ -188,7 +191,7 @@ class AudioEngine {
   }
 
   /** Реплика Бита (mp3 из scripts/voice). Музыка приглушается на время речи. */
-  say(url: string) {
+  say(url: string): HTMLAudioElement {
     if (this.voiceEl) { this.voiceEl.pause(); this.voiceDone(); }
     const el = new Audio(url);
     el.volume = this.settings.voice * this.settings.master;
@@ -196,8 +199,18 @@ class AudioEngine {
     el.onpause = () => this.applyVolumes();
     el.onended = () => { this.applyVolumes(); this.voiceDone(); };
     el.onerror = () => this.voiceDone();
-    el.play().then(() => this.applyVolumes()).catch(() => this.voiceDone());
+    // браузер не дал играть (NotAllowedError) — сообщаем слушателям как ошибку загрузки; прерывание своим же pause() ошибкой не считаем
+    el.play().then(() => this.applyVolumes()).catch((e: any) => { this.voiceDone(); if (e?.name !== 'AbortError') el.dispatchEvent(new Event('error')); });
+    return el;
   }
+  /** Оборвать реплику (выход с шага): звук замолкает, ожидающие конца реплики отпускаются. */
+  stopVoice() {
+    const e = this.voiceEl; if (!e) return;
+    this.voiceEl = null; e.onpause = e.onended = e.onerror = null;
+    e.pause(); this.applyVolumes(); this.voiceDone();
+  }
+  /** Голос слышен: громкость реплик и общая выше порога. Без звука видео-объяснение идёт в темпе чтения. */
+  voiceOn() { return this.settings.voice * this.settings.master > 0.01; }
   /** Бит сейчас говорит вслух (звук включён). Нужно, чтобы кнопка «дальше» ждала конца реплики. */
   voiceBusy() { const e = this.voiceEl; return !!e && !e.paused && !e.ended && this.settings.voice * this.settings.master > 0.01; }
   #voiceWaiters: (() => void)[] = [];

@@ -30,14 +30,14 @@ const HALF_BEAM = 2.6;
 // поломки разнесены: не ближе 1 м друг от друга (видимая из меню часть палубы невелика)
 const SPREAD = 1.0;
 /** Шесть мест: раскладка зависит только от палубы и avoid (не от порядка вызовов). Основание не ближе 0.1 м к кругу avoid; nav — сетка ходьбы: объёмные ставим за её краем (не передан — как плоские).
- *  Если места по всем условиям нет, условия ослабляются по одному: сначала «за краем ходьбы», потом расстояние между поломками; совсем нет места — x = NaN, такая поломка не показывается. */
+ *  Если места по всем условиям нет, условия ослабляются по одному: сначала «за краем ходьбы», потом расстояние между поломками и размер основания; совсем нет места — x = NaN, такая поломка не показывается. */
 export function planDamage(s: Surface, avoid: Avoid, nav?: Nav): DamageSpot[] {
   const cache = new Map<number, [number, number][]>(), taken: [number, number][] = [], out: DamageSpot[] = [];
   const cells = (r: number) => { if (!cache.has(r)) cache.set(r, flatCells(s, 0, r).filter(c => Math.abs(c[1]) < HALF_BEAM - r * 0.3)); return cache.get(r)!; };
   for (const sl of SLOTS) {
     let best: [number, number] | null = null;
     // условия по убыванию строгости: (объёмная за краем ходьбы, разнос 1 м) → (любое место, 1 м) → (любое место, 0.8 м) → (малое основание, 0.7 м)
-    for (const [strict, spread, r] of [[sl.solid && !!nav, SPREAD, sl.r], [false, SPREAD, sl.r], [false, 0.8, sl.r], [false, 0.7, 0.3]] as const) {
+    for (const [strict, spread, r] of [[sl.solid && !!nav, SPREAD, sl.r], [false, SPREAD, sl.r], [false, 0.8, sl.r], [false, 0.7, 0.3], [false, 0.55, 0.22], [false, 0.4, 0.15]] as const) {
       let bd = Infinity;
       for (const c of cells(r)) {
         if (avoid.some(a => Math.hypot(c[0] - a[0], c[1] - a[1]) < a[2] + sl.r * 0.5 + 0.1) || taken.some(t => Math.hypot(c[0] - t[0], c[1] - t[1]) < spread)) continue;
@@ -238,9 +238,9 @@ export interface DamageOpts {
 }
 export interface Damage {
   /** Показать n поломок (0..6). Места фиксированы: больше n — появляются с наименьшими номерами, меньше — лишние чинятся (анимация с конца). Первое показанное (n > 0 в самом начале) ставится без анимации. */
-  set(n: number): void;
+  set(n: number, delay?: number): void;   // delay — через сколько секунд начнётся починка (молоток героя: вспышка «починено» ложится на последний удар)
   /** Починить поломку i (по умолчанию последнюю из видимых): анимация 1.1 с. Промис — когда всё кончилось. Невидимую — сразу. */
-  fix(i?: number): Promise<void>;
+  fix(i?: number, delay?: number): Promise<void>;
   update(dt: number, t: number): void;
   /** Номер поломки под лучом (луч в мировых координатах) или -1: для касания. Чинящиеся и скрытые не считаются. */
   pick(ray: THREE.Raycaster): number;
@@ -252,6 +252,8 @@ export interface Damage {
   visible(): number[];
   /** 6 мест и видов поломок (в системе корабля). */
   readonly spots: DamageSpot[];
+  /** Сколько поломок реально помещается на этой палубе (места, которые нашлись): хаб показывает не больше и считает «ошибок больше, чем мест» от этого числа. */
+  readonly capacity: number;
   /** Для проверок: сколько частиц живо (дым, искры) и сколько поломок видно. */
   stats(): { particles: number; visible: number };
   dispose(): void;
@@ -264,7 +266,7 @@ interface Item {
   /** Починка: сработала ли вспышка «починено» и как далеко от неё (0..1). */
   flashed: boolean; fu: number;
 }
-const FIX_TIME = 1.15, FIX_MOTION = 0.5, POP_TIME = 0.55, FIX_QUICK = 0.4;
+export const FIX_TIME = 1.15, FIX_MOTION = 0.5, POP_TIME = 0.55, FIX_QUICK = 0.4;
 // с камеры меню палуба мелкая: поломки чуть крупнее «по-честному», иначе не читаются
 const ITEM_SCALE = 1.3;
 // с бликами (6) — не больше 100 точек на всё
@@ -332,19 +334,19 @@ export function createDamage(ship: THREE.Object3D, deck: Deck, opts: DamageOpts)
 
   let seen = false, disposed = false, live = 0;
   const api: Damage = {
-    spots,
-    set(n) {
+    spots, capacity: spots.filter(x => !Number.isNaN(x.x)).length,
+    set(n, delay = 0) {
       if (disposed) return;
       // самый первый показ — без анимации (загрузка экрана)
       const want = Math.max(0, Math.min(MAX_DAMAGE, Math.round(n) || 0)), instant = !seen; let cur = shownCount(); if (want > 0) seen = true;
       for (const it of items) { if (cur >= want) break; if (it.st === 'off' && !Number.isNaN(it.spot.x)) { begin(it, instant); cur++; } }
-      let k = 0; for (const it of items.slice().reverse()) { if (cur <= want) break; if (shown(it)) { startFix(it, k++ * 0.22); cur--; } }
+      let k = 0; for (const it of items.slice().reverse()) { if (cur <= want) break; if (shown(it)) { startFix(it, delay + k++ * 0.22); cur--; } }
     },
-    fix(i) {
+    fix(i, delay = 0) {
       if (disposed) return Promise.resolve();
       const it = i === undefined ? items.slice().reverse().find(shown) : items[i];
       if (!it || it.st === 'off') return Promise.resolve();
-      if (it.st !== 'out') startFix(it);
+      if (it.st !== 'out') startFix(it, delay);
       return new Promise<void>(res => { it.done.push(res); });
     },
     update(dt, t) {

@@ -2,14 +2,16 @@
   // Каркас экрана (docs/DESIGN_SYSTEM.md 6). Телефон: шапка → окно 3D-сцены → панель (прокрутка внутри) → главная кнопка
   // внизу под пальцем. Широкий экран и телефон в горизонтали: сцена слева, колонка справа. Страница целиком не прокручивается.
   // cinema — идёт катсцена (docs/GAME_LOOP.md 3): шапка и панель уходят, сцена на весь экран, чёрные полосы как в кино.
+  // event — событие боя на весь экран (docs/GAME_LOOP.md 20): панель уезжает вниз, окно сцены разворачивается (камера плавно следует за окном), шапка остаётся.
+  // thin — разбор ошибки: сцена сжимается в тонкую полосу, остальное отдано разбору.
   import { onMount, onDestroy, type Snippet } from 'svelte';
   import { W } from '../lib/world.svelte';
   import Icon from './Icon.svelte';
 
   let {
-    title = '', sub = '', back, scene = 'short', right, head, children, footer, overlay, cinema = false, bare = false,
+    title = '', sub = '', back, scene = 'short', right, head, children, footer, overlay, cinema = false, event = false, thin = false, bare = false,
   }: {
-    cinema?: boolean;
+    cinema?: boolean; event?: boolean; thin?: boolean;
     /** без прокручиваемого тела: панель = только подвал с кнопками (главный экран без задания) */
     bare?: boolean;
     title?: string; sub?: string; back?: () => void;
@@ -20,6 +22,7 @@
 
   let win = $state<HTMLElement>();
   let bodyEl = $state<HTMLElement>();
+  let frameEl = $state<HTMLElement>(), topEl = $state<HTMLElement>(), sheetEl = $state<HTMLElement>();
   let more = $state(false);   // в теле панели есть что прокрутить вниз — показываем стрелку и тень
 
   function frame() {
@@ -35,7 +38,7 @@
   // Телефон в горизонтали (812×375): 3D-сцена ужимается до левой части экрана (canvas.world, см. app.css),
   // справа колонка с панелью. Мир сам считает кадр по размеру canvas, так что герой остаётся в центре видимой сцены.
   const LS = '(max-width: 999.98px) and (max-height: 560px) and (min-aspect-ratio: 23/20)';
-  const split = $derived(scene !== 'none' && !cinema);
+  const split = $derived(scene !== 'none' && !cinema && !event);
   function syncSplit() {
     const on = matchMedia(LS).matches && !!document.querySelector('.frame[data-split="1"]');
     const root = document.documentElement;
@@ -45,6 +48,13 @@
   }
   $effect(() => { void split; requestAnimationFrame(syncSplit); });
   $effect(() => { void cinema; requestAnimationFrame(frame); });
+  // событие: до смены раскладки запоминаем высоту панели (она уезжает целиком, а не сплющивается) и считаем высоту окна сцены «во весь экран» в пикселях, чтобы она плавно менялась
+  $effect.pre(() => {
+    if (!event || !frameEl) return;
+    const cs = getComputedStyle(frameEl), used = topEl ? topEl.offsetHeight + 8 : 0;
+    frameEl.style.setProperty('--sh', (sheetEl?.offsetHeight ?? 0) + 'px');
+    frameEl.style.setProperty('--evh', Math.max(120, frameEl.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - used) + 'px');
+  });
 
   onMount(() => {
     frame();
@@ -61,9 +71,9 @@
   onDestroy(() => { requestAnimationFrame(syncSplit); });
 </script>
 
-<div class="frame {scene}" class:cinema class:split data-split={split ? '1' : '0'}>
+<div class="frame {scene}" class:cinema class:event class:thin class:split data-split={split ? '1' : '0'} bind:this={frameEl}>
   {#if title || back || right || head}
-    <header class="top panel">
+    <header class="top panel" bind:this={topEl}>
       {#if back}<button class="ibtn" onclick={back} aria-label="Артқа"><Icon name="back" fill="#fff" /></button>{/if}
       {#if head}{@render head()}{:else}
         <div class="ttl"><h1>{title}</h1>{#if sub}<small>{sub}</small>{/if}</div>
@@ -74,7 +84,7 @@
 
   {#if scene !== 'none'}<div class="window" bind:this={win}>{#if overlay}<div class="ov">{@render overlay()}</div>{/if}</div>{/if}
 
-  <section class="sheet panel">
+  <section class="sheet panel" bind:this={sheetEl}>
     {#if !bare}
       <div class="bodywrap">
         <div class="body" bind:this={bodyEl} onscroll={checkMore}>{@render children?.()}</div>
@@ -106,6 +116,16 @@
   .fill .sheet { flex: none; max-height: 50dvh; }
   @media (max-height: 700px) { .strip .window { height: clamp(96px, 17dvh, 130px); } }
   @media (min-height: 900px) and (min-width: 700px) and (max-aspect-ratio: 23/20) { .strip .window { height: clamp(260px, 34dvh, 420px); } }   /* планшет в портрете: окно боя побольше */
+
+  /* окно сцены меняет высоту плавно: камера следует за ним (frame() на каждый кадр изменения размера) */
+  .window { transition: height .55s cubic-bezier(.2, .9, .25, 1.05); }
+  .sheet { transition: transform .5s cubic-bezier(.2, .9, .25, 1.05); }
+  /* событие: окно на весь экран, панель уезжает вниз */
+  .event .window { height: var(--evh, 60dvh); }
+  .event .sheet { flex: none; height: var(--sh, 50dvh); transform: translateY(130%); pointer-events: none; }
+  /* разбор: тонкая полоса сцены */
+  .thin .window { height: clamp(84px, 14dvh, 118px); }
+  @media (prefers-reduced-motion: reduce) { .window, .sheet { transition: none; } }
 
   /* катсцена */
   .cinema .top, .cinema .sheet { display: none; }
@@ -142,7 +162,7 @@
   @media (max-width: 999.98px) and (max-height: 560px) and (min-aspect-ratio: 23/20) {
     .frame.split { display: grid; grid-template-columns: minmax(0, 1fr) var(--lp-w); grid-template-rows: auto minmax(0, 1fr); column-gap: 14px; row-gap: 6px;
       padding: 6px 8px 6px 0; }
-    .split .window { grid-column: 1; grid-row: 1 / span 2; height: auto; min-height: 0; padding-left: 8px; }
+    .split .window, .split.thin .window { grid-column: 1; grid-row: 1 / span 2; height: auto; min-height: 0; padding-left: 8px; }
     .split .top { grid-column: 2; grid-row: 1; width: 100%; padding: 4px 8px; gap: 8px; }
     .split .sheet { grid-column: 2; grid-row: 2; width: 100%; max-height: none; }
     .split .ttl h1 { font-size: 17px; }

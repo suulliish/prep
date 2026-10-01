@@ -21,6 +21,7 @@
   import Commander from './screens/Commander.svelte';
   import Album from './screens/Album.svelte';
   import Workshop from './screens/Workshop.svelte';
+  import Recall from './screens/Recall.svelte';
 
   let canvas: HTMLCanvasElement;
   onMount(() => {
@@ -51,6 +52,7 @@
       {:else if game.screen.name === 'map'}<MapScreen />
       {:else if game.screen.name === 'hero'}<Hero />
       {:else if game.screen.name === 'workshop'}<Workshop />
+      {:else if game.screen.name === 'recall'}<Recall />
       {:else if game.screen.name === 'intro'}<Intro />
       {/if}
     </div>

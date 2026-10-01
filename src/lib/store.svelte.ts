@@ -40,12 +40,13 @@ export type Screen =
   | { name: 'lesson'; skill: string; replay?: boolean }
   | { name: 'summary' }
   | { name: 'diagnostic' }
-  | { name: 'album'; tab?: 'cards' | 'repair' }
+  | { name: 'album'; tab?: 'cards' | 'notebook' | 'repair' }
   | { name: 'sound' }
   | { name: 'commander' }
   | { name: 'map' }
   | { name: 'hero' }
   | { name: 'workshop' }
+  | { name: 'recall' }
   | { name: 'intro' };
 
 export const game = $state({

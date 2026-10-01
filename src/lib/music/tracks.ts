@@ -1,4 +1,4 @@
-// Композиция: четыре трека в казахском фэнтези-стиле. Всё здесь чистые данные и функции без WebAudio:
+// Композиция: пять треков в казахском фэнтези-стиле. Всё здесь чистые данные и функции без WebAudio:
 // каждый такт превращается в список событий (нота, барабан, колокольчик), а звук делает synth.ts.
 //
 // Инструменты (см. synth.ts): dombra — щипковая струна (пара струн, тремоло «шертпе» на долгих нотах),
@@ -7,7 +7,7 @@
 // Лады: минорная пентатоника и дорийский лад. Ритм: 6/8 у «Корабля», «конский галоп» (доля из ноты и двух коротких) у карты.
 import { noteMidi, parseMel, mulberry32, type MelNote } from './notes';
 
-export type Track = 'hub' | 'battle' | 'map' | 'victory';
+export type Track = 'hub' | 'battle' | 'map' | 'victory' | 'training';
 export type EvKind = 'pluck' | 'bass' | 'flute' | 'bell' | 'kick' | 'tom' | 'tak' | 'shake' | 'pad';
 /** t — секунды от начала такта; n — нота MIDI; v — сила 0..1; d — длина/затухание, с (у pad — время плавного перехода); s — струна/сторона 0|1. */
 export interface Ev { t: number; k: EvKind; n: number; v: number; d: number; s: 0 | 1 }
@@ -246,6 +246,43 @@ const BATTLE: TrackDef = {
 };
 
 // =====================================================================
+// TRAINING «Жаттығу» — урок как тренировка: тихо, мягко и медленнее боя. G дорийский, 4/4, 84 уд/мин.
+// Домбра разложенными нотами, сыбызгы поёт редко, дойра едва слышна (только шейкер и тихий так). A (флейта над арпеджио) · B (домбра ведёт, колокольчики). 16 тактов ≈ 46 с.
+// =====================================================================
+const TRN_CH = chords('G3m G3m C3M C3M F3M F3M G3m G3m  C3M C3M G3m G3m F3M F3M G3m G3m');
+const TRN_A = mels([
+  '0:D5/6 6:F5/2 8:G5/8',           '0:F5/4 4:D5/4 8:Bb4/8',
+  '0:E5/6 6:G5/2 8:C6/6 14:G5/2',   '0:G5/8 8:E5/4 12:D5/4',
+  '0:C5/4 4:F5/4 8:A5/8',           '0:G5/6 6:F5/2 8:C5/8',
+  '0:D5/4 4:G5/4 8:Bb5/6 14:A5/2',  '0:G5/12',
+]);
+const TRN_B = mels([
+  '0:E5/6 6:G5/2 8:E5/8',           '0:D5/4 4:E5/4 8:G5/8',
+  '0:D5/6 6:Bb4/2 8:G4/8',          '0:Bb4/4 4:D5/4 8:G5/8',
+  '0:A4/6 6:C5/2 8:F5/8',           '0:C5/4 4:A4/4 8:F4/8',
+  '0:G4/4 4:Bb4/4 8:D5/4 12:F5/4',  '0:G5/12',
+]);
+const TRN_BELLS = [86, 88, 91, 93, 94]; // D6 E6 G6 A6 Bb6
+
+const TRAINING: TrackDef = {
+  tickSec: 60 / 84 / 4, ticks: 16, bars: 16, level: 0.8, echoTicks: 3,
+  drone: { root: noteMidi('G2'), cut: 380 },
+  plan(b, bar, loop, soft) {
+    const sec = Math.floor(bar / 8), i = bar % 8, ch = TRN_CH[bar], tn = tonesOf(ch), r = b.rng, vs = soft ? 0.7 : 1;
+    if (i === 0) b.pad([0.6, 0.75][sec], 3);
+    b.bass(0, ch.root - 12, 0.42 * vs, 8);
+    if (i % 2 === 1) b.bass(8, ch.root - 5, 0.26 * vs, 6);
+    // арпеджио домбры восьмыми: корень, квинта, октава, терция, октава, квинта; часть нот выпадает, чтобы дышало
+    const idx = [0, 1, 2, 3, 2, 1, 2, 1], vel = [0.42, 0.28, 0.32, 0.3, 0.3, 0.26, 0.3, 0.24];
+    for (let k = 0; k < 8; k++) { if (k > 1 && r() > (sec === 0 ? 0.8 : 0.66)) continue; b.pluck(k * 2, tn[idx[k]], vel[k] * vs, (k % 2) as 0 | 1); }
+    if (sec === 0) { if (i % 2 === 0 || loop % 2 === 1) b.fluteMel(TRN_A[i], 0.44 * vs); }
+    else { b.dombraMel(TRN_B[i], { v: 0.4 * vs, trem: 6, step: 1 }); if (i % 4 === 3) b.fluteMel(TRN_B[i], 0.36 * vs); }
+    if (i % 4 === 3 && r() < 0.7) b.bellRun(10, [TRN_BELLS[3], TRN_BELLS[2], TRN_BELLS[1]].slice(0, 2 + (r() < 0.4 ? 1 : 0)), 2, 0.12 * vs);
+    if (!soft) { b.shake(4, 0.05); b.shake(12, 0.045); if (i % 2 === 0) b.tak(8, 0.16); if (sec === 1) b.tom(0, 43, 0.14); }
+  },
+};
+
+// =====================================================================
 // VICTORY «Жеңіс» — фанфар на два такта (4 с), D мажорная пентатоника, 120 уд/мин; дальше тихо возвращается «Корабль».
 // =====================================================================
 const VICTORY: TrackDef = {
@@ -274,7 +311,7 @@ const VICTORY: TrackDef = {
   },
 };
 
-export const TRACKS: Record<Track, TrackDef> = { hub: HUB, map: MAP, battle: BATTLE, victory: VICTORY };
+export const TRACKS: Record<Track, TrackDef> = { hub: HUB, map: MAP, battle: BATTLE, victory: VICTORY, training: TRAINING };
 
 /** Идёт по тактам трека и отдаёт события. Сам знает про петли, разделы и переход победы в «Корабль». */
 export class Cursor {

@@ -82,6 +82,20 @@ export interface Save {
   shipOwned?: string[];                       // id купленных украшений и питомцев (content/ship_items.mjs)
   shipPet?: string | null;                    // активный питомец (один) или null
   aiLog?: AiTurn[];                           // вопросы к ИИ-помощнику (видит командир), последние 100
+  // «Еске түсір»: возвраты к правилу темы по расписанию (src/engine/recall.ts)
+  recall?: Record<string, RecallState>;
+  // день → какие темы предложили утром и нажали ли «Өткізу» (видит командир)
+  recallOffer?: Record<string, { skills: string[]; skipped?: boolean }>;
+  // «Дәптер»: что сделано на карточке темы после урока (src/lesson/NotebookCard.svelte)
+  notebook?: Record<string, NotebookEntry>;
 }
+
+/** Один возврат к правилу: ok — собрал правило верно; hint — подсказка (0 нет, 1 первое слово, 2 скелет, 3 показали правило: не засчитывается);
+ *  conf — уверенность до показа (1 не знаю, 2 шамамен, 3 сенімдімін); task — решил ли задачу темы после сверки. */
+export interface RecallEntry { day: string; ok: boolean; hint: 0 | 1 | 2 | 3; conf: 1 | 2 | 3; task?: boolean }
+/** step — сколько верных возвратов без подсказки подряд (минус откаты); зачтена при step ≥ 3. due — дата следующего возврата. */
+export interface RecallState { learnedDay: string; step: number; due: string; history: RecallEntry[] }
+/** exampleOk: true/false — игра проверила «мой пример» вычислением; null — проверить нельзя, записано как есть. */
+export interface NotebookEntry { day: string; wrote?: boolean; example?: string; exampleOk?: boolean | null }
 
 export interface AiTurn { at: number; day: string; skill: string; task: string; q: string; a: string }

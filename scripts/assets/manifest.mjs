@@ -8,12 +8,14 @@ const list = (dir, names, ext = '.gltf') => names.map(n => `${dir}${n}${ext}`);
 // клипы героя: только нужные игре (остальные тяжёлые и не используются)
 export const HERO_CLIPS = {
   General: ['Idle_A', 'Idle_B', 'Hit_A', 'Hit_B', 'Death_A', 'Spawn_Air', 'Spawn_Ground', 'Interact', 'PickUp', 'Use_Item', 'Throw'],
-  MovementBasic: ['Walking_A', 'Walking_B', 'Running_A', 'Running_B', 'Jump_Full_Short', 'Jump_Start', 'Jump_Idle', 'Jump_Land'],
-  MovementAdvanced: ['Dodge_Backward', 'Dodge_Left', 'Dodge_Right', 'Walking_Backwards'],
+  MovementBasic: ['Walking_A', 'Walking_B', 'Running_A', 'Running_B', 'Jump_Full_Short', 'Jump_Full_Long', 'Jump_Start', 'Jump_Idle', 'Jump_Land'],
+  MovementAdvanced: ['Dodge_Backward', 'Dodge_Forward', 'Dodge_Left', 'Dodge_Right', 'Walking_Backwards', 'Crouching'],
   CombatMelee: ['Melee_1H_Attack_Chop', 'Melee_1H_Attack_Slice_Diagonal', 'Melee_1H_Attack_Slice_Horizontal', 'Melee_1H_Attack_Stab', 'Melee_1H_Attack_Jump_Chop',
-    'Melee_2H_Attack_Spin', 'Melee_2H_Attack_Spinning', 'Melee_2H_Attack_Chop', 'Melee_2H_Idle', 'Melee_Block', 'Melee_Blocking', 'Melee_Block_Hit', 'Melee_Block_Attack'],
-  CombatRanged: ['Ranged_Magic_Shoot', 'Ranged_Magic_Spellcasting', 'Ranged_Magic_Raise', 'Ranged_Magic_Summon', 'Ranged_Bow_Draw', 'Ranged_Bow_Release', 'Ranged_Bow_Aiming_Idle', 'Ranged_1H_Shoot'],
-  Simulation: ['Cheering', 'Waving', 'Sit_Floor_Down', 'Sit_Floor_Idle', 'Sit_Floor_StandUp', 'Push_Ups', 'Sit_Ups'],   // палуба: герой сидит, тренируется, машет
+    'Melee_2H_Attack_Spin', 'Melee_2H_Attack_Spinning', 'Melee_2H_Attack_Chop', 'Melee_2H_Idle', 'Melee_Block', 'Melee_Blocking', 'Melee_Block_Hit', 'Melee_Block_Attack',
+    'Melee_Unarmed_Attack_Kick', 'Melee_Unarmed_Attack_Punch_A', 'Melee_Unarmed_Idle'],   // бой с тенью на тренировке (урок)
+  CombatRanged: ['Ranged_Magic_Shoot', 'Ranged_Magic_Spellcasting', 'Ranged_Magic_Raise', 'Ranged_Magic_Summon', 'Ranged_Bow_Draw', 'Ranged_Bow_Release', 'Ranged_Bow_Aiming_Idle', 'Ranged_Bow_Idle', 'Ranged_1H_Shoot'],
+  Simulation: ['Cheering', 'Waving', 'Sit_Floor_Down', 'Sit_Floor_Idle', 'Sit_Floor_StandUp', 'Push_Ups', 'Sit_Ups', 'Lie_Down', 'Lie_Idle', 'Lie_StandUp'],   // палуба и тренировка: сидит, качается, машет, отдыхает лёжа
+  Tools: ['Hammer', 'Hammering'],   // корабль: чинит поломку молотком
 };
 
 // клипы монстров: имена у Quaternius одинаковы внутри папки

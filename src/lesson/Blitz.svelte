@@ -9,7 +9,7 @@
   // @ts-ignore
   import { rng } from '../../content/templates/lib.mjs';
   type Item = { q: string; choices: string[]; answer: number };
-  let { title, seconds = 0, count, make, ondone, onhit, onphase }: { title: string; seconds?: number; count: number; make: (r: any) => Item; ondone: (stars: number) => void; onhit?: (crit: boolean) => void; onphase?: (p: 'ready' | 'play' | 'over') => void } = $props();
+  let { title, seconds = 0, count, make, ondone, onhit, onmiss, onphase }: { title: string; seconds?: number; count: number; make: (r: any) => Item; ondone: (stars: number) => void; onhit?: (crit: boolean) => void; onmiss?: () => void; onphase?: (p: 'ready' | 'play' | 'over') => void } = $props();
   let phase = $state<'ready' | 'play' | 'over'>('ready');
   let items: Item[] = [];
   let idx = $state(0), right = $state(0), combo = $state(0), best = $state(0);
@@ -36,7 +36,7 @@
       right++; combo++; best = Math.max(best, combo); onhit?.(combo >= 3);
       audio.play(combo >= 3 ? 'crit' : 'correct'); if (combo > 1) audio.play('combo', { combo });
       if (qBox) { const c = centerOf(qBox); sparksAt(c.x, c.y, ['#5ce39c', '#3ff0ff'], combo >= 3 ? 36 : 16); if (combo >= 3) floatText(`×${combo}`, c.x, c.y - 30, '#3ff0ff', true); }
-    } else { combo = 0; audio.play('wrong'); }
+    } else { combo = 0; audio.play('wrong'); onmiss?.(); }
     setTimeout(() => { flashK = null; if (idx < items.length - 1) idx++; else finish(); }, ok ? 280 : 700);
   }
   function finish() {

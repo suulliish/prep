@@ -195,7 +195,9 @@ export function createHolo(d: HoloDeps) {
     // Бит парит над плечом героя и светит лучом на нижнюю кромку панели
     const hero = env.hero ?? heroDef;
     if (bit) {
-      bit.update(dt, t, tmp.set(hero.x - 0.1, hero.y + 0.35, hero.z + 0.2), Math.PI / 2, cam.position);   // Бит слева-сверху от героя: не закрывает ни панель, ни лица
+      // Бит слева-сверху от героя, но всегда левее панели: герой на тренировке уходит к доске, и Бит, летя следом, оказывался внутри голограммы
+      const bx = Math.min(hero.x - 0.1, root.position.x - (size.x * S) / 2 - 0.6);
+      bit.update(dt, t, tmp.set(bx, hero.y + 0.35, hero.z + 0.2), Math.PI / 2, cam.position);   // Бит слева-сверху от героя: не закрывает ни панель, ни лица
       const bp = bit.g.position;
       tmp2.set(0, -size.y / 2 * S * av * 0.98, 0).applyQuaternion(root.quaternion).add(root.position);   // нижняя кромка панели
       tmp3.copy(bp).y -= 0.22;

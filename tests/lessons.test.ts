@@ -396,16 +396,23 @@ describe('недели 1–8 — полный сценарий', () => {
   }, 120000);
   it('урок ребусов: пример решает цель, ребусы виджета решаемы, «единственный» ответ примера верен', () => {
     const L = WEEK8['logic.cryptarithm'];
-    // цель, пример, «почему», ошибка Глитча и финал говорят про один ребус АБ + БА = ВГВ, где Г = 2 при любых А, Б (А + Б = 11)
-    const sols: number[][] = [];
-    for (let a = 1; a <= 9; a++) for (let bb = 1; bb <= 9; bb++) for (let v = 1; v <= 9; v++) for (let g = 0; g <= 9; g++) {
-      if (new Set([a, bb, v, g]).size < 4) continue;
-      if ((10 * a + bb) + (10 * bb + a) === 100 * v + 10 * g + v) sols.push([a, bb, v, g]);
-    }
-    expect(new Set(sols.map(x => x[3]))).toEqual(new Set([2]));
-    expect(sols.length).toBe(6);
-    expect(L[0].task).toContain('АБ + БА = ВГВ');
-    expect(L.at(-1).choices[L.at(-1).answer]).toBe('2');
+    // пример, «почему» и ошибка Глитча — про ребус АБ + БА = ВГВ, где Г = 2 при любых А, Б (А + Б = 11);
+    // цель и финал (аудит 01.10: финал проверяет умение, а не память) — про соседний ребус АБ + БА = ВВГ, где Г = 0 (А + Б = 10)
+    const solve = (hundreds: (v: number, g: number) => number) => {
+      const sols: number[][] = [];
+      for (let a = 1; a <= 9; a++) for (let bb = 1; bb <= 9; bb++) for (let v = 1; v <= 9; v++) for (let g = 0; g <= 9; g++) {
+        if (new Set([a, bb, v, g]).size < 4) continue;
+        if ((10 * a + bb) + (10 * bb + a) === hundreds(v, g)) sols.push([a, bb, v, g]);
+      }
+      return sols;
+    };
+    const exSols = solve((v, g) => 100 * v + 10 * g + v), goalSols = solve((v, g) => 100 * v + 10 * v + g);
+    expect(new Set(exSols.map(x => x[3]))).toEqual(new Set([2]));
+    expect(exSols.length).toBe(6);
+    expect(new Set(goalSols.map(x => x[3]))).toEqual(new Set([0]));
+    expect(goalSols.length).toBe(6);
+    expect(L[0].task).toContain('АБ + БА = ВВГ');
+    expect(L.at(-1).choices[L.at(-1).answer]).toBe('0');
     // в кадрах «Көр» приведённые примеры — верные равенства
     const ex = L.find((s: any) => s.type === 'example');
     for (const f of ex.frames) { const m = /(\d+) \+ (\d+) = (\d+)/.exec(f.math); if (m) expect(+m[1] + +m[2], f.math).toBe(+m[3]); }
