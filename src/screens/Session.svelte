@@ -21,14 +21,14 @@
   import { makeItem, mistakeText, skillTitle, templatesOf, isTemplateId, type Item } from '../engine/items';
   import { bankFor, bankToItem } from '../engine/bank';
   import { recordAttempt, isDone } from '../engine/progress';
-  import { isHonest, addMasteryBonus, settleDay, taught, sequenceSlots } from '../engine/planner';
+  import { isHonest, settleDay, taught, sequenceSlots } from '../engine/planner';
   import { stemChars, isTooFast, tooFastMs, changedMarkup, varyAnswerPos, type Seg } from '../engine/rush';
   import { GLITCH_SAY, buildGlitch, glitchAllowed, firstGlitchAt, nextGlitchAt, shortMistake, type GlitchTurn as GlitchData } from '../engine/glitchturn';
   import { eventOf, breaksCombo, critCoins, eventMs, nextSureFirst, calibOf, calibLine, TWIN_TAG, type Conf, type EventKind } from '../engine/confidence';
   import { buildReview, type Review, type ReviewMode } from '../engine/review';
   import { makeTwin } from '../engine/twin';
   import type { Attempt } from '../engine/types';
-  import { showReward, queueReward } from '../lib/reward.svelte';
+  import { showReward } from '../lib/reward.svelte';
   import { audio } from '../lib/audio';
   import { currentWorld, totalStars, STAR_REWARDS } from '../lib/look';
   import { react } from '../lib/voice';
@@ -266,15 +266,6 @@
     for (const ev of events) {
       if (ev === 'learned') { react('learned'); audio.play('levelup'); floatText('ҮЙРЕНДІ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#3ff0ff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#3ff0ff', '#b58cff'], 70, 10); W.world?.celebrate(); carry = `«${skillTitle(skill).kz}» — үйрендің! Ертең тексереміз: өтсең, кристалға айналады.`; }
       if (ev === 'crystal') { react('crystal'); audio.play('crystal'); floatText('КРИСТАЛЛ!', sceneCenter(0.3).x, sceneCenter(0.3).y, '#b58cff', true); sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#b58cff', '#ffffff', '#3ff0ff'], 90, 11); carry = `«${skillTitle(skill).kz}» кристалға айналды — енді бұл тақырып сенікі!`; }
-      if (ev === 'learned' || ev === 'crystal') {
-        const rec = dayRec(), add = addMasteryBonus(rec, `${ev === 'crystal' ? 'Проверка через день пройдена' : 'Тема освоена'}: ${skillTitle(skill).ru}`);
-        if (add) {
-          settleDay(rec, plan, game.save.settings.extraTo);
-          carry += ` Сыйлық: +${add} минут ойын!`;
-          // без отдельного окна: бонус войдёт в единую сцену награды в конце шага (src/lib/reward.svelte.ts)
-          queueReward({ minutes: add, title: 'Сыйлық!', why: `${ev === 'crystal' ? 'Ертеңгі тексеру өтті' : 'Тақырып үйренілді'}: ${skillTitle(skill).kz}`, today: rec.minutesToday, weekend: rec.minutesWeekend });
-        }
-      }
       if (ev === 'review_failed') carry = 'Бұл тақырып сәл ұмытылған екен — қайта жаттығамыз, қорқынышты емес.';
     }
   }

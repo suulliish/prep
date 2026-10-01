@@ -74,8 +74,8 @@ describe('заработок', () => {
     expect(rec.minutesToday).toBe(60); expect(rec.minutesWeekend).toBe(48);
     expect(canStartExtra(rec, plan, 4)).toBe(true);
     rec.extraMissions = 2; settleDay(rec, plan, 'today');
-    expect(rec.minutesToday).toBe(90);
-    expect(canStartExtra({ ...rec, extraMissions: 4 }, plan, 4)).toBe(false);
+    expect(rec.minutesToday).toBe(75);                     // доп. минут не больше 15 в день
+    expect(canStartExtra({ ...rec, extraMissions: 1 }, plan, 4)).toBe(false);
   });
   it('доп. миссия наспех не даёт минут: 15 × доля честных ответов', () => {
     const s = newSave(); refreshAvailability(s, defs);
@@ -87,7 +87,7 @@ describe('заработок', () => {
     rec.extraMissions = 2; rec.extraHonest = 1.1; settleDay(rec, plan, 'today');
     expect(rec.minutesToday).toBe(75);                     // честная вторая миссия: +15
     delete rec.extraHonest; settleDay(rec, plan, 'today');
-    expect(rec.minutesToday).toBe(90);                     // старое сохранение без поля — миссии честные
+    expect(rec.minutesToday).toBe(75);                     // старое сохранение без поля — миссии честные, но доп. минут всё равно не больше 15
   });
   it('угадывание быстрее 5 секунд — нечестно', () => {
     expect(isHonest(3000, 0)).toBe(false); expect(isHonest(12000, 4)).toBe(false); expect(isHonest(12000, 2)).toBe(true);
@@ -106,14 +106,20 @@ describe('серия дней', () => {
   });
 });
 
-import { addMasteryBonus, MASTERY_BONUS_DAY_CAP } from '../src/engine/planner';
-describe('бонус за освоение', () => {
-  it('+10 за событие, не больше лимита в день, подарок командира не считается', () => {
-    const rec = { date: '2026-10-20', blocksDone: {}, planShare: 0, minutesToday: 0, minutesWeekend: 0, extraMissions: 0, bonuses: [{ reason: 'Подарок командира', minutes: 15 }] } as any;
-    expect(addMasteryBonus(rec, 'a')).toBe(10);
-    expect(addMasteryBonus(rec, 'b')).toBe(10);
-    expect(addMasteryBonus(rec, 'c')).toBe(0);
-    expect(rec.bonuses.filter((b: any) => b.mastery).reduce((s: number, b: any) => s + b.minutes, 0)).toBe(MASTERY_BONUS_DAY_CAP);
+describe('минуты: 60 за план + 15 за одну доп. миссию, без бонусов за освоение', () => {
+  const plan = { day: '2026-10-20', blocks: [{ id: 'new', minutes: 18, skills: [], items: 10 }, { id: 'summary', minutes: 2, skills: [], items: 0 }] } as any;
+  it('план целиком и 4 доп. миссии — всё равно 75', () => {
+    const rec = { ...blankDay('2026-10-20'), blocksDone: { new: true, summary: true }, extraMissions: 4, extraHonest: 4 } as any;
+    settleDay(rec, plan, 'today'); expect(rec.minutesToday).toBe(75);
+  });
+  it('старые бонусы за освоение минут не дают, подарок командира даёт', () => {
+    const rec = { ...blankDay('2026-10-20'), blocksDone: { new: true, summary: true }, bonuses: [{ reason: 'Тема освоена', minutes: 10, mastery: true }, { reason: 'Подарок командира', minutes: 15 }] } as any;
+    settleDay(rec, plan, 'today'); expect(rec.minutesToday).toBe(75);
+  });
+  it('вторую доп. миссию начать нельзя, даже если в настройках 4', () => {
+    const rec = { ...blankDay('2026-10-20'), blocksDone: { new: true, summary: true }, extraMissions: 1 } as any;
+    expect(canStartExtra(rec, plan, 4)).toBe(false);
+    expect(canStartExtra({ ...rec, extraMissions: 0 }, plan, 4)).toBe(true);
   });
 });
 
