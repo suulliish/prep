@@ -36,7 +36,7 @@ export class Actor {
   }
   has(name: string) { return this.clips.has(name); }
   /** Заранее создать и привязать действия клипов (первый настоящий запуск не тратит время на привязку костей). */
-  prime(names: string[]) { for (const n of names) { const a = this.has(n) ? this.act(n) : null; if (a) { a.setEffectiveWeight(0); a.play(); a.stop(); } } }
+  prime(names: string[]) { for (const n of names) { const a = this.has(n) ? this.act(n) : null; if (a) { a.setEffectiveWeight(0); a.play(); a.stop(); a.setEffectiveWeight(1); } } }
   addClips(cs: THREE.AnimationClip[]) { for (const c of cs) if (!this.clips.has(c.name)) this.clips.set(c.name, c); }
   duration(name: string) { return this.clips.get(name)?.duration ?? 0; }
   private act(name: string) {
@@ -47,7 +47,7 @@ export class Actor {
   loop(name: string, fade = 0.2, speed = 1) {
     const a = this.act(name); if (!a || a === this.base) { if (a) a.timeScale = speed; return; }
     // цикл, который ещё гаснет (только что сменили), подхватывается с того же места, а не с начала — иначе шаг «заикается»
-    if (!a.isRunning()) a.reset();
+    if (!a.isRunning()) { a.reset(); a.setEffectiveWeight(1); }
     a.setLoop(THREE.LoopRepeat, Infinity); a.timeScale = speed; a.enabled = true;
     if (this.base) this.base.crossFadeTo(a, fade, false); a.play(); this.base = a;
     if (!this.shot) this.gear(name);
@@ -75,7 +75,7 @@ export class Actor {
   play(name: string, o: PlayOpts = {}): Promise<void> {
     const a = this.act(name); if (!a) return Promise.resolve();
     this.cut(); this.gear(name);
-    a.reset(); a.setLoop(o.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity); a.clampWhenFinished = !!o.hold || !!o.then; a.timeScale = o.speed ?? 1; a.enabled = true;
+    a.reset(); a.setEffectiveWeight(1); a.setLoop(o.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity); a.clampWhenFinished = !!o.hold || !!o.then; a.timeScale = o.speed ?? 1; a.enabled = true;
     if (this.base) this.base.fadeOut(o.fade ?? 0.1); a.fadeIn(o.fade ?? 0.1).play();
     if (o.loop) { this.base = a; return Promise.resolve(); }
     return new Promise(res => { this.shot = { a, marks: (o.marks ?? []).slice().sort((x, y) => x.at - y.at), done: res, hold: !!o.hold || !!o.then, then: o.then, thenSpeed: o.thenSpeed }; });

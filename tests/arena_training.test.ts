@@ -37,7 +37,8 @@ beforeAll(() => {
 });
 
 const make = (km = 1) => {
-  const arena = createArena({ skyMat: new THREE.MeshBasicMaterial(), starGeo: new THREE.BufferGeometry(), starMat: new THREE.PointsMaterial(), km, shadows: false });
+  // rnd: удар на расстоянии (лук, магия, бросок) в этих тестах не выбирается: тайминги меча сравниваются между приёмами (удары на расстоянии: tests/arena_shots.test.ts)
+  const arena = createArena({ skyMat: new THREE.MeshBasicMaterial(), starGeo: new THREE.BufferGeometry(), starMat: new THREE.PointsMaterial(), km, shadows: false, rnd: () => 0.99 });
   arena.theme(0, '#5ce39c', '#000'); arena.spot('k1');
   return arena;
 };

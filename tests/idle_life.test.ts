@@ -16,7 +16,7 @@ function actor(names: string[], scale = 1.4) {
   a.g.scale.setScalar(scale);
   return a;
 }
-const HERO_CLIPS = ['Idle_A', 'Melee_Blocking'];
+const HERO_CLIPS = ['Idle_A', 'Melee_Blocking', 'Melee_2H_Idle', 'Crouching'];
 const MOB_CLIPS: Record<MonsterClass, string[]> = { Blob: ['Idle', 'Yes', 'No', 'Dance'], Big: ['Idle', 'Yes', 'No', 'Wave'], Flying: ['Flying_Idle', 'Yes', 'No'] };
 
 function setup(o: { cls?: MonsterClass; km?: number; seed?: number; noMob?: boolean } = {}) {
@@ -60,8 +60,8 @@ describe('живое ожидание: расписание', () => {
     w.step(12); expect(w.evs.length).toBeGreaterThan(n); expect(w.evs[n].t - t0).toBeGreaterThanOrEqual(1.5);
   });
 
-  it('старт от старта: 3–6 с, «уменьшить движение» — 8–12 с', () => {
-    for (const [km, lo, hi] of [[1, 3, 6.01], [0.3, 8, 12.01]] as const) {
+  it('старт от старта: 2.6–4.8 с (действия короче), «уменьшить движение» — 8–12 с', () => {
+    for (const [km, lo, hi] of [[1, 2.6, 4.81], [0.3, 8, 12.01]] as const) {
       const w = setup({ km, seed: 7 }); w.step(400);
       const gaps = w.evs.slice(1).map((e, i) => e.t - w.evs[i].t);
       expect(gaps.length).toBeGreaterThan(20);
@@ -137,12 +137,73 @@ describe('живое ожидание: движение', () => {
     expect(fly.has('loop') && fly.has('bob')).toBe(true); expect(fly.has('hop') || fly.has('dance') || fly.has('wave')).toBe(false);
     // у героя есть и клип щита, и прокрут кистью, и код (вдох, вес, взгляд, вздох)
     const w = setup({ seed: 4 }); w.step(1500); const h = new Set(w.evs.filter(e => e.who === 'hero').map(e => e.act));
-    for (const x of ['breath', 'shift', 'glance', 'sigh', 'shield', 'flourish']) expect(h.has(x), x).toBe(true);
+    for (const x of ['breath', 'shift', 'glance', 'sigh', 'shield', 'flourish', 'ready', 'crouch', 'shuffle', 'bounce', 'scan', 'stretch', 'tap']) expect(h.has(x), x).toBe(true);
+    expect(blob.has('shuffle') && blob.has('bounce') && blob.has('roar') && blob.has('tilt')).toBe(true); expect(fly.has('drift') && fly.has('flutter')).toBe(true); expect(fly.has('roar') || fly.has('shuffle') || fly.has('bounce')).toBe(false);
   });
 
   it('клипы монстра берутся только те, что у него есть', () => {
     const w = setup({ cls: 'Flying', seed: 9 }); w.step(600);
     expect(w.evs.filter(e => e.who === 'mob').map(e => e.act).every(a => ACTS.find(x => x.name === a && (!x.clip || MOB_CLIPS.Flying.includes(x.clip[0]))))).toBe(true);
+  });
+});
+
+describe('живое ожидание: боевой вид', () => {
+  it('частота: 14–20 действий в минуту, при «уменьшить движение» не больше 9', () => {
+    const w = setup({ seed: 21 }); w.step(180); const perMin = w.evs.length / 3; expect(perMin).toBeGreaterThanOrEqual(14); expect(perMin).toBeLessThanOrEqual(20);
+    const r = setup({ seed: 21, km: 0.3 }); r.step(180); expect(r.evs.length / 3).toBeLessThanOrEqual(9);
+  });
+
+  it('боевая стойка: пока идёт ready, база героя Melee_2H_Idle, после неё снова Idle_A; в стойке героя проводят заметную долю времени', () => {
+    const w = setup({ seed: 12 }); let inStance = 0, total = 0, sawReady = false, sawCrouch = false;
+    w.step(240, () => {
+      total++; const a = w.idle.active();
+      if (a === 'ready') { sawReady = true; expect(w.hero.baseName()).toBe('Melee_2H_Idle'); }
+      if (a === 'crouch') { sawCrouch = true; expect(w.hero.baseName()).toBe('Crouching'); }
+      if (a === 'ready' || a === 'crouch') inStance++;
+    });
+    expect(sawReady && sawCrouch).toBe(true); expect(inStance / total).toBeGreaterThan(0.1);
+    w.st.quiet = true; w.step(1); w.idle.stop(true); for (let i = 0; i < 60; i++) w.hero.update(1 / 60);
+    expect(w.hero.baseName()).toBe('Idle_A');
+  });
+
+  it('стойки без нужного клипа не выбираются (у героя нет Crouching — действия crouch нет)', () => {
+    const hero = actor(['Idle_A', 'Melee_Blocking']); hero.loop('Idle_A', 0); const mob = actor(MOB_CLIPS.Blob); mob.loop('Idle', 0);
+    const evs: string[] = []; idleTrace.fn = (_w, act) => evs.push(act);
+    const idle = createIdleLife({ hero: () => hero, weapon: () => null, mob: () => ({ a: mob, cls: 'Blob' }), quiet: () => false, km: () => 1, rnd: rng(5) });
+    for (let i = 0; i < 60 * 200; i++) { hero.update(1 / 60); mob.update(1 / 60); idle.update(1 / 60); }
+    expect(evs.length).toBeGreaterThan(20); expect(evs).not.toContain('ready'); expect(evs).not.toContain('crouch');
+  });
+
+  it('движения только в видимых осях: камера смотрит сбоку, крен (rz) и сдвиг вбок (x) глазом не видны и не используются', () => {
+    for (const a of ACTS) {
+      if (!a.fx) continue;
+      for (const u of [0.1, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9]) {
+        const o = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, sx: 0, sy: 0, sz: 0, wx: 0, wy: 0, wz: 0 }; a.fx({ u, amp: 1, sgn: 1, o });
+        expect(o.rz, a.name).toBe(0); expect(o.x, a.name).toBe(0); expect(o.sx, a.name).toBe(0);
+      }
+    }
+  });
+
+  it('заметность: у каждого действия есть движение не меньше 0.1 рад, 0.08 м или 3% масштаба (на телефоне герой ~70 px, меньшее глаз не видит)', () => {
+    for (const a of ACTS) {
+      if (a.clip || a.seq) continue;
+      let best = 0;
+      if (a.fx) for (let u = 0.02; u < 1; u += 0.02) { const o = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, sx: 0, sy: 0, sz: 0, wx: 0, wy: 0, wz: 0 }; a.fx({ u, amp: 1, sgn: 1, o }); best = Math.max(best, Math.abs(o.rx) / 0.1, Math.abs(o.ry) / 0.1, Math.abs(o.wx) / 0.1, Math.abs(o.wz) / 0.1, Math.abs(o.y) / 0.08, Math.abs(o.z) / 0.08, Math.abs(o.sy) / 0.03); }
+      // у клипового действия (стойка Melee_2H_Idle / Crouching) заметность даёт сам клип
+      expect(best >= 1 || !!a.stance, a.name).toBe(true);
+    }
+  });
+
+  it('стойки: только боевые клипы KayKit, не быстрее обычного', () => {
+    const st = ACTS.filter(a => a.stance); expect(st.map(a => a.stance![0]).sort()).toEqual(['Crouching', 'Melee_2H_Idle']);
+    for (const a of st) { expect(a.stance![0]).not.toMatch(/Attack|Punch|Bite|Weapon|Headbutt|Jump|Run|Walk|Dodge|Hit|Death|Shoot|Stab|Throw/); expect(a.stance![1]).toBeLessThanOrEqual(1); }
+  });
+
+  it('у монстра нет действий, подающих его к герою (z вперёд не больше 0.1 м) и нет клипов-атак', () => {
+    for (const a of ACTS.filter(x => x.who === 'mob')) {
+      expect(a.clip?.[0] ?? '').not.toMatch(/Punch|Bite|Weapon|Headbutt|Jump|Run|Fast/);
+      for (let u = 0; u <= 1; u += 0.02) { const o = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, sx: 0, sy: 0, sz: 0, wx: 0, wy: 0, wz: 0 }; a.fx?.({ u, amp: 1, sgn: 1, o }); expect(o.z, a.name).toBeLessThanOrEqual(0.1); }
+    }
   });
 });
 

@@ -16,10 +16,11 @@ import { createVfx } from './vfx';
 import { createAttacks, prepareEnemy, HERO_X, ENEMY_X, Z0, type Body } from './attacks';
 import { createIdleLife } from './idle_life';
 import { createTrainHero } from './train_hero';
+import { createShots, pickShot, SHOT_CLIPS, type ShotKind } from './shots';
 import { createTraining, type Training, type HitKind } from './training3d';
 import type { Sfx } from '../lib/audio';
 
-interface Deps { skyMat: THREE.Material; starGeo: THREE.BufferGeometry; starMat: THREE.Material; km: number; shadows: boolean; sfx?: (n: Sfx) => void }
+interface Deps { skyMat: THREE.Material; starGeo: THREE.BufferGeometry; starMat: THREE.Material; km: number; shadows: boolean; sfx?: (n: Sfx) => void; /** Случайность выбора удара на расстоянии (в тестах подменяется). */ rnd?: () => number }
 
 const box = new THREE.BoxGeometry(1, 1, 1);
 const SWING = new THREE.Vector3();   // направление взмаха для vfx.slash (переиспользуется)
@@ -86,8 +87,10 @@ export function createArena(d: Deps) {
       if (my !== look) return;
       if (my.tint) h.tint(my.tint, my.glow);
       h.setCape(cape);
-      if (hero) { scene.remove(hero.g); hero.dispose(); train.heroReplaced(); }
+      if (hero) { scene.remove(hero.g); hero.dispose(); train.heroReplaced(); shotGen++; }
       hero = h; scene.add(h.g); h.g.add(shield);
+      // клипы выстрелов, лук и шар прогреваются заранее: первый выстрел в бою не подтормаживает (вес клипа после прогрева остаётся 1)
+      h.prime(SHOT_CLIPS); shots.warm(new THREE.Vector3(HERO_X, 1.2, Z0 + 0.5), () => hero === h);
       h.g.position.set(HERO_X, 0, Z0); h.g.rotation.y = Math.PI / 2;
       weapon = h.bone('handslot.r')?.children.find(c => c.userData.gear) ?? null;
     })();
@@ -136,6 +139,9 @@ export function createArena(d: Deps) {
   const fx: Fx[] = [];
   /** Частицы-спрайты из атласа (искры, взмахи, дым): src/three/vfx.ts. Кубики ниже — крупные «осколки» и монеты. */
   const vfx = createVfx(scene, camera, { km: d.km, high: d.shadows });
+  // выстрелы героя (лук, бросок, магия): общий код боя и тренировки, shots.ts; shotGen меняется при уходе с экрана и обрывает всё, что в полёте
+  let shotGen = 0;
+  const shots = createShots({ scene, vfx, sfx, fx: u => { fx.push({ update: u }); } });
   const V = new THREE.Vector3();
   function burst(pos: THREE.Vector3, colors: number[], n = 30, speed = 5, size = 0.18) {
     const parts = Array.from({ length: n }, (_, i) => {
@@ -454,7 +460,7 @@ export function createArena(d: Deps) {
   }
 
   const train = createTrainHero({
-    scene, vfx, km: d.km, sfx,
+    scene, vfx, km: d.km, sfx, shots,
     hero: () => hero, training: () => training,
     fx: u => { fx.push({ update: u }); }, tween,
     burst: (p, c, n, sp, sz) => burst(p, c, n, sp, sz), ring: (p, c, m) => ring(p, c, m),
@@ -519,6 +525,21 @@ export function createArena(d: Deps) {
     if (hero && !hero.marksPending()) await hero.play('Cheering');
     neutral();
   }
+
+  /** Удар на расстоянии (док. GAME_LOOP, «атаки героя»): герой остаётся на месте и стреляет по врагу из лука, бросает шар или колдует; меч и щит на время лука прячутся.
+   *  Попадание — тот же impact(), что у удара мечом (урон, вспышка, цифра, hitDone/onHit). Выстрел оборван (уход с экрана): снаряд убран, impact не вызывается. */
+  async function shootEnemy(want: ShotKind, color: number, impact: () => void, abort: () => void) {
+    const h = H(), my = shotGen;
+    const { kind, bow } = await shots.prepare(want); if (my !== shotGen) { abort(); return; }
+    const ep = enemyPos(), to = new THREE.Vector3(ep.x - 0.35, ep.y, ep.z + 0.15);
+    h.g.rotation.y = faceAngle(to.x, to.z);
+    await shots.fire(h, { kind, bow, to, color, k: 1.25, stick: 0.12, onLand: () => { if (my === shotGen) impact(); else abort(); }, onCancel: abort },
+      { alive: () => my === shotGen, wait: p => p, within: (p, s) => within(p, s), pause: s => wait(s) });
+    if (my !== shotGen) { abort(); return; }
+    h.carry([]); h.g.rotation.y = Math.PI / 2;
+  }
+  const shotHist: (ShotKind | null)[] = []; let shotCyc = 0;
+  const rnd = d.rnd ?? (() => Math.random());
 
   const api = {
     scene, camera, update,
@@ -613,6 +634,9 @@ export function createArena(d: Deps) {
       const tech = opts.sup ? null : opts.tech ?? null, tfx = tech?.fx ?? 'arc', tc = tech?.color ?? 0x35e6ff;
       const clip = opts.sup ? 'Melee_1H_Attack_Jump_Chop' : tfx === 'spin' ? 'Melee_2H_Attack_Spinning' : tfx === 'pierce' ? 'Melee_1H_Attack_Stab' : tfx === 'split' ? 'Melee_1H_Attack_Chop' : opts.crit ? 'Melee_2H_Attack_Spinning' : 'Melee_1H_Attack_Slice_Diagonal';
       const spd = tfx === 'spin' ? 1.0 : tfx === 'pierce' ? 2.15 : 1.35;
+      // часть ударов (по приёму темы) герой наносит издалека: лук, бросок, магия; меч остаётся основным. Суперудар всегда мечом
+      const ranged = opts.sup ? null : pickShot(tfx, rnd, shotHist, !!opts.crit, shotCyc);
+      if (!opts.sup) { shotHist.push(ranged); if (shotHist.length > 4) shotHist.shift(); if (ranged && !tech) shotCyc++; }
       let hitDone: () => void = () => {};
       const hit = new Promise<void>(r => (hitDone = r));
       const impact = () => {
@@ -651,6 +675,11 @@ export function createArena(d: Deps) {
         h.play(clip, { speed: 1.05, marks: [{ at: 0.12, fn: () => sfx('slash') }, { at: HIT_AT[clip], fn: impact }] });
         await jumpTo(ENEMY_X - 1.6, Z0, 2.4, h.length(clip, 1.05) * 0.62);
         trailOn = false; land(true);
+      } else if (ranged) {
+        if (last) shot(new THREE.Vector3(ENEMY_X - 0.8, 1.4, Z0), 0.6, 0.22);
+        if (tech) popText(tech.kz.toUpperCase(), new THREE.Vector3(HERO_X + 0.4, HERO_HEIGHT + 1.2, Z0), '#' + tc.toString(16).padStart(6, '0'));
+        await shootEnemy(ranged, tech ? tc : ranged === 'throw' ? 0xffcb2e : 0x35e6ff, impact, hitDone);
+        hitDone();
       } else {
         if (last) shot(new THREE.Vector3(ENEMY_X - 0.8, 1.4, Z0), 0.6, 0.22);
         if (tech) popText(tech.kz.toUpperCase(), new THREE.Vector3(HERO_X + 0.4, HERO_HEIGHT + 1.2, Z0), '#' + tc.toString(16).padStart(6, '0'));
@@ -660,10 +689,10 @@ export function createArena(d: Deps) {
         // выпад: герой подаётся вперёд вместе с клинком
         if (tfx === 'pierce') { const x0 = h.g.position.x; tween(0.2, u => { h.g.position.x = x0 + 0.8 * ease(u); }); }
       }
-      await within(hit, 3); if (!opts.sup) await wait(h.length(clip, spd) * (1 - HIT_AT[clip]) * 0.9);
+      await within(hit, 3); if (!opts.sup && !ranged) await wait(h.length(clip, spd) * (1 - HIT_AT[clip]) * 0.9);
       trailOn = false; trailOne = null;
       if (opts.sup) { await jumpTo(HERO_X, Z0, 1.2, 0.4); h.g.rotation.y = Math.PI / 2; shot(null); }
-      else await runTo(HERO_X, 0.34);
+      else if (!ranged) await runTo(HERO_X, 0.34);
       neutral();
       return e.hp <= 0;
     },
@@ -778,8 +807,8 @@ export function createArena(d: Deps) {
     celebrate() { idle.stop(true); if (hero && !hero.marksPending()) hero.play('Cheering');   // не обрывать удар: иначе его момент касания сработает раньше срока
       burst(new THREE.Vector3(HERO_X, 3, Z0), [0xffcb2e, 0x35e6ff], 12, 5); vfx.sparkleShower(new THREE.Vector3(HERO_X, 2.6, Z0 + 0.5)); },
     /** Освободить ресурсы частиц (сцену выкидывают целиком). */
-    dispose() { idle.dispose(); train.dispose(); dropTraining(); attacks.dispose(); vfx.dispose(); },
-    clear() { clearGen++; trainGen++; train.reset(); dropTraining(); tWant.glitch = false; tWant.left = 0; tWant.board = ''; trailOn = false; trailOne = null; idle.stop(true); vfx.clear(); if (enemy) { scene.remove(enemy.m.a.g); enemy.m.a.dispose(); enemy = null; } hpBar.visible = false; guard = false; if (hero) { neutral(); hero.g.position.set(HERO_X, 0, Z0); hero.g.rotation.y = Math.PI / 2; } shot(null); },
+    dispose() { shotGen++; idle.dispose(); train.dispose(); shots.dispose(); dropTraining(); attacks.dispose(); vfx.dispose(); },
+    clear() { clearGen++; trainGen++; shotGen++; shots.clear(); hero?.settle(); hero?.carry([]); train.reset(); dropTraining(); tWant.glitch = false; tWant.left = 0; tWant.board = ''; trailOn = false; trailOne = null; idle.stop(true); vfx.clear(); if (enemy) { scene.remove(enemy.m.a.g); enemy.m.a.dispose(); enemy = null; } hpBar.visible = false; guard = false; if (hero) { neutral(); hero.g.position.set(HERO_X, 0, Z0); hero.g.rotation.y = Math.PI / 2; } shot(null); },
     hasEnemy: () => !!enemy,
     hasTraining: () => !!training,
     /** Проверка: поза героя на тренировке ('' — стоит; 'warm', 'sit', 'lie', 'stand') и тип шага. */

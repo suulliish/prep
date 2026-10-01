@@ -10,13 +10,15 @@ import type { Training } from './training3d';
 import type { Vfx } from './vfx';
 import type { Sfx } from '../lib/audio';
 import { ENEMY_X, HERO_X, Z0 } from './attacks';
-import { bowLoadout, holdBow, type Bow } from './hero_props';
+import { SHOT_CLIPS, type ShotKind, type Shots } from './shots';
 
 interface Tok { dead: boolean; waiters: Set<() => void> }
 const mkTok = (): Tok => ({ dead: false, waiters: new Set() });
 
 export interface TrainEnv {
   scene: THREE.Scene; vfx: Vfx; km: number; sfx(n: Sfx): void;
+  /** Выстрелы (лук, бросок, магия): общий код с боем, shots.ts. */
+  shots: Shots;
   hero(): Actor | null;
   training(): Training | null;
   /** Покадровый обработчик (dt с замедлением); false — убрать. */
@@ -49,15 +51,13 @@ const BOARD = { x: ENEMY_X + 2.0, z: Z0 - 2.2 };
 const DODGES = ['Dodge_Left', 'Dodge_Right', 'Dodge_Backward'] as const;
 const PINK = 0xff4fb8;
 type Pose = '' | 'warm' | 'sit' | 'lie' | 'stand';
-export type ShotKind = 'bow' | 'throw' | 'magic';
+export type { ShotKind };
 
 export function createTrainHero(env: TrainEnv) {
   const calm = env.km < 1;
   // tok — фоновое действие (обрывается любым следующим), genTok — всё, что ждёт снаряд или выстрел (обрывается уходом с урока сразу)
   let tok = mkTok(), genTok = mkTok(), gen = 0;
   let pose: Pose = '', stepKind = '', arrived = false, warmed = false;
-  let bowP: Promise<Bow> | null = null;
-  const orbGeo = new THREE.SphereGeometry(0.28, 12, 10);
   let dodgeN = 0, volleyOn = false, volleyGen = 0;
 
   /** Оборвать фоновое действие: его ожидания завершаются сразу. */
@@ -143,16 +143,11 @@ export function createTrainHero(env: TrainEnv) {
     else if (kind !== 'example' && kind !== 'goal') cancelBg();
   }
   function onArrived() { arrived = true; setStep(stepKind); warm(); }
-  /** Прогрев: лук, стрела, светящийся шар и клипы выстрелов создаются заранее (на один-два кадра, микроскопическими), первый выстрел не подтормаживает. */
+  /** Прогрев: лук, стрела, светящийся шар и клипы выстрелов создаются заранее, первый выстрел не подтормаживает. */
   function warm() {
     const my = gen, h = env.hero();
-    (bowP ??= bowLoadout()).then(L => {
-      if (gen !== my) return;
-      const g = new THREE.Group(); g.scale.setScalar(0.001); g.position.set(HERO_X, 1.2, Z0 + 0.5); g.add(L.bow, L.arrow, L.flying()); env.scene.add(g);
-      orb(0x35e6ff, 0.001, g.position, g.position, 0.05, 0, my, () => {});
-      let n = 0; env.fx(() => { if (++n < 4 && gen === my) return true; env.scene.remove(g); return false; });
-      h?.prime(['Ranged_Bow_Draw', 'Ranged_Bow_Release', 'Ranged_Magic_Shoot', 'Throw']);
-    }).catch(() => { bowP = null; });
+    env.shots.warm(new THREE.Vector3(HERO_X, 1.2, Z0 + 0.5), () => gen === my);
+    h?.prime(SHOT_CLIPS);
   }
 
   // ---------- «приём освоен» ----------
@@ -212,23 +207,6 @@ export function createTrainHero(env: TrainEnv) {
 
   // ---------- сгустки ошибки на шаге «Глитчтің қатесі» ----------
   const rnd = (a: number, b: number) => a + Math.random() * (b - a);
-  /** Светящаяся сфера с ореолом; летит по прямой (extend > 1 — дальше цели) или дугой; убирается, если поколение сменилось (уход с экрана). */
-  function orb(color: number, size: number, from: THREE.Vector3, to: THREE.Vector3, dur: number, arc: number, my: number, onEnd: () => void) {
-    const core = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.35), toneMapped: false });
-    const halo = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
-    const m = new THREE.Mesh(orbGeo, core), h2 = new THREE.Mesh(orbGeo, halo); h2.scale.setScalar(1.7); m.add(h2); m.scale.setScalar(size);
-    m.position.copy(from); env.scene.add(m);
-    let u = 0; const p = new THREE.Vector3();
-    const done = () => { env.scene.remove(m); core.dispose(); halo.dispose(); };
-    env.fx(dt => {
-      if (gen !== my) { done(); return false; }
-      u = Math.min(1, u + dt / dur); p.lerpVectors(from, to, u); p.y += Math.sin(u * Math.PI) * arc; m.position.copy(p);
-      m.scale.setScalar(size * (1 + 0.12 * Math.sin(u * 40)));
-      env.vfx.magicTrail(p, color, dt);
-      if (u >= 1) { done(); onEnd(); return false; }
-      return true;
-    });
-  }
   const chest = (x = HERO_X) => new THREE.Vector3(x, 1.25, Z0);
   /** Один залп: манекен плюётся, сгусток летит в героя, герой уворачивается (по кругу: влево, вправо, назад), сгусток пролетает мимо или шлёпается там, где он стоял. */
   async function volley() {
@@ -239,7 +217,7 @@ export function createTrainHero(env: TrainEnv) {
     const to = back ? target.clone().setY(0.3) : from.clone().lerp(target, 1.6);
     const dur = back ? 0.75 : 0.85;
     env.sfx('slash'); env.vfx.glow(from, PINK, 2, 0.3);
-    orb(PINK, 1, from, to, dur, back ? 1.4 : 0, my, () => { if (back) { env.vfx.poof(new THREE.Vector3(to.x, 0.4, to.z), PINK, 0.8); env.burst(to.clone().setY(0.3), [PINK, 0xffffff], 10, 4); env.sfx('impact'); } else env.vfx.poof(to.clone(), PINK, 0.5); });
+    env.shots.orb(PINK, 1, from, to, dur, back ? 1.4 : 0, () => gen === my, () => { if (back) { env.vfx.poof(new THREE.Vector3(to.x, 0.4, to.z), PINK, 0.8); env.burst(to.clone().setY(0.3), [PINK, 0xffffff], 10, 4); env.sfx('impact'); } else env.vfx.poof(to.clone(), PINK, 0.5); });
     await wt(t, 0.32); if (!ok(t, h) || my !== gen) return;
     const dz = kind === 'Dodge_Left' ? -1.1 : kind === 'Dodge_Right' ? 1.1 : 0, dx = back ? -0.9 : 0, x0 = h.g.position.x, z0 = h.g.position.z;
     env.sfx('slash');
@@ -269,75 +247,27 @@ export function createTrainHero(env: TrainEnv) {
   /** Выстрел по очереди разными способами. Попадание — onLand в момент, когда снаряд долетел; промах — снаряд уходит мимо мишени. Промис — когда герой закончил. */
   async function shoot(miss: boolean, onLand: () => void): Promise<void> {
     const h = env.hero(); if (!h) return;
-    let kind = ORDER[(miss ? missN++ : shotN++) % 3];
+    const want = ORDER[(miss ? missN++ : shotN++) % 3];
     const my = gen, gt = genTok;
-    // лук не загрузился (нет набора items): вместо него бросок, мишень всё равно падает
-    let bow: Bow | null = null;
-    if (kind === 'bow') { try { bow = await (bowP ??= bowLoadout()); } catch { bowP = null; kind = 'throw'; } if (my !== gen) return; }
+    const { kind, bow } = await env.shots.prepare(want); if (my !== gen) return;
     const tp0 = env.targetPoint() ?? new THREE.Vector3(ENEMY_X - 1.8, 1.1, Z0 - 1.6);
     const tp = miss ? tp0.clone().add(new THREE.Vector3(1.3, 0.7, -1.4)) : tp0;
     h.g.rotation.y = env.faceAngle(tp.x, tp.z);
-    let landed: () => void = () => {}; const flight = new Promise<void>(r => (landed = r));
-    const hand = (slot: string) => { const v = new THREE.Vector3(); (h.bone(slot) ?? h.model).getWorldPosition(v); return v; };
-    const hit = () => { if (miss) { env.vfx.dust(new THREE.Vector3(tp.x, 0, tp.z), 0.8, 0xe6cf98); env.sfx('land'); } else { env.vfx.hitSpark(tp, 0xffcb2e, 0.8); onLand(); } landed(); };
+    const hit = () => { if (miss) { env.vfx.dust(new THREE.Vector3(tp.x, 0, tp.z), 0.8, 0xe6cf98); env.sfx('land'); } else { env.vfx.hitSpark(tp, 0xffcb2e, 0.8); onLand(); } };
     // ожидания по игровому времени (замедление и пауза кадров их не обгоняют); уход с урока (reset) обрывает их сразу
-    const within = (p: Promise<unknown>, s: number) => until(gt, Promise.race([p, env.tween(s, () => {}, () => gt.dead)]));
-    const pause = (s: number) => until(gt, env.tween(s, () => {}, () => gt.dead));
-    if (kind === 'bow') {
-      const L = bow!;
-      holdBow(h, L, false);
-      try {
-        await until(gt, h.play('Ranged_Bow_Draw', { speed: 1.7, hold: true, marks: [{ at: 0.3, fn: () => { if (gen === my) holdBow(h, L, true); } }] })); if (gen !== my) return;
-        let launched: () => void = () => {}; const rel = new Promise<void>(r => (launched = r));
-        void h.play('Ranged_Bow_Release', { speed: 2, marks: [{ at: 0.12, fn: () => {
-          if (gen !== my) return;
-          holdBow(h, L, false); env.sfx('slash');
-          const from = hand('handslot.l'), dir = new THREE.Vector3().subVectors(tp, from).normalize(), a = L.flying();
-          a.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir); env.scene.add(a);
-          const q = new THREE.Vector3(); let u = 0; const dist = from.distanceTo(tp), dur = Math.max(0.25, dist / 16), p0 = from.clone();
-          env.fx(dt => {
-            if (gen !== my) { env.scene.remove(a); return false; }
-            u = Math.min(1, u + dt / dur); q.lerpVectors(p0, tp, u); q.y += Math.sin(u * Math.PI) * 0.35; a.position.copy(q);
-            const q2 = new THREE.Vector3().lerpVectors(p0, tp, Math.min(1, u + 0.03)); q2.y += Math.sin(Math.min(1, u + 0.03) * Math.PI) * 0.35; if (q2.distanceToSquared(q) > 1e-6) a.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), q2.sub(q).normalize());
-            if (u >= 1) { hit(); if (miss) env.scene.remove(a); else stuck(a, my); return false; }
-            return true;
-          });
-          launched();
-        } }] });
-        await within(rel, 2); await within(flight, 2);
-        await pause(h.length('Ranged_Bow_Release', 2) * 0.4);
-      } finally { if (gen === my) h.carry([]); }
-    } else if (kind === 'magic') {
-      let launched: () => void = () => {}; const rel = new Promise<void>(r => (launched = r));
-      void h.play('Ranged_Magic_Shoot', { speed: 1.4, marks: [{ at: 0.3, fn: () => {
-        if (gen !== my) return;
-        env.sfx('crystal'); const from = hand('handslot.r'); env.vfx.glow(from, 0x7ff0ff, 2, 0.3);
-        orb(0x35e6ff, 0.75, from, tp, Math.max(0.3, from.distanceTo(tp) / 14), 0.25, my, hit); launched();
-      } }] });
-      await within(rel, 2); await within(flight, 2);
-      await pause(h.length('Ranged_Magic_Shoot', 1.4) * 0.35);
-    } else {
-      let launched: () => void = () => {}; const rel = new Promise<void>(r => (launched = r));
-      void h.play('Throw', { speed: 1.6, marks: [{ at: 0.4, fn: () => {
-        if (gen !== my) return;
-        env.sfx('slash'); const from = hand('handslot.r');
-        orb(0xffcb2e, 0.6, from, tp, 0.3, 0.5, my, hit); launched();
-      } }] });
-      await within(rel, 2); await within(flight, 2);
-      await pause(h.length('Throw', 1.6) * 0.5);
-    }
+    await env.shots.fire(h, { kind, bow, to: tp, miss, onLand: hit }, {
+      alive: () => gen === my,
+      wait: p => until(gt, p),
+      within: (p, s) => until(gt, Promise.race([p, env.tween(s, () => {}, () => gt.dead)])),
+      pause: s => until(gt, env.tween(s, () => {}, () => gt.dead)),
+    });
     if (my !== gen) return;
     h.g.rotation.y = Math.PI / 2; env.stance();
-  }
-  /** Стрела воткнулась: постоит миг и исчезнет. */
-  function stuck(a: THREE.Object3D, my: number) {
-    let life = 0.45;
-    env.fx(dt => { life -= dt; if (gen !== my || life <= 0) { env.scene.remove(a); return false; } return true; });
   }
 
   /** Стойка после боя с тенью и любого прочего: предметы в руках убраны. */
   function reset() {
-    cancelBg(); gen++; volleyOn = false; volleyGen++;
+    cancelBg(); gen++; volleyOn = false; volleyGen++; env.shots.clear();
     { const t = genTok; genTok = mkTok(); t.dead = true; t.waiters.forEach(f => f()); t.waiters.clear(); }
     const h = env.hero(); pose = ''; stepKind = ''; arrived = false; warmed = false; dodgeN = 0; shotN = 0; missN = 0;
     // сначала обрыв клипа (несработавшие метки выстрела уже видят новое поколение и молчат), потом предметы из рук
@@ -351,7 +281,7 @@ export function createTrainHero(env: TrainEnv) {
     posed: () => pose !== '',
     /** Проверки: поза героя и тип шага. */
     state: () => ({ pose, stepKind, arrived }),
-    dispose() { reset(); orbGeo.dispose(); },
+    dispose() { reset(); },
   };
 }
 export type TrainHero = ReturnType<typeof createTrainHero>;

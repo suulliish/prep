@@ -1,7 +1,9 @@
-// Живое ожидание боя: пока ребёнок читает задачу и думает, герой и монстр не стоят истуканами. Раз в 3–6 с (при «уменьшить движение» раз в 8–12 с)
-// один из них, по очереди и никогда оба сразу, делает одно СПОКОЙНОЕ действие и возвращается в стойку: вдох, перенос веса, взгляд в камеру, поправил щит,
-// покрутил мечом; у монстра покачался, оглянулся, зевнул, кивнул, подпрыгнул на месте, а летающий описал петлю (docs/GAME_LOOP.md 15: игра против спешки).
-// Ничего похожего на замах, атаку или таймер: нет звуков, нет рывков к герою, монстр не сдвигается с места, все движения плавные.
+// Живое ожидание боя: пока ребёнок читает задачу и думает, герой и монстр не стоят истуканами. Каждые 2.6–4.8 с (при «уменьшить движение» раз в 8–12 с)
+// один из них, по очереди и никогда оба сразу, делает одно СПОКОЙНОЕ действие и возвращается в стойку, разные подряд (повтор прошлого запрещён).
+// Герой: боевая стойка со щитом перед собой (клип Melee_2H_Idle), низкая стойка (Crouching), переминание, лёгкие подскоки на носках, оглядывание, потягивание,
+// вдох, перенос веса, поправил щит, покрутил и постучал мечом. Монстр: переминание, боевое покачивание, рык вверх (в сторону от героя, без звука), оглядывание,
+// принюхивание, зевок, кивок, наклон головы, подпрыгнул на месте, а летающий описывает петлю, дрейфует, трепещет (docs/GAME_LOOP.md 15: игра против спешки).
+// Ничего похожего на замах, атаку или таймер: нет звуков, нет рывков к сопернику, монстр не сдвигается с места, все движения плавные, оружие герой не поднимает на врага.
 // Модуль молчит, пока идёт любое действие боя (удар, атака врага, появление, смерть, катсцена, эмоция урока, щит) и ещё 1.5 с после него.
 // Ничего не трогает, кроме смещений самой модели (Actor.model: поза, поворот, масштаб) и поворота оружия в руке: группа актёра (g) и тайминги боя не задеты.
 import * as THREE from 'three';
@@ -31,7 +33,8 @@ const newOff = (): Off => { const o = {} as Off; zero(o); return o; };
 
 interface Env { u: number; amp: number; sgn: number; o: Off }
 // seq — бой с тенью: стойка Melee_Unarmed_Idle, затем клипы по очереди (без меча и щита), потом обычная стойка; train — только на тренировке
-interface Act { name: string; who: Who; dur: number; fx?: (e: Env) => void; clip?: [string, number]; bold?: boolean; cls?: MonsterClass[]; weapon?: boolean; seq?: string[]; train?: boolean }
+// stance — клип-цикл на время действия ([имя, скорость]), потом возвращается прежняя стойка; w — вес при выборе (по умолчанию 1)
+interface Act { name: string; who: Who; dur: number; fx?: (e: Env) => void; clip?: [string, number]; stance?: [string, number]; bold?: boolean; cls?: MonsterClass[]; weapon?: boolean; seq?: string[]; train?: boolean; w?: number }
 
 const PI = Math.PI, TAU = Math.PI * 2;
 const sm = (x: number) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
@@ -42,36 +45,65 @@ const bump = (u: number) => Math.sin(PI * u);
 /** Что можно каждому. Клипы — только из тех, что реально есть у моделей (Quaternius: Yes/No/Wave/Dance; KayKit: Melee_Blocking); остальное — код (наклон, покачивание, поворот). */
 export const ACTS: Act[] = [
   // ---- герой (меч и щит остаются в руках: клипы боевые, не UNARMED в actor.ts) ----
-  { name: 'breath', who: 'hero', dur: 2.6, fx: ({ u, amp, o }) => { const e = bump(u) * amp; o.sy = 0.045 * e; o.sx = o.sz = -0.018 * e; o.rx = -0.04 * e; } },
-  { name: 'shift', who: 'hero', dur: 3.0, fx: ({ u, amp, sgn, o }) => { const e = hold(u) * amp; o.rz = 0.085 * sgn * e; o.x = 0.08 * sgn * e; o.y = -0.04 * e; } },
-  { name: 'glance', who: 'hero', dur: 3.2, fx: ({ u, amp, o }) => { const e = hold(u) * amp; o.ry = -0.85 * e; o.rx = 0.04 * e; } },
-  { name: 'sigh', who: 'hero', dur: 2.8, fx: ({ u, amp, o }) => { const e = bump(u) * amp; o.y = -0.05 * e; o.rx = 0.11 * e; o.sy = -0.015 * e; } },
+  // Камера смотрит на бойцов сбоку: видны только наклон вперёд-назад (rx), подъём (y), движение вперёд-назад (z), поворот (ry) и вытягивание (sy, sz).
+  // Крен (rz) и сдвиг вбок (x) идут на камеру и глазом не видны, их здесь нет. Герой в кадре ~70 px: смещение меньше 0.1 м (3 px) не заметно, тут 0.1–0.25 м и наклоны 0.15–0.3 рад
+  { name: 'breath', who: 'hero', dur: 2.2, w: 0.5, fx: ({ u, amp, o }) => { const e = bump(u) * amp; o.sy = 0.06 * e; o.sz = 0.03 * e; o.rx = -0.1 * e; } },
+  // переносит вес вперёд-назад: корпус качнулся и вернулся
+  { name: 'shift', who: 'hero', dur: 2.6, fx: ({ u, amp, sgn, o }) => { const e = bump(u) * amp; o.rx = 0.2 * sgn * Math.sin(u * TAU) * e; o.y = -0.05 * e; } },
+  { name: 'glance', who: 'hero', dur: 2.8, fx: ({ u, amp, o }) => { const e = hold(u) * amp; o.ry = -0.85 * e; o.rx = 0.06 * e; } },
+  { name: 'sigh', who: 'hero', dur: 2.4, w: 0.5, fx: ({ u, amp, o }) => { const e = bump(u) * amp; o.y = -0.1 * e; o.rx = 0.22 * e; o.sy = -0.03 * e; } },
   { name: 'shield', who: 'hero', dur: 0, clip: ['Melee_Blocking', 0.75], bold: true },
   { name: 'flourish', who: 'hero', dur: 1.7, bold: true, weapon: true, fx: ({ u, amp, o }) => { const e = hold(u, 0.25) * amp; o.wz = 0.45 * Math.sin(u * TAU * 1.5) * e; o.wy = TAU * sm(u) * amp; o.wx = 0.15 * e; } },
+  // боевая стойка: щит перед собой, руки у груди (клип Melee_2H_Idle), покачивание корпуса; меч и щит остаются в руках
+  { name: 'ready', who: 'hero', dur: 3.4, w: 1.6, stance: ['Melee_2H_Idle', 1], fx: ({ u, amp, o }) => { const e = hold(u, 0.2) * amp; o.rx = 0.07 * e + 0.08 * Math.sin(u * 2 * TAU) * e; o.y = -0.05 * e; } },
+  // низкая стойка: колени согнуты, меч низко (клип Crouching), чуть медленнее, с мягким покачиванием вперёд-назад
+  { name: 'crouch', who: 'hero', dur: 2.6, bold: true, stance: ['Crouching', 0.8], fx: ({ u, amp, o }) => { const e = hold(u, 0.25) * amp; o.rx = 0.07 * Math.sin(u * 2 * TAU) * e; o.y = -0.04 * e; } },
+  // переминание: два лёгких шага назад-вперёд на месте, корпус качается в такт
+  { name: 'shuffle', who: 'hero', dur: 2.6, fx: ({ u, amp, o }) => { const e = amp * bump(u), s = Math.sin(u * 2 * TAU); o.z = -0.16 * e * (0.5 - 0.5 * Math.cos(u * 4 * PI)); o.rx = 0.12 * s * e; o.y = -0.05 * Math.abs(s) * e; } },
+  // три подскока на носках (боксёрская разминка), на месте
+  { name: 'bounce', who: 'hero', dur: 2.0, bold: true, fx: ({ u, amp, o }) => { const e = bump(u) * amp, v = Math.abs(Math.sin(u * 3 * PI)); o.y = 0.24 * v * e; o.sy = -0.06 * (1 - v) * e; o.sz = -o.sy * 0.5; } },
+  // осматривается: взгляд в одну сторону, в другую, обратно
+  { name: 'scan', who: 'hero', dur: 3.0, fx: ({ u, amp, sgn, o }) => { const e = bump(u) * amp; o.ry = 0.9 * sgn * Math.sin(u * TAU) * e; o.rx = -0.08 * e; } },
+  // потягивается: корпус вытягивается вверх и чуть назад
+  { name: 'stretch', who: 'hero', dur: 2.6, fx: ({ u, amp, o }) => { const e = hold(u, 0.35) * amp; o.y = 0.1 * e; o.rx = -0.22 * e; o.sy = 0.06 * e; } },
+  // постукивает мечом: кисть качает клинок вперёд-назад дважды, меч не поднимается
+  { name: 'tap', who: 'hero', dur: 1.8, weapon: true, fx: ({ u, amp, o }) => { const e = hold(u, 0.2) * amp; o.wx = 0.5 * Math.sin(u * 2 * TAU) * e; o.wz = 0.15 * e; } },
   { name: 'shadow', who: 'hero', dur: 3, train: true, seq: ['Melee_Unarmed_Attack_Punch_A', 'Melee_Unarmed_Attack_Kick'] },
   // ---- монстр ----
   { name: 'nod', who: 'mob', dur: 0, clip: ['Yes', 0.75] },
   { name: 'shake', who: 'mob', dur: 0, clip: ['No', 0.7] },
   { name: 'wave', who: 'mob', dur: 0, clip: ['Wave', 0.75], bold: true, cls: ['Big'] },
   { name: 'dance', who: 'mob', dur: 0, clip: ['Dance', 0.55], bold: true, cls: ['Blob'] },
-  { name: 'look', who: 'mob', dur: 3.4, fx: ({ u, amp, sgn, o }) => { o.ry = 0.5 * sgn * amp * Math.sin(u * TAU) * bump(u); } },
-  { name: 'peek', who: 'mob', dur: 3.0, fx: ({ u, amp, o }) => { const e = hold(u) * amp; o.ry = 0.5 * e; o.rz = 0.04 * e; } },
-  { name: 'sway', who: 'mob', dur: 2.8, fx: ({ u, amp, o }) => { o.rz = 0.085 * amp * Math.sin(u * 2 * TAU) * bump(u); } },
-  { name: 'yawn', who: 'mob', dur: 3.0, fx: ({ u, amp, o }) => { const e = hold(u, 0.35) * amp; o.rx = -0.2 * e; o.sy = 0.05 * e; o.y = 0.03 * e; } },
-  { name: 'sniff', who: 'mob', dur: 2.4, fx: ({ u, amp, o }) => { const e = amp * bump(u); o.rx = 0.13 * e * Math.sin(u * 2 * TAU) ** 2; o.z = 0.05 * e; } },
-  { name: 'scratch', who: 'mob', dur: 1.1, bold: true, fx: ({ u, amp, o }) => { o.rz = 0.07 * amp * Math.sin(u * 7 * TAU) * bump(u) ** 0.7; o.ry = 0.05 * amp * Math.sin(u * 5 * TAU) * bump(u); } },
-  { name: 'hop', who: 'mob', dur: 1.05, bold: true, cls: ['Blob', 'Big'], fx: ({ u, amp, o }) => { const v = Math.abs(Math.sin(u * TAU)); o.y = 0.13 * v * amp; o.sy = -0.05 * (1 - v) * bump(u) * amp; o.sx = o.sz = -o.sy * 0.6; } },
+  { name: 'look', who: 'mob', dur: 3.0, fx: ({ u, amp, sgn, o }) => { o.ry = 0.9 * sgn * amp * Math.sin(u * TAU) * bump(u); } },
+  { name: 'peek', who: 'mob', dur: 2.6, fx: ({ u, amp, o }) => { const e = hold(u) * amp; o.ry = 0.8 * e; o.rx = -0.12 * e; } },
+  { name: 'sway', who: 'mob', dur: 2.6, fx: ({ u, amp, o }) => { const e = bump(u) * amp; o.rx = 0.22 * Math.sin(u * 2 * TAU) * e; o.y = 0.04 * Math.abs(Math.sin(u * 2 * TAU)) * e; } },
+  { name: 'yawn', who: 'mob', dur: 2.6, w: 0.7, fx: ({ u, amp, o }) => { const e = hold(u, 0.35) * amp; o.rx = -0.35 * e; o.sy = 0.06 * e; o.y = 0.05 * e; } },
+  { name: 'sniff', who: 'mob', dur: 2.2, fx: ({ u, amp, o }) => { const e = amp * bump(u); o.rx = 0.3 * e * Math.sin(u * 2 * TAU) ** 2; o.z = 0.05 * e; } },
+  { name: 'scratch', who: 'mob', dur: 1.1, bold: true, fx: ({ u, amp, o }) => { o.rx = 0.14 * amp * Math.sin(u * 7 * TAU) * bump(u) ** 0.7; o.ry = 0.1 * amp * Math.sin(u * 5 * TAU) * bump(u); } },
+  { name: 'hop', who: 'mob', dur: 1.05, bold: true, cls: ['Blob', 'Big'], fx: ({ u, amp, o }) => { const v = Math.abs(Math.sin(u * TAU)); o.y = 0.3 * v * amp; o.sy = -0.07 * (1 - v) * bump(u) * amp; o.sz = -o.sy * 0.6; } },
+  // переминание: два шага назад-вперёд на месте (от героя, не к нему), корпус покачивается в такт
+  { name: 'shuffle', who: 'mob', dur: 2.6, cls: ['Blob', 'Big'], fx: ({ u, amp, o }) => { const e = amp * bump(u), s = Math.sin(u * 2 * TAU); o.z = -0.25 * e * (0.5 - 0.5 * Math.cos(u * 4 * PI)); o.rx = 0.14 * s * e; o.y = 0.05 * Math.abs(s) * e; } },
+  // боевое покачивание: мягкие подпрыгивания в такт, сплющивание на приземлении (на месте, к герою не подаётся)
+  { name: 'bounce', who: 'mob', dur: 2.2, bold: true, cls: ['Blob', 'Big'], fx: ({ u, amp, o }) => { const e = bump(u) * amp, v = Math.abs(Math.sin(u * 3 * PI)); o.y = 0.22 * v * e; o.sy = -0.07 * (1 - v) * e; o.sz = -o.sy * 0.6; o.rx = 0.07 * Math.sin(u * 3 * TAU) * e; } },
+  // рык вверх: голова запрокидывается, грудь раздувается, дрожь; от героя, без звука (запрокинутая голова не нацелена на героя)
+  { name: 'roar', who: 'mob', dur: 1.8, bold: true, cls: ['Blob', 'Big'], fx: ({ u, amp, o }) => { const e = hold(u, 0.25) * amp; o.rx = -0.45 * e + 0.04 * Math.sin(u * 9 * TAU) * e; o.sy = 0.07 * e; o.sz = 0.03 * e; o.y = 0.06 * e; } },
+  // склонил голову набок и запрокинул: любопытство
+  { name: 'tilt', who: 'mob', dur: 2.4, fx: ({ u, amp, sgn, o }) => { const e = hold(u, 0.3) * amp; o.ry = 0.55 * sgn * e; o.rx = -0.18 * e; } },
   // петля в плоскости кадра, уходящая от героя (вверх, назад, вниз, на место): к герою не приближается
   { name: 'loop', who: 'mob', dur: 3.0, bold: true, cls: ['Flying'], fx: ({ u, amp, o }) => { const e = hold(u, 0.2) * amp, a = u * TAU; o.y = 0.3 * e * Math.sin(a); o.z = -0.25 * e * (1 - Math.cos(a)); o.rx = -0.4 * e * Math.sin(a); } },
-  { name: 'bob', who: 'mob', dur: 2.6, cls: ['Flying'], fx: ({ u, amp, o }) => { o.y = 0.14 * amp * Math.sin(u * 2 * TAU) * bump(u); o.rz = 0.05 * amp * Math.sin(u * TAU) * bump(u); } },
+  { name: 'bob', who: 'mob', dur: 2.4, cls: ['Flying'], fx: ({ u, amp, o }) => { o.y = 0.25 * amp * Math.sin(u * 2 * TAU) * bump(u); o.rx = 0.1 * amp * Math.sin(u * TAU) * bump(u); } },
+  // плавно отплывает назад (от героя) с поднятием и возвращается; к герою не приближается
+  { name: 'drift', who: 'mob', dur: 3.0, cls: ['Flying'], fx: ({ u, amp, o }) => { const e = bump(u) * amp; o.z = -0.45 * e; o.y = 0.12 * e; o.rx = -0.15 * e; } },
+  // трепещет: частое мелкое покачивание вверх-вниз и сжатие-растяжение
+  { name: 'flutter', who: 'mob', dur: 1.6, bold: true, cls: ['Flying'], fx: ({ u, amp, o }) => { const e = bump(u) * amp, s = Math.sin(u * 8 * TAU); o.y = 0.1 * s * e; o.sy = 0.04 * s * e; o.sz = -0.02 * s * e; } },
 ];
 
 // столько секунд после любого действия боя ничего не происходит
 const CALM = 1.5;
 // обрыв действия: поза плавно возвращается в стойку за столько секунд
 const FADE = 0.18;
-// раз в 3–6 с
-const BASE = 3, SPAN = 3;
+// раз в 2.6–4.8 с (от начала одного действия до начала следующего; между действиями пауза не короче MINWAIT)
+const BASE = 2.6, SPAN = 2.2, MINWAIT = 0.6;
 // «уменьшить движение»: раз в 8–12 с
 const RBASE = 8, RSPAN = 4;
 
@@ -133,13 +165,16 @@ export function createIdleLife(d: IdleDeps) {
     const who: Who = ws.length === 1 ? ws[0] : last && rnd() < 0.7 ? (last === 'hero' ? 'mob' : 'hero') : rnd() < 0.5 ? 'hero' : 'mob';
     const a = who === 'hero' ? h! : m!.a;
     const tr = !!d.training?.();
-    const ok = ACTS.filter(x => x.who === who && !(red && x.bold) && (!x.train || tr) && (!x.seq || a.has('Melee_Unarmed_Idle')) && (!x.cls || (m && x.cls.includes(m.cls))) && (!x.clip || a.has(x.clip[0])) && (!x.weapon || d.weapon()) && x.name !== lastAct[who]);
+    const ok = ACTS.filter(x => x.who === who && !(red && x.bold) && (!x.train || tr) && (!x.seq || a.has('Melee_Unarmed_Idle')) && (!x.cls || (m && x.cls.includes(m.cls))) && (!x.clip || a.has(x.clip[0])) && (!x.stance || a.has(x.stance[0])) && (!x.weapon || d.weapon()) && x.name !== lastAct[who]);
     if (!ok.length) return null;
     // на тренировке бой с тенью — каждое второе действие героя (если прошлое было не оно)
     const sh = tr && who === 'hero' ? ok.find(x => x.train) : undefined;
     if (sh && rnd() < 0.5) return { act: sh, a };
     const rest = sh ? ok.filter(x => !x.train) : ok;
-    return { act: rest[Math.min(rest.length - 1, Math.floor(rnd() * rest.length))], a };
+    // выбор с весами: боевая стойка чаще, вздохи и дыхание реже
+    let r = rnd() * rest.reduce((t, x) => t + (x.w ?? 1), 0);
+    for (const x of rest) { r -= x.w ?? 1; if (r < 0) return { act: x, a }; }
+    return { act: rest[rest.length - 1], a };
   }
 
   function start(p: { act: Act; a: Actor }) {
@@ -154,9 +189,10 @@ export function createIdleLife(d: IdleDeps) {
       dur = at + 0.3;
     }
     if (act.clip) { const sp = act.clip[1] * (red ? 0.85 : 1); dur = a.length(act.clip[0], sp) + 0.15; void a.play(act.clip[0], { speed: sp, fade: 0.2 }); }
+    if (act.stance) { restore = a.baseName() || 'Idle_A'; a.loop(act.stance[0], 0.25, act.stance[1] * (red ? 0.85 : 1)); }
     cur = { act, rig, t: 0, dur, sgn: rnd() < 0.5 ? -1 : 1, clip: !!act.clip, restore, steps };
     last = act.who; lastAct[act.who] = act.name;
-    wait = Math.max(0.8, (red ? RBASE + rnd() * RSPAN : d.training?.() ? 5 + rnd() * 3 : BASE + rnd() * SPAN) - dur);
+    wait = Math.max(red ? 0.8 : MINWAIT, (red ? RBASE + rnd() * RSPAN : d.training?.() ? 5 + rnd() * 3 : BASE + rnd() * SPAN) - dur);
     idleTrace.fn?.(act.who, act.name, dur);
   }
 
