@@ -87,6 +87,8 @@
   let combo = $state(0);
   let honestAll = $state(true);
   let answered = 0, guessed = 0, honestShare = 1; // ответы быстрее порога (по длине вопроса) без полного разбора = угадывание
+  // минуты — за верные честные ответы (решение Султана 01.10): доля шага = верные без спешки и без полного разбора / все ответы шага
+  let paid = 0, minuteShare = 1;
   let twin = $state(false);       // этот вопрос — «егіз»: та же тема, новые числа
   // шаг «до N верных» (strict): очередь, счётчики для шапки, близнецы за ошибки ждут в конце очереди (хранится исходная задача: близнец собирается, когда до него дошла очередь)
   const sq = new StepQueue(total);
@@ -369,6 +371,7 @@
     if (!twin) { firstTries++; if (correct && hintLevel === 0 && !caught) firstRight++; }   // «егіз» — не новый вопрос, в звёзды не идёт
     if (caught) caughtN++;
     if (!honest && hintLevel < 4) { honestAll = false; guessed++; }
+    if (honest && correct && hintLevel < 4) paid++;
     if (conf === 'sure' && hintLevel === 0) { sureN++; if (correct) sureRight++; }
     const rec: Attempt & { selfCheck?: SelfNote } = {
       at: Date.now(), day: game.day, skill: it.skill, source: it.source, correct, confidence: conf,
@@ -453,6 +456,7 @@
     const fast = isTooFast(timeMs, stemChars(item.kz) + g.lines.join('').length, hint);
     answered++; firstTries++; if (correct) firstRight++;
     if (!honest) { honestAll = false; guessed++; }
+    if (honest && correct) paid++;
     const rec: Attempt & { kind: 'glitch' } = {
       at: Date.now(), day: game.day, skill: sk, source: item.source, correct, hintLevel: hint, honest, timeMs: Math.round(timeMs),
       ...(fast ? { fast: true } : {}), tag: correct ? 'correct' : follow ? g.tag : 'glitch_miss', mode: MODE, kind: 'glitch',
@@ -545,14 +549,15 @@
     finished = true;
     if (block === 'boss') return finishBoss();
     const b = block;
-    // Минуты — за честные ответы (research D1, решение Султана 30.09): шаг засчитывается всегда, без переигрывания,
-    // а его минуты умножаются на долю честных ответов (не наугад, без полного разбора). Бит говорит, сколько он «принял».
+    // Минуты — за верные честные ответы (решение Султана 01.10; раньше 30.09 — за любые честные): шаг засчитывается всегда,
+    // а его минуты умножаются на долю верных ответов без спешки и без полного разбора (запись дня r.honest хранит эту долю).
     // доп. миссия (GAME_LOOP.md 8): 7 верных с первой попытки из 10
     const before = dayRec().minutesToday;
     let counted = true, note = carry; carry = '';
     honestShare = answered ? (answered - guessed) / answered : 1;
-    if (block !== 'repair' && block !== 'extra') { const r = dayRec(); r.honest ??= {}; r.honest[b] = Math.min(r.honest[b] ?? 1, honestShare); }
-    if (guessed > 0) note = `Бит қабылдаған жауап: ${answered - guessed}/${answered}. Асығыс жауап ойын минутын бермейді.`;
+    minuteShare = answered ? paid / answered : 1;
+    if (block !== 'repair' && block !== 'extra') { const r = dayRec(); r.honest ??= {}; r.honest[b] = Math.min(r.honest[b] ?? 1, minuteShare); }
+    if (paid < answered) note = `Ойын минуты тек дұрыс жауап үшін: ${paid}/${answered}.` + (guessed > 0 ? ' Асығыс жауап есептелмейді.' : '');
     if (block === 'extra' && firstRight < 7) {
       counted = false; note = `Бірінші әрекеттен ${firstRight} дұрыс, керегі — 7. Миссия есептелмеді, тағы көр!`;
     }
@@ -565,7 +570,7 @@
     if (asExtra && !extraRepair) note = `Қосымша миссия үшін ${Math.max(REPAIR_EXTRA_FIXES, total)} ақауды жөндеу керек еді, жөнделгені: ${fixedN}. Минут берілмеді, бірақ жөнделгені кемеде қалды.`;
     item = null; stage = 'ask'; busy = true;
     // доп. миссия: её 15 минут тоже умножаются на долю честных ответов (копится сумма долей по всем доп. миссиям дня)
-    if ((counted && block === 'extra') || extraRepair) { const r = dayRec(); r.extraHonest = (r.extraHonest ?? r.extraMissions) + honestShare; }
+    if ((counted && block === 'extra') || extraRepair) { const r = dayRec(); r.extraHonest = (r.extraHonest ?? r.extraMissions) + minuteShare; }
     if (extraRepair) completeBlock('extra');
     else if (counted && block !== 'repair') completeBlock(b as any); else persist();
     if (battle && W.world) {
@@ -597,7 +602,7 @@
   const colsOf = (xlong: boolean, wide: boolean) => (xlong || (wide && qaW < 300) ? 1 : 2);
   const confAfter = (cols: number, n: number) => (picked === null ? -1 : cols === 1 ? picked : Math.min(n - 1, picked - (picked % 2) + 1));
   // плиток в итоге (бірінші әрекеттен, [Бит қабылдады], XP, [тиын], [мин ойын]) — от числа зависит раскладка
-  const tiles = $derived(result ? 2 + (guessed > 0 ? 1 : 0) + (result.coins ? 1 : 0) + (result.minutes ? 1 : 0) : 4);
+  const tiles = $derived(result ? 2 + (paid < answered ? 1 : 0) + (result.coins ? 1 : 0) + (result.minutes ? 1 : 0) : 4);
   const calib = $derived(result ? calibOf({ sure: result.sure, sureRight: result.sureRight }) : null);
 </script>
 
@@ -645,7 +650,7 @@
       <div class="loot" class:n5={tiles === 5} style="--n:{tiles}">
         <div><b class="num">{result.right}/{result.of}</b><small>бірінші әрекеттен</small></div>
         <!-- «Бит қабылдады» — только когда были ответы наспех: при честной игре плитка повторяет первую и не влезает на телефоне -->
-        {#if guessed > 0}<div class="warn"><b class="num">{answered - guessed}/{answered}</b><small>Бит қабылдады</small></div>{/if}
+        {#if paid < answered}<div class="warn"><b class="num">{paid}/{answered}</b><small>минутқа есептелді</small></div>{/if}
         <div><b class="num">+{result.xp}</b><small>XP</small></div>
         {#if result.coins}<div class="gold"><b class="num">+{result.coins}</b><small>тиын</small></div>{/if}
         {#if result.minutes}<div class="gold"><b class="num">+{result.minutes}</b><small>мин ойын</small></div>{/if}
