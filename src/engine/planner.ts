@@ -46,7 +46,8 @@ export function buildPlan(save: Save, defs: SkillDef[], day: string): Plan {
 }
 
 export const round5 = (m: number) => Math.round(m / 5) * 5;
-export const TODAY_MAX = 60, WEEKEND_PER_DAY = 48, EXTRA_MIN = 15;
+// решение командира 01.10: в день максимум 60 минут за план и ещё 15 за одну доп. миссию; минут «просто так» (бонус за освоение) нет
+export const TODAY_MAX = 60, WEEKEND_PER_DAY = 48, EXTRA_MIN = 15, EXTRA_MISSIONS_MAX = 1;
 
 export function blankDay(date: string): DayRecord {
   return { date, blocksDone: {}, planShare: 0, minutesToday: 0, minutesWeekend: 0, extraMissions: 0, bonuses: [] };
@@ -59,26 +60,16 @@ export function settleDay(rec: DayRecord, plan: Plan, extraTo: 'today' | 'weeken
   const done = plan.blocks.filter(b => rec.blocksDone[b.id]).reduce((s, b) => s + b.minutes * Math.max(0, Math.min(1, rec.honest?.[b.id] ?? 1)), 0);
   rec.planShare = total ? done / total : 0;
   // доп. миссии: 15 мин × доля честных ответов в каждой (extraHonest — сумма долей; в старых сохранениях её нет — считаем честными)
-  const extra = round5((rec.extraHonest ?? rec.extraMissions) * EXTRA_MIN);
-  const bonus = rec.bonuses.reduce((s, b) => s + b.minutes, 0);
+  const extra = Math.min(EXTRA_MIN * EXTRA_MISSIONS_MAX, round5((rec.extraHonest ?? rec.extraMissions) * EXTRA_MIN));
+  // в счёт идут только подарки командира; старые бонусы за освоение (mastery) остаются в записи для истории, но минут не дают
+  const bonus = rec.bonuses.filter(b => !b.mastery).reduce((s, b) => s + b.minutes, 0);
   rec.minutesToday = round5(TODAY_MAX * rec.planShare) + (extraTo === 'today' ? extra : 0) + bonus;
   rec.minutesWeekend = Math.round(WEEKEND_PER_DAY * rec.planShare) + (extraTo === 'weekend' ? extra : 0);
 }
 
-/** Бонус за освоение, а не за «позанимался» (ARCHITECTURE 9): тема освоена или отложенная проверка пройдена.
- *  Заранее не объявляется — неожиданная награда не подрывает интерес к самой учёбе (Deci, Koestner & Ryan 1999).
- *  Лимит в день, чтобы игра не вытесняла учёбу. Возвращает начисленные минуты. */
-export const MASTERY_BONUS = 10, MASTERY_BONUS_DAY_CAP = 20;
-export function addMasteryBonus(rec: DayRecord, reason: string): number {
-  const got = rec.bonuses.filter(b => b.mastery).reduce((s, b) => s + b.minutes, 0);
-  const add = Math.min(MASTERY_BONUS, MASTERY_BONUS_DAY_CAP - got);
-  if (add <= 0) return 0;
-  rec.bonuses.push({ reason, minutes: add, mastery: true });
-  return add;
-}
-
 export const planComplete = (rec: DayRecord, plan: Plan) => plan.blocks.every(b => rec.blocksDone[b.id]);
-export const canStartExtra = (rec: DayRecord, plan: Plan, cap: number) => planComplete(rec, plan) && rec.extraMissions < cap;
+export const extraCap = (cap: number) => Math.max(0, Math.min(EXTRA_MISSIONS_MAX, cap));
+export const canStartExtra = (rec: DayRecord, plan: Plan, cap: number) => planComplete(rec, plan) && rec.extraMissions < extraCap(cap);
 
 /** Честная попытка: не наугад (слишком быстро) и без полного разбора. */
 export function isHonest(timeMs: number, hintLevel: number, minMs = 5000) {

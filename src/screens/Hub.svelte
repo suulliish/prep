@@ -9,7 +9,7 @@
   import { game, go, levelOf, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { ensurePlan, dayRec } from '../lib/session.svelte';
-  import { canStartExtra, planComplete, TODAY_MAX, round5 } from '../engine/planner';
+  import { canStartExtra, planComplete, TODAY_MAX, round5, extraCap } from '../engine/planner';
   import { isWeekday } from '../engine/dates';
   import { streak } from '../engine/streak';
   import { skillTitle } from '../engine/items';
@@ -251,7 +251,7 @@
     {:else}
       <div class="quest fin" class:next={extraOk}>
         <span class="qi" style="--c:var(--ok)"><Icon name="check" fill="#fff" size={22} /></span>
-        <span class="qt"><b>{extraOk ? 'Қосымша миссия' : 'Бүгінгі жол бітті'}</b><small>{extraOk ? `+15 мин · ${rec.extraMissions} / ${game.save.settings.extraMissionCap}` : `Қосымша миссиялар: ${rec.extraMissions} / ${game.save.settings.extraMissionCap}`}</small></span>
+        <span class="qt"><b>{extraOk ? 'Қосымша миссия' : 'Бүгінгі жол бітті'}</b><small>{extraOk ? `+15 мин · ${rec.extraMissions} / ${extraCap(game.save.settings.extraMissionCap)}` : `Қосымша миссиялар: ${rec.extraMissions} / ${extraCap(game.save.settings.extraMissionCap)}`}</small></span>
         {#if extraOk}<span class="rw"><Icon name="clock" fill="var(--gold)" size={16} />+15</span>{/if}
       </div>
     {/if}

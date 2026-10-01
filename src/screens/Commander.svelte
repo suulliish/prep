@@ -4,7 +4,7 @@
   import { game, go, persist, skillDefs, hashPin, downloadSave, importSave, daysSinceBackup } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { ensurePlan, dayRec, replan } from '../lib/session.svelte';
-  import { settleDay } from '../engine/planner';
+  import { settleDay, extraCap } from '../engine/planner';
   import { streak } from '../engine/streak';
   import { parse, iso } from '../engine/dates';
   import { creditedCount, skillStat, dayStats, isCredited, CREDIT_STEPS } from '../engine/recall';
@@ -122,7 +122,7 @@
         </div>
         <ul class="blocks">
           {#each plan.blocks as b}<li class:done={rec.blocksDone[b.id]}>{rec.blocksDone[b.id] ? '✓' : '○'} {BLOCK[b.id]}</li>{/each}
-          <li>Доп. миссий: {rec.extraMissions} из {game.save.settings.extraMissionCap}</li>
+          <li>Доп. миссий: {rec.extraMissions} из {extraCap(game.save.settings.extraMissionCap)}</li>
           {#if rec.hard}<li>Трудно сегодня: <b>{rec.hard === 'none' ? 'всё понятно' : skillDefs.find(d => d.id === rec.hard)?.title.ru}</b></li>{/if}
           {#each rec.bonuses as b}<li class="bonus">★ +{b.minutes} мин — {b.reason}</li>{/each}
         </ul>
@@ -180,7 +180,7 @@
           <input id="hero" type="text" maxlength="20" bind:value={game.save.heroName} onchange={persist} />
         </label>
         <label for="cap">Доп. миссий в день (по +15 мин)
-          <input id="cap" type="number" min="0" max="8" bind:value={game.save.settings.extraMissionCap} onchange={persist} />
+          <input id="cap" type="number" min="0" max="1" bind:value={game.save.settings.extraMissionCap} onchange={persist} />
         </label>
         <fieldset>
           <legend>Куда идут минуты доп. миссий</legend>

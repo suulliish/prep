@@ -16,7 +16,7 @@ const KEY = 'razlom.save.v1';
 function fresh(): Save {
   return {
     version: 1, heroName: 'Муртаза', xp: 0, skills: {}, attempts: [], days: {},
-    settings: { extraMissionCap: 4, extraTo: 'today', planMinutes: 40 },
+    settings: { extraMissionCap: 1, extraTo: 'today', planMinutes: 40 },
     diagnosticDone: false, repairShop: [],
     coins: 0, shipOwned: [], shipPet: null,   // старые сохранения без этих полей получают их из fresh() при загрузке
   };
@@ -28,6 +28,8 @@ function load(): Save {
     if (raw) {
       const s = { ...fresh(), ...JSON.parse(raw) };
       if (s.heroName === 'Кодер') s.heroName = 'Муртаза'; // старое имя-заглушка
+      // доп. миссий в день не больше одной (+15 мин): старые сохранения хранили 4
+      if (s.settings && s.settings.extraMissionCap > 1) s.settings = { ...s.settings, extraMissionCap: 1 };
       return s;
     }
   } catch { /* приватный режим или испорченные данные */ }
