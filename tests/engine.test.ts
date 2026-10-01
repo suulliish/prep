@@ -50,9 +50,9 @@ describe('прогресс', () => {
     const ev = recordAttempt(s, att({ day: '2026-10-20' }), { guess: 0.2 });
     expect(ev).toContain('crystal'); expect(s.skills.a.status).toBe('mastered');
   });
-  it('нужно минимум 6 честных попыток и 3 последних чистых', () => {
+  it('нужно минимум 15 честных ответов в окне, 3 последних чистых', () => {
     const s = newSave(); refreshAvailability(s, defs);
-    for (let i = 0; i < 5; i++) recordAttempt(s, att({}));
+    for (let i = 0; i < 14; i++) recordAttempt(s, att({}));
     expect(s.skills.a.status).toBe('learning');
     recordAttempt(s, att({}));
     expect(s.skills.a.status).toBe('learned');
@@ -164,5 +164,26 @@ describe('минуты за честные ответы', () => {
     const b = _bd('2026-10-05'); b.blocksDone = { warmup: true, new: true }; b.honest = { warmup: 0.5 }; _sd(b, plan, 'today');
     expect(b.planShare).toBeCloseTo(0.75);
     expect(b.minutesToday).toBeLessThan(a.minutesToday);
+  });
+});
+
+import { stuckSkills, STUCK_DAYS } from '../src/engine/planner';
+describe('застрявшая тема не держит путь (порог 85%, вариант A)', () => {
+  it(`после ${STUCK_DAYS} дней занятий без «выучено» открывается следующая тема, застрявшая идёт в разминку`, () => {
+    const defs: any[] = [{ id: 'a', prereqs: [], weight: 3, cat: 'C', grade: 5, templates: ['t'] }, { id: 'c', prereqs: [], weight: 2, cat: 'C', grade: 5, templates: ['t'] }];
+    const s = newSave(); refreshAvailability(s, defs);
+    const first = nextSkill(s, defs as any)!;
+    s.skills[first] = { ...(s.skills[first] ?? {}), status: 'learning', lessonDone: true, p: 0.6, attempts: 0, correct: 0, misconceptions: {}, stage: 0 } as any;
+    const days = ['2026-10-01', '2026-10-02', '2026-10-03'];
+    s.attempts = days.map(day => ({ at: 0, day, skill: first, source: 'x', correct: false, hintLevel: 0, honest: true, timeMs: 9000 })) as any;
+    expect(nextSkill(s, defs as any)).toBe(first);
+    expect(buildPlan(s, defs as any, '2026-10-04').blocks.find(b => b.id === 'new')?.skills).toEqual([first]);
+    s.attempts.push({ at: 0, day: '2026-10-04', skill: first, source: 'x', correct: false, hintLevel: 0, honest: true, timeMs: 9000 } as any);
+    expect(stuckSkills(s, defs as any)).toEqual([first]);
+    const next = nextSkill(s, defs as any);
+    expect(next).not.toBe(first); expect(next).toBeTruthy();
+    const plan = buildPlan(s, defs as any, '2026-10-05');
+    expect(plan.blocks.find(b => b.id === 'warmup')?.skills).toContain(first);
+    expect(plan.blocks.find(b => b.id === 'new')?.skills).toEqual([next]);
   });
 });

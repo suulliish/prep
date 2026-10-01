@@ -38,7 +38,8 @@ function load(): Save {
 
 export type Screen =
   | { name: 'hub' }
-  | { name: 'session'; block: 'warmup' | 'new' | 'mixed' | 'extra' | 'boss' | 'repair' }
+  // asExtra: ремонт вместо доп. миссии (на корабле ≥ 3 поломок) — починил 3, получил её +15 минут
+  | { name: 'session'; block: 'warmup' | 'new' | 'mixed' | 'extra' | 'boss' | 'repair'; asExtra?: boolean }
   | { name: 'lesson'; skill: string; replay?: boolean }
   | { name: 'summary' }
   | { name: 'diagnostic' }

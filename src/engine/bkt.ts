@@ -6,6 +6,9 @@ export const DEFAULT_BKT: BktParams = { pInit: 0.1, pLearn: 0.08, pSlip: 0.12, p
 /** Дополнительно к p ≥ 0,95: минимум честных попыток и последние ответы верные без подсказок. */
 export const MIN_ATTEMPTS = 6, LAST_CLEAN = 3;
 export const MASTERY_P = 0.95;
+/** Строгость (решение отца 01.10, исследование «небрежность и строгость»): тема «выучена», только если в последних
+ *  WINDOW_MAX честных ответах по ней ≥ WINDOW_ACC верных с первой попытки (без подсказок). Меньше WINDOW_MIN ответов — окно не судит. */
+export const WINDOW_MAX = 20, WINDOW_MIN = 15, WINDOW_ACC = 0.85;
 
 /** hintLevel: 0 — сам; 1–2 — наводка/правило; 3 — первый шаг; 4 — полный разбор (не учитывается). */
 export function bktUpdate(p: number, correct: boolean, opts: { hintLevel?: number; guess?: number; params?: BktParams } = {}): number {

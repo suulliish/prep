@@ -2,6 +2,8 @@
   // Экран задачи в бою и практике — по фазам (docs/GAME_LOOP.md 20): один экран = одно, что сейчас нужно смотреть или нажимать.
   //   ask (вопрос и варианты) → conf (уверенность под выбранным) → event (событие на весь экран, само, без кнопок) → review (разбор: нажми) → задача-близнец.
   // Верный ответ: событие → сразу следующий вопрос. Слишком быстрый ответ: мини-шаг вместо тоста. Правила боя (урон 1, бас жау 7 из 10, звёзды, минуты) прежние.
+  // «Строже по качеству» (01.10): обычный шаг (разминка, новая тема, смешанный бой, доп. миссия, ремонт вместо доп. миссии) идёт ДО N ВЕРНЫХ: каждая ошибка ставит близнеца в конец очереди
+  // (не больше MAX_STEP_TWINS), монстр умирает на N-м верном. На лёгких темах после выбора варианта идёт самопроверка «Тексер» (stage self), после ошибки разбор «найди свою ошибку».
   import { onMount, tick } from 'svelte';
   import Bit from '../ui/Bit.svelte';
   import Screen from '../ui/Screen.svelte';
@@ -11,6 +13,7 @@
   import BattleEvent from '../ui/BattleEvent.svelte';
   import ConfidencePick from '../ui/ConfidencePick.svelte';
   import ReviewPanel from '../ui/ReviewPanel.svelte';
+  import SelfCheckPanel from '../ui/SelfCheck.svelte';
   import { flyCoins } from '../ui/coinfly';
   import { answerCoins, enemyCoins, starsCoins, earnCoins, coinsOf } from '../lib/ship.svelte';
   import { SPOT_KZ } from '../three/spots';
@@ -21,12 +24,13 @@
   import { makeItem, mistakeText, skillTitle, templatesOf, isTemplateId, type Item } from '../engine/items';
   import { bankFor, bankToItem } from '../engine/bank';
   import { recordAttempt, isDone } from '../engine/progress';
-  import { isHonest, settleDay, taught, sequenceSlots } from '../engine/planner';
-  import { stemChars, isTooFast, tooFastMs, changedMarkup, varyAnswerPos, type Seg } from '../engine/rush';
+  import { isHonest, settleDay, taught, sequenceSlots, extraCap, repairNeed } from '../engine/planner';
+  import { stemChars, isTooFast, rushLimitMs, adaptiveRushMs, tooFastMs, changedMarkup, varyAnswerPos, type Seg } from '../engine/rush';
   import { GLITCH_SAY, buildGlitch, glitchAllowed, firstGlitchAt, nextGlitchAt, shortMistake, type GlitchTurn as GlitchData } from '../engine/glitchturn';
-  import { eventOf, breaksCombo, critCoins, eventMs, nextSureFirst, calibOf, calibLine, TWIN_TAG, type Conf, type EventKind } from '../engine/confidence';
+  import { eventOf, breaksCombo, critCoins, eventMs, nextSureFirst, calibOf, calibLine, TWIN_TAG, halfCoins, HALF_COINS_OVER, REPAIR_FIX_COINS, REPAIR_EXTRA_FIXES, repairAsExtra, SHIP_SAY, bilLine, BIL_NOTE, rightOfLine, type Conf, type EventKind } from '../engine/confidence';
   import { buildReview, type Review, type ReviewMode } from '../engine/review';
-  import { makeTwin } from '../engine/twin';
+  import { makeTwin, StepQueue, MAX_STEP_TWINS } from '../engine/twin';
+  import { isEasySkill, selfCheckDue, selfCheckFor, selfNote, SELF_CATCH_COINS, type SelfNote } from '../engine/selfcheck';
   import type { Attempt } from '../engine/types';
   import { showReward } from '../lib/reward.svelte';
   import { audio } from '../lib/audio';
@@ -59,23 +63,50 @@
     return [...new Set([...learning, ...weak])].slice(0, 5);
   }
   const broken = game.save.repairShop.filter(r => !r.fixed);
+  // ремонт вместо доп. миссии (Screen.session.asExtra): ровно 3 починки, и бой засчитывается как доп. миссия (+15 мин); поломок меньше трёх — обычный ремонт без минут
+  const scr = game.screen;
+  const asExtra = block === 'repair' && scr.name === 'session' && !!scr.asExtra;
+  // шаг «до N верных»: разминка, новая тема, смешанный бой, доп. миссия, ремонт вместо доп. миссии (не босс и не обычный ремонт)
+  const strict = block === 'warmup' || block === 'new' || block === 'mixed' || block === 'extra' || asExtra;
+  // на корабле больше 6 неисправленных поломок: монеты за верные ответы вполовину (в ремонтном бою нет: он эти поломки и лечит)
+  const halfOn = block !== 'repair' && broken.length > HALF_COINS_OVER;
   // Босс мира: вперемешку по всему пройденному (чередование), нужно 7 верных из 10
   const bossSkills = () => [...skillDefs.filter(d => isDone(game.save.skills[d.id]) && d.templates.length && taught(game.save, skillDefs, d.id)).map(d => d.id)].sort(() => Math.random() - 0.5).slice(0, 8);
   const BOSS_HP = 7;
   const skills = block === 'boss' ? bossSkills() : block === 'extra' ? extraSkills() : block === 'repair' ? [...new Set(broken.map(r => r.skill))].slice(0, 5) : pb?.skills ?? [];
-  const total = block === 'boss' ? 10 : block === 'extra' ? 10 : block === 'repair' ? Math.min(8, broken.length + 1) : pb?.items ?? 8;
+  const total = block === 'boss' ? 10 : block === 'extra' ? 10 : block === 'repair' ? (asExtra ? repairNeed(broken.length) : Math.min(8, broken.length + 1)) : pb?.items ?? 8;
   const TITLE: Record<Block, string> = { warmup: 'Жылыну', new: 'Жаңа миссия · жаттығу', mixed: 'Аралас шайқас', extra: 'Қосымша тапсырма', boss: `Бас жау: ${currentWorld().kz}`, repair: 'Кемені жөндеу' };
 
   let idx = $state(0);
   let item = $state<Item | null>(null);
   let picked = $state<number | null>(null);
-  // ask — вопрос; conf — выбран вариант, под ним «Сенімдімін / Шамамен»; event — событие на весь экран; review — разбор ошибки / быстрого ответа
-  let stage = $state<'ask' | 'conf' | 'event' | 'review'>('ask');
+  // ask — вопрос; self — выбран вариант на лёгкой теме, под ним самопроверка «Тексер»; conf — под выбранным «Сенімдімін / Шамамен»;
+  // event — событие на весь экран; review — разбор ошибки / быстрого ответа
+  let stage = $state<'ask' | 'self' | 'conf' | 'event' | 'review'>('ask');
   let hintLevel = $state(0);
   let combo = $state(0);
   let honestAll = $state(true);
   let answered = 0, guessed = 0, honestShare = 1; // ответы быстрее порога (по длине вопроса) без полного разбора = угадывание
   let twin = $state(false);       // этот вопрос — «егіз»: та же тема, новые числа
+  // шаг «до N верных» (strict): очередь, счётчики для шапки, близнецы за ошибки ждут в конце очереди (хранится исходная задача: близнец собирается, когда до него дошла очередь)
+  const sq = new StepQueue(total);
+  let rightN = $state(0), addedN = $state(0);
+  const twinQ: Item[] = [];
+  // вид вопроса: orig — исходная задача шага, twin — близнец за ошибку (идёт в счёт и бьёт), bonus — близнец после быстрого ответа (только радует героя, в счёт не идёт)
+  let qKind = $state<'orig' | 'twin' | 'bonus'>('orig');
+  // сколько вопросов уже показано (мини-шаг и самопроверка — не чаще, чем раз в несколько вопросов)
+  let served = 0;
+  // этот ответ идёт в счёт и бьёт монстра (strict)
+  let hitOk = false;
+  // починено поломок в этом бою
+  let fixedN = 0;
+  // сам поймал свою ошибку после самопроверки (в звёзды не идёт)
+  let caughtN = 0;
+  // самопроверка «Тексер» на лёгких темах
+  // тема вопроса лёгкая (на момент показа, до записи попытки)
+  let qEasy = $state(false);
+  let scDue = false, scDone = false, selfFirst: number | null = null, lastSelf = -9;
+  let scCheck = $state<ReturnType<typeof selfCheckFor> | null>(null);
   let showSol = $state(false);
   let bitText = $state('');
   let bitMood = $state<'idle' | 'happy' | 'wow' | 'think' | 'sad'>('idle');
@@ -113,7 +144,7 @@
   let locked = $state(false);    // новый вопрос только появился — ввод закрыт 0.7 с
   let banner = $state(''), bannerId = $state(0);
   let firstTries = 0, firstRight = 0;
-  let result = $state<{ stars: number; right: number; of: number; xp: number; minutes: number; coins: number; counted: boolean; note: string; sure: number; sureRight: number; all0: number; all1: number } | null>(null);
+  let result = $state<{ stars: number; right: number; of: number; xp: number; minutes: number; coins: number; counted: boolean; note: string; sure: number; sureRight: number; all0: number; all1: number; caught: number } | null>(null);
   const xpStart = game.save.xp;
   function say(text: string) { banner = text; bannerId++; }
   let cine = $state(true);   // катсцена: вход в локацию, мини-босс, победа — панель задачи скрыта
@@ -131,7 +162,7 @@
     const t = (skill ? techniqueOf(skill) : null) as Technique | null, st = skill ? game.save.skills[skill] : undefined;
     return t && (st?.lessonDone || isDone(st)) ? t : null;
   }
-  const canHit = () => !slotHit && mobHp > 0 && !(block === 'boss' && twin);
+  const canHit = () => (strict ? hitOk : !slotHit) && mobHp > 0 && !(block === 'boss' && twin);
   // удар, если слот ещё не бил и у врага есть здоровье; иначе герой радуется (бас жау: «егіз» тоже не бьёт, победа = 7 верных из 10 с первой попытки)
   async function strikeOrCheer(crit: boolean, show: () => void) {
     if (canHit()) return hit(false, crit, show);
@@ -182,35 +213,48 @@
   const seen = new Set(game.save.attempts.map(a => a.source));
   const bankQueue = BANK_SLOTS[block] ? bankFor(id => isDone(game.save.skills[id]) && taught(game.save, skillDefs, id), seen) : [];
   // tw: null — обычный вопрос; 'redo' — «егіз» после ошибки (бьёт, если верно); 'extra' — «егіз» после быстрого ответа
-  function nextItem(tw: 'redo' | 'extra' | null) {
-    const prev = item;
+  // from — исходная задача, чей близнец нужен (очередь strict); queued — вопрос идёт из очереди близнецов: это не новый вопрос и в «бірінші әрекет» он не входит
+  function nextItem(tw: 'redo' | 'extra' | null, from: Item | null = null, queued = false) {
+    const prev = item, base = from ?? prev;
     let fresh: Item | null = null, isTwin = false;
-    if (tw && prev) {   // близнец: тот же шаблон, новые числа; ту же задачу не показываем (engine/twin.ts)
-      fresh = makeTwin(prev, shownTpl, seq[idx + 1]?.tpl ?? null); isTwin = !!fresh;
+    // ремонт: вопрос по теме, где все поломки уже починены, ничего не чинит (в «ремонте вместо доп. миссии» верный ответ шёл бы как ошибка) — берём тему с открытой поломкой
+    const fixable = (sk: string) => block !== 'repair' || game.save.repairShop.some(r => !r.fixed && r.skill === sk);
+    const openSkill = skills.find(fixable);
+    // близнец: тот же шаблон, новые числа; ту же задачу не показываем (engine/twin.ts)
+    if (tw && base && (fixable(base.skill) || !openSkill)) {
+      fresh = makeTwin(base, shownTpl, seq[idx + 1]?.tpl ?? null); isTwin = !!fresh;
+      if (!fresh && queued) fresh = makeItem(base.skill, { avoidKz: base.kz });
     }
     if (!fresh) {
-      const slot = seq[idx] ?? { skill: skills[idx % Math.max(1, skills.length)], tpl: null };
+      const slot0 = seq[idx] ?? { skill: skills[idx % Math.max(1, skills.length)], tpl: null };
+      const slot = fixable(slot0.skill) || !openSkill ? slot0 : { skill: openSkill, tpl: null };
       const fromBank = BANK_SLOTS[block]?.includes(idx) && bankQueue.length ? bankQueue.shift() : null;
       fresh = fromBank ? bankToItem(fromBank) : makeItem(slot.skill, { tpl: slot.tpl ?? undefined, avoidKz: prev?.kz });
     }
     if (fresh && !fresh.real) fresh = varyAnswerPos(fresh, prevPos);   // верный ответ не на том же месте, что в прошлом вопросе
-    item = fresh; twin = isTwin;
+    item = fresh; twin = isTwin || queued || qKind !== 'orig';
     if (fresh) shownTpl.push(isTemplateId(fresh.source) ? fresh.source : null);
-    // «егіз» сравниваем с исходной задачей (что в ней стало другим): она и есть прошлый вопрос
-    if (fresh) { hlLines = changedMarkup(fresh.kz.split('\n').map(nb), prevKz); prevKz = fresh.kz; prevPos = fresh.answer; }
-    qKey++;
+    // «егіз» сравниваем с исходной задачей (что в ней стало другим); у близнеца из очереди это не прошлый вопрос, а задача, на которой была ошибка
+    if (fresh) { hlLines = changedMarkup(fresh.kz.split('\n').map(nb), tw && base ? base.kz : prevKz); prevKz = fresh.kz; prevPos = fresh.answer; }
+    qKey++; served++;
     picked = null; stage = 'ask'; hintLevel = 0; showSol = false;
     aiTurns = []; aiErr = ''; aiQ = ''; aiBusy = false;
     sureFirst = nextSureFirst(flips); flips.push(sureFirst);
     glitch = null; glPick = null; glSoft = [];
-    if (fresh && (forceGlitch ? !twin && !fresh.real : glitchAllowed({
+    // в ремонте ход Глитча не собираем: починку считает только обычный ответ
+    if (fresh && (forceGlitch ? !twin && !fresh.real && block !== 'repair' : glitchAllowed({
       idx, total, at: glAt, attempts: game.save.attempts.filter(a => a.skill === fresh.skill).length, block, lastWave: isLastWave(), mobHp,
-      revenge: twin, rushTwin: false, check: false, real: !!fresh.real,
+      revenge: twin, rushTwin: false, check: block === 'repair', real: !!fresh.real,
     }))) {
       glitch = buildGlitch(fresh);
       if (glitch) glAt = nextGlitchAt(idx);
       if (forceGlitch) (window as any).__glitch = glitch;   // dev: скрипту проверки нужно знать, какая строка неверная
     }
+    // самопроверка: только лёгкая тема (состояние до записи попытки), не чаще раза в 2 вопроса, не босс, не ход Глитча
+    qEasy = !!fresh && isEasySkill(game.save.skills[fresh.skill]);
+    scDue = !!fresh && selfCheckDue({ served, lastAt: lastSelf, easy: qEasy, block, glitch: !!glitch });
+    if (scDue) lastSelf = served;
+    scDone = false; selfFirst = null; scCheck = scDue && fresh ? selfCheckFor(fresh) : null;
     bitText = carry; bitMood = carry ? 'happy' : 'idle'; carry = '';
     startAt = performance.now();
   }
@@ -235,9 +279,13 @@
       .then(() => { cine = false; say(waves.length > 1 ? '1-толқын' : 'Шайқас!'); busy = false; startAt = performance.now(); });   // время ответа — с момента, когда вопрос можно решать
     if (block === 'boss') setTimeout(() => react('boss'), 600);
     audio.setMood(block === 'new' ? 'focus' : 'battle');
+    // Бит говорит про поломки один раз, на первом вопросе
+    if (halfOn) carry = SHIP_SAY.half;
+    // первый вопрос — первая исходная задача
+    if (strict) sq.next();
     nextItem(null);
     const onKey = (e: KeyboardEvent) => {
-      if (stage !== 'ask' && stage !== 'conf') return;
+      if (stage !== 'ask' && stage !== 'conf' && stage !== 'self') return;
       if (glitch) { if (/^[1-5]$/.test(e.key) && +e.key <= glitch.lines.length) glitchTap(+e.key - 1); return; }
       if (/^[1-5]$/.test(e.key)) pick(+e.key - 1);
     };
@@ -245,12 +293,17 @@
     return () => { dead = true; removeEventListener('keydown', onKey); W.world?.eventCam(false); W.world?.clearMob(); };
   });
 
-  // выбрал вариант (можно передумать: касание другого переносит блок уверенности)
+  // выбрал вариант (можно передумать: касание другого переносит блок самопроверки или уверенности)
   function pick(i: number) {
-    if (glitch || (stage !== 'ask' && stage !== 'conf') || locked || busy) return;
-    picked = i; stage = 'conf'; audio.play('click');
-    tick().then(() => document.querySelector('.cbtn')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+    if (glitch || (stage !== 'ask' && stage !== 'conf' && stage !== 'self') || locked || busy) return;
+    picked = i; audio.play('click');
+    // на лёгкой теме сначала самопроверка; до её кнопки последний выбранный вариант считается тем, что ребёнок проверял
+    if (scDue && !scDone) { stage = 'self'; selfFirst = i; } else stage = 'conf';
+    tick().then(() => document.querySelector('.cbtn, .scbtn')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   }
+  // «Тексердім, дұрыс»: к уверенности; «Қателесіппін, өзгертемін»: назад к вариантам (выбор снимается, самопроверка второй раз не показывается)
+  function selfOk() { if (stage !== 'self') return; scDone = true; stage = 'conf'; audio.play('click'); tick().then(() => document.querySelector('.cbtn')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })); }
+  function selfChange() { if (stage !== 'self') return; scDone = true; picked = null; stage = 'ask'; audio.play('click'); }
 
   function hint() {
     if (stage !== 'ask' || !item) return;
@@ -289,26 +342,44 @@
 
   const MODE: Attempt['mode'] = block === 'new' ? 'practice' : block === 'extra' ? 'extra' : block === 'boss' ? 'boss' : block === 'warmup' ? 'warmup' : block === 'repair' ? 'practice' : 'mixed';
   const DUNNO_MIN_MS = 1500;   // «Білмеймін» быстрее этого — тоже не чтение условия
+  // монеты за ответ: на корабле больше 6 поломок — вполовину
+  const answerPay = (n: number) => (halfOn ? halfCoins(n) : n);
+  // после ответа шаг «до N верных» ведёт счёт: верный (идёт в счёт) — к N; ошибка — близнец в конец очереди, пока не исчерпан лимит
+  function stepCount(counted: boolean, it: Item) {
+    if (!strict) return;
+    if (counted) { sq.good(); rightN = sq.right; }
+    else if (qKind !== 'bonus') { if (sq.miss()) twinQ.push(it); addedN = sq.added; }
+  }
   async function confirm(conf: Conf) {
     if (!item || glitch || busy || (stage !== 'ask' && stage !== 'conf')) return;
     const dunno = conf === 'unsure';
     if (!dunno && picked === null) return;
     const it = item, pk = dunno ? null : picked, timeMs = performance.now() - startAt;
     const correct = pk !== null && pk === it.answer, tag = pk === null ? undefined : it.choices[pk].tag;
-    // «наугад» — по длине вопроса (rush.ts), а не жёсткие 5 с; честный выход «Білмеймін» не наказываем
-    const honest = dunno ? hintLevel < 4 && timeMs >= DUNNO_MIN_MS : isHonest(timeMs, hintLevel, tooFastMs(stemChars(it.kz)));
-    const fast = !dunno && isTooFast(timeMs, stemChars(it.kz), hintLevel);
+    // «наугад» — по длине вопроса (rush.ts), а не жёсткие 5 с; честный выход «Білмеймін» не наказываем.
+    // Личный порог ребёнка (медиана его верных ответов на этом шаблоне × 0,45, от 5 до 25 с) ловит спешку, которую общий порог пропускает
+    // личный порог — только для неверных ответов: быстрый верный ответ (знает) не наказываем, на его истории ~20% верных были бы «спешкой»
+    const chars = stemChars(it.kz), adaptive = correct ? null : adaptiveRushMs(game.save.attempts, it.source, it.skill);
+    const honest = dunno ? hintLevel < 4 && timeMs >= DUNNO_MIN_MS : isHonest(timeMs, hintLevel, hintLevel === 0 ? rushLimitMs(chars, adaptive) : tooFastMs(chars));
+    const fast = !dunno && isTooFast(timeMs, chars, hintLevel, adaptive);
+    // сам поймал: после самопроверки сменил неверный ответ на верный (в звёзды не идёт, но ответ верный)
+    const note: SelfNote | null = scDue && scDone ? selfNote(selfFirst, pk, it.answer) : null;
+    const caught = note === 'caught' && hintLevel < 4 && !dunno;
     answered++;
-    if (!twin) { firstTries++; if (correct && hintLevel === 0) firstRight++; }   // «егіз» — не новый вопрос, в звёзды не идёт
+    if (!twin) { firstTries++; if (correct && hintLevel === 0 && !caught) firstRight++; }   // «егіз» — не новый вопрос, в звёзды не идёт
+    if (caught) caughtN++;
     if (!honest && hintLevel < 4) { honestAll = false; guessed++; }
     if (conf === 'sure' && hintLevel === 0) { sureN++; if (correct) sureRight++; }
-    const events = recordAttempt(game.save, {
+    const rec: Attempt & { selfCheck?: SelfNote } = {
       at: Date.now(), day: game.day, skill: it.skill, source: it.source, correct, confidence: conf,
-      hintLevel, honest, timeMs: Math.round(timeMs), ...(fast ? { fast: true } : {}), ...(tag ? { tag } : {}), mode: MODE,
-    });
+      hintLevel, honest, timeMs: Math.round(timeMs), ...(fast ? { fast: true } : {}), ...(tag ? { tag } : {}), mode: MODE, ...(note ? { selfCheck: note } : {}),
+    };
+    const events = recordAttempt(game.save, rec);
     const at = sceneCenter(0.42), wasTwin = twin;
-    const mini = correct && fast && !wasTwin && hintLevel === 0 && idx - lastMini >= 3;   // мини-шаг вместо тоста «Асықпа!»
-    if (mini) lastMini = idx;
+    // мини-шаг вместо тоста «Асықпа!»
+    const mini = correct && fast && !wasTwin && hintLevel === 0 && served - lastMini >= 3;
+    if (mini) lastMini = served;
+    let fixedNow = false;
     if (correct) {
       combo++;
       const xp = hintLevel >= 4 ? 0 : hintLevel > 0 ? 4 : 10 + Math.min(combo - 1, 5) * 2;
@@ -317,26 +388,36 @@
       if (combo === 3 || combo === 6) react('combo'); else react('correct', 0.4);
       sparksAt(at.x, at.y, ['#5ce39c', '#3ff0ff', '#ffc94a'], conf === 'sure' ? 50 : 26);
       if (xp) floatText(`+${xp} XP`, at.x, at.y - 20, '#ffc94a', conf === 'sure');
-      earn(answerCoins({ correct, tries: 1, hintLevel, fast }) + critCoins(correct, conf, hintLevel, fast), { x: at.x, y: at.y - 30 });   // быстрый ответ монет не даёт; «крит» — одна монета сверху
+      // быстрый ответ монет не даёт; «крит» — одна монета сверху
+      earn(answerPay(answerCoins({ correct, tries: 1, hintLevel, fast }) + critCoins(correct, conf, hintLevel, fast)), { x: at.x, y: at.y - 30 });
+      // монеты «сам поймал», как и за ответ: слишком быстро — без монет
+      if (caught && !fast) earn(SELF_CATCH_COINS, { x: at.x, y: at.y - 40 });
       if (combo >= 3) floatText(`КОМБО ×${combo}`, sceneCenter(0.25).x, sceneCenter(0.25).y, '#3ff0ff', true);
-      if (block === 'repair' && hintLevel === 0) { const r = game.save.repairShop.find(x => !x.fixed && x.skill === it.skill); if (r) { r.fixed = true; floatText('ЖӨНДЕЛДІ', at.x, at.y - 50, '#5ce39c'); } }
+      if (block === 'repair' && hintLevel === 0) {
+        const r = game.save.repairShop.find(x => !x.fixed && x.skill === it.skill);
+        if (r) { r.fixed = true; fixedNow = true; fixedN++; floatText('ЖӨНДЕЛДІ', at.x, at.y - 50, '#5ce39c'); earn(REPAIR_FIX_COINS, { x: at.x, y: at.y - 60 }); }
+      }
     } else {
       if (breaksCombo(false, conf)) combo = 0;   // серию рвёт только ошибка при уверенности
       if (!dunno) game.save.xp += 2;
       audio.play(dunno ? 'hint' : 'wrong'); if (!dunno) { flash(conf === 'sure' ? '#ff5a6e' : '#ff9a6b'); react('wrong', 0.6); }
       if (block !== 'repair') game.save.repairShop.push({ source: it.source, skill: it.skill, ...(tag ? { tag } : {}), addedDay: game.day });
     }
+    // в счёт шага: верный без полного разбора и не «бонусный» близнец; в ремонте вместо доп. миссии считаются починки
+    const counted = asExtra ? fixedNow : correct && hintLevel < 4 && qKind !== 'bonus';
+    stepCount(counted, it);
+    hitOk = strict ? counted : true;
     applyEvents(events, it.skill);
     persist();
-    const kind = eventOf(correct, conf);
+    const kind = caught && !fast ? 'self' : eventOf(correct, conf);
     if (kind === null) return enterReview('dunno', null, false, 0);   // «Білмеймін»: события нет, сразу разбор
-    // удар героя (урон 1), если слот ещё не бил; иначе герой только радуется
-    await playEvent(kind, show => (correct ? strikeOrCheer(conf === 'sure', show) : enemyTurn(kind === 'break', show)));
+    // удар героя (урон 1), если ответ идёт в счёт (strict) или слот ещё не бил; иначе герой только радуется
+    await playEvent(kind, show => (correct ? strikeOrCheer(conf === 'sure' || caught, show) : enemyTurn(kind === 'break', show)));
     if (dead) return;
     if (!correct) return enterReview('error', pk, conf === 'sure', fast ? timeMs : 0);
     if (events.some(e => e === 'learned' || e === 'crystal')) await sleep(reduce ? 500 : 1500);   // успеть увидеть «ҮЙРЕНДІ!»
     if (dead) return;
-    if (hintLevel >= 4 && !wasTwin) return advance('extra');   // с полным разбором не считается: близнец
+    if (!strict && hintLevel >= 4 && !wasTwin) return advance('extra');   // с полным разбором не считается: близнец (в strict он уже стоит в конце очереди)
     if (mini) return enterReview('fast', null, false, timeMs);
     return advance(null);   // верно: следующий вопрос сам
   }
@@ -345,11 +426,12 @@
   let review = $state<Review | null>(null), rvMode = $state<ReviewMode>('error'), rvSure = $state(false), rvFast = $state(0), rvKey = $state(0);
   function enterReview(mode: ReviewMode, pk: number | null, sure: boolean, fastMs: number, custom?: Review) {
     if (!item) return;
-    review = custom ?? buildReview(item, pk, mode); rvMode = mode; rvSure = sure; rvFast = fastMs; rvKey++;
+    review = custom ?? buildReview(item, pk, mode, Math.random, { easy: qEasy }); rvMode = mode; rvSure = sure; rvFast = fastMs; rvKey++;
     stage = 'review';
   }
   // «Жаңа есеп →»: после ошибки и «білмеймін» — близнец (бьёт, если верно); после быстрого ответа — близнец без нового удара по слоту; близнец уже был — дальше
-  const leaveReview = () => advance(twin ? null : rvMode === 'fast' ? 'extra' : 'redo');
+  // strict: ошибка и «білмеймін» уже поставили близнеца в конец очереди (stepCount), поэтому дальше идёт очередь; после быстрого ответа близнец-бонус сразу
+  const leaveReview = () => stage === 'review' && advance(strict ? (rvMode === 'fast' ? 'extra' : null) : twin ? null : rvMode === 'fast' ? 'extra' : 'redo');
 
   // Ход «Глитчтің қатесі»: вопрос «где ошибка началась?». Верно — контрудар; строка после ошибки (следствие) — не наказание:
   // Бит говорит, что ошибка раньше, строка получает мягкую отметку, есть ещё одна попытка; верная строка после неё и любая другая (дальше или дважды промахнулся) — неверно.
@@ -385,7 +467,7 @@
       if (combo === 3 || combo === 6) react('combo'); else react('correct', 0.4);
       sparksAt(at.x, at.y, ['#ff6fc6', '#3ff0ff', '#ffc94a'], 50);
       floatText(`+${xp} XP`, at.x, at.y - 20, '#ffc94a', true);
-      earn(answerCoins({ correct, tries: 1, hintLevel: hint, fast }), { x: at.x, y: at.y - 30 });
+      earn(answerPay(answerCoins({ correct, tries: 1, hintLevel: hint, fast })), { x: at.x, y: at.y - 30 });
       if (combo >= 3) floatText(`КОМБО ×${combo}`, sceneCenter(0.25).x, sceneCenter(0.25).y, '#3ff0ff', true);
       carry = (!honest && !fast ? 'Дұрыс, бірақ тым жылдам! Асықпа. ' : '') + `${GLITCH_SAY.right} ${shortMistake(g.tag)}`;
     } else {
@@ -393,6 +475,8 @@
       game.save.xp += 2;
       audio.play('wrong'); flash('#ff9a6b'); react('wrong', 0.6);
     }
+    stepCount(correct, item);
+    hitOk = strict ? correct : true;
     applyEvents(events, sk);
     persist();
     // контрудар: событие «крит» (всегда: ребёнок поймал Глитча); ошибка — щит держит
@@ -402,14 +486,28 @@
     enterReview('error', null, false, fast && !honest ? timeMs : 0, { kind: 'glitch', turn: g, picked: k });
   }
 
+  // Шаг «до N верных»: следующий вопрос берёт очередь (StepQueue): исходные задачи, потом близнецы за ошибки; bonus — близнец после быстрого ответа сразу (в счёт не идёт)
+  async function advanceStrict(bonus: boolean) {
+    // тема стала «үйренді» — бой заканчивается раньше, как и прежде (после 6 верных)
+    const learnedNow = block === 'new' && game.save.skills[skills[0]]?.status === 'learned' && sq.right >= 6;
+    const kind = bonus ? 'bonus' : learnedNow ? null : sq.next();
+    if (!kind) return finish();
+    if (kind === 'orig') idx++;
+    const from = kind === 'twin' ? twinQ.shift() ?? null : null;
+    qKind = kind;
+    nextItem(kind === 'orig' ? null : kind === 'bonus' ? 'extra' : 'redo', from, kind === 'twin');
+    locked = true; say(twin ? 'Егіз есеп!' : glitch ? GLITCH_SAY.title : `Сұрақ ${served}`); audio.play('click');
+    document.querySelector('.frame .body')?.scrollTo({ top: 0 });
+    setTimeout(() => { startAt = performance.now(); locked = false; }, 700);
+  }
   async function advance(tw: 'redo' | 'extra' | null) {
     if (dead) return;
+    if (strict) return advanceStrict(tw === 'extra');
     // «егіз» — тот же слот вопроса
     if (!tw) { idx++; slotHit = false; }
-    const learnedNow = block === 'new' && game.save.skills[skills[0]]?.status === 'learned' && idx >= 6;
     // бас жау повержен (последняя волна, здоровья нет) — бой окончен, не стоять с пустой полоской до 10-го вопроса
     const bossDown = block === 'boss' && isLastWave() && mobHp <= 0;
-    if (idx >= total || learnedNow || bossDown) return finish();
+    if (idx >= total || bossDown) return finish();
     nextItem(tw);
     // новый вопрос виден сразу: перелистывание, номер, ввод закрыт 0.7 с
     locked = true; say(twin ? 'Егіз есеп!' : glitch ? GLITCH_SAY.title : `Сұрақ ${idx + 1}/${total}`); audio.play('click');
@@ -437,10 +535,14 @@
       note = 'Бас жау шегінді, бірақ жеңілген жоқ. Қателерді шеберханада жөнде де, ертең қайта кел!';
     }
     item = null; stage = 'ask'; persist(); cine = false;
-    result = { stars: won ? starsOf() : 0, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: 0, coins: sessCoins, counted: won, note, sure: sureN, sureRight, all0: 0, all1: 0 };
+    result = { stars: won ? starsOf() : 0, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: 0, coins: sessCoins, counted: won, note, sure: sureN, sureRight, all0: 0, all1: 0, caught: caughtN };
   }
 
+  // бой кончается один раз, сколько бы раз ни нажали «Жаңа есеп →»
+  let finished = false;
   async function finish() {
+    if (finished) return;
+    finished = true;
     if (block === 'boss') return finishBoss();
     const b = block;
     // Минуты — за честные ответы (research D1, решение Султана 30.09): шаг засчитывается всегда, без переигрывания,
@@ -454,10 +556,18 @@
     if (block === 'extra' && firstRight < 7) {
       counted = false; note = `Бірінші әрекеттен ${firstRight} дұрыс, керегі — 7. Миссия есептелмеді, тағы көр!`;
     }
+    // шаг «до N верных» закончился раньше, чем набралось N (лимит близнецов): говорим, как есть
+    if (strict && sq.right < total && !(block === 'new' && game.save.skills[skills[0]]?.status === 'learned') && counted) {
+      note = `${rightOfLine(sq.right, total)} жауаппен аяқталды: егіз есеп ${MAX_STEP_TWINS}-дан артық берілмейді.` + (note ? ' ' + note : '');
+    }
+    // ремонт вместо доп. миссии: 3 починки = доп. миссия (+15 мин), если на сегодня она ещё не взята; меньше поломок или меньше починок — обычный ремонт без минут
+    const extraRepair = repairAsExtra({ asExtra, fixed: fixedN, need: total, extraMissions: dayRec().extraMissions, cap: extraCap(game.save.settings.extraMissionCap) });
+    if (asExtra && !extraRepair) note = `Қосымша миссия үшін ${Math.max(REPAIR_EXTRA_FIXES, total)} ақауды жөндеу керек еді, жөнделгені: ${fixedN}. Минут берілмеді, бірақ жөнделгені кемеде қалды.`;
     item = null; stage = 'ask'; busy = true;
     // доп. миссия: её 15 минут тоже умножаются на долю честных ответов (копится сумма долей по всем доп. миссиям дня)
-    if (counted && block === 'extra') { const r = dayRec(); r.extraHonest = (r.extraHonest ?? r.extraMissions) + honestShare; }
-    if (counted && block !== 'repair') completeBlock(b as any); else persist();
+    if ((counted && block === 'extra') || extraRepair) { const r = dayRec(); r.extraHonest = (r.extraHonest ?? r.extraMissions) + honestShare; }
+    if (extraRepair) completeBlock('extra');
+    else if (counted && block !== 'repair') completeBlock(b as any); else persist();
     if (battle && W.world) {
       cine = true;
       await W.world.killMob();
@@ -467,7 +577,7 @@
     const got = dayRec().minutesToday - before, stars = counted ? starsOf() : 0;
     // строка «★ N · келесі сыйлық» считает по общему счёту звёзд (look.totalStars: DayRecord.stars) ДО и ПОСЛЕ записи звёзд этого боя
     const all0 = totalStars();
-    if (got > 0) await showReward({ minutes: got, title: b === 'extra' ? 'Қосымша миссия!' : 'Қадам аяқталды!', why: TITLE[b], today: dayRec().minutesToday, weekend: dayRec().minutesWeekend });
+    if (got > 0) await showReward({ minutes: got, title: b === 'extra' || extraRepair ? 'Қосымша миссия!' : 'Қадам аяқталды!', why: TITLE[b], today: dayRec().minutesToday, weekend: dayRec().minutesWeekend });
     if (stars) {
       const r = dayRec();
       // 3 звезды: бонус монетами один раз за шаг дня (доп. миссии — каждая отдельный уровень)
@@ -477,7 +587,7 @@
       if (b === 'new' && skills[0]) { game.save.levelStars ??= {}; game.save.levelStars[skills[0]] = Math.max(game.save.levelStars[skills[0]] ?? 0, stars); }
       persist();
     }
-    result = { stars, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: Math.max(0, got), coins: sessCoins, counted, note, sure: sureN, sureRight, all0, all1: totalStars() };
+    result = { stars, right: firstRight, of: firstTries, xp: game.save.xp - xpStart, minutes: Math.max(0, got), coins: sessCoins, counted, note, sure: sureN, sureRight, all0, all1: totalStars(), caught: caughtN };
     audio.play(counted ? 'energy' : 'hint');
   }
 
@@ -500,7 +610,7 @@
   {#snippet head()}
     <div class="hd">
       <div class="t1"><b>{TITLE[block]}</b>{#if combo >= 2 && !result}<span class="combo num">×{combo}</span>{/if}<CoinChip value={shownCoins} compact />
-        {#if item && !result && !glitch && (stage === 'ask' || stage === 'conf')}
+        {#if item && !result && !glitch && (stage === 'ask' || stage === 'self' || stage === 'conf')}
           <button class="ibtn lamp" onclick={hint} disabled={hintLevel >= 4 || locked || stage !== 'ask'} aria-label="Бит сканері — кеңес {hintLevel}/4">
             <Icon name="bulb" fill="var(--gold)" size={22} /><b class="hl num">{hintLevel}/4</b>
           </button>
@@ -510,7 +620,11 @@
         <div class="t2">
           <span class="wv">{#each waves as _, k}<i class:done={k < wave} class:on={k === wave}></i>{/each}</span>
           <span class="bar glitch hp" aria-label="Жау күші"><i style="width:{Math.max(0, mobHp / hpMax) * 100}%"></i></span>
-          <span class="cnt num">{Math.min(idx + 1, total)}/{total}</span>
+          {#if strict}
+            <span class="cnt num" aria-label="Дұрыс жауап: {total} ішінен {rightN}">{rightOfLine(rightN, total)}{#if addedN}<i class="plus" title="Қатесі үшін егіз есеп қосылды">+{addedN}</i>{/if}</span>
+          {:else}
+            <span class="cnt num">{Math.min(idx + 1, total)}/{total}</span>
+          {/if}
         </div>
       {/if}
     </div>
@@ -519,7 +633,7 @@
   {#snippet overlay()}
     <div class="bn" style:visibility={stage === 'event' ? 'hidden' : 'visible'}>{#key bannerId}{#if banner}<span class="banner">{banner}</span>{/if}{/key}</div>
     {#if stage === 'event' && !cine}<BattleEvent kind={evKind} ms={evMs} show={evShow} small={evSmall} />{/if}
-    {#if bitText && !result && !busy && (stage === 'ask' || stage === 'conf')}<div class="say" aria-live="polite"><Bit text={bitText} mood={bitMood} compact /></div>{/if}
+    {#if bitText && !result && !busy && (stage === 'ask' || stage === 'self' || stage === 'conf')}<div class="say" aria-live="polite"><Bit text={bitText} mood={bitMood} compact /></div>{/if}
   {/snippet}
 
   {#if result}
@@ -536,6 +650,13 @@
         {#if result.coins}<div class="gold"><b class="num">+{result.coins}</b><small>тиын</small></div>{/if}
         {#if result.minutes}<div class="gold"><b class="num">+{result.minutes}</b><small>мин ойын</small></div>{/if}
       </div>
+      {#if result.of > 0}
+        {@const bilR = result.right + result.caught}
+        <div class="paper bil">
+          <b class="num">{bilLine(bilR, Math.max(0, result.of - bilR))}</b>
+          <p>{BIL_NOTE}</p>
+        </div>
+      {/if}
       {#if calib}
         <div class="paper calib">
           <small>Сенімді болғанда</small>
@@ -557,7 +678,7 @@
     </div>
   {:else if stage === 'review' && review && item}
     {#key rvKey}
-      <ReviewPanel {review} mode={rvMode} sure={rvSure} fastMs={rvFast} onnext={leaveReview}>
+      <ReviewPanel {review} mode={rvMode} sure={rvSure} fastMs={rvFast} easy={qEasy} onnext={leaveReview}>
         <div class="ai">
           {#each aiTurns as t}
             {#if t.role === 'bit'}<Bit text={t.text} mood="think" compact />{:else}<p class="kidq">— {t.text}</p>{/if}
@@ -607,6 +728,8 @@
         </button>
         {#if stage === 'conf' && i === after}
           <div class="confslot"><ConfidencePick {sureFirst} onpick={confirm} /></div>
+        {:else if stage === 'self' && scCheck && i === after}
+          <div class="confslot"><SelfCheckPanel check={scCheck} onok={selfOk} onchange={selfChange} /></div>
         {/if}
       {/each}
     </div>
@@ -617,7 +740,7 @@
       </details>
     {/if}
     {/if}
-      {#if bitText && (stage === 'ask' || stage === 'conf')}<div class="say-in" bind:this={bitEl}><Bit text={bitText} mood={bitMood} compact /></div>{/if}
+      {#if bitText && (stage === 'ask' || stage === 'self' || stage === 'conf')}<div class="say-in" bind:this={bitEl}><Bit text={bitText} mood={bitMood} compact /></div>{/if}
     </div>
   {/if}
 
@@ -729,6 +852,7 @@
     .t1 b { font-size: 16px; }
     .win { gap: 8px; } .win h2 { font-size: 22px; } .stars :global(svg) { width: 36px; height: 36px; } .loot b { font-size: 20px; }
     .loot { gap: 4px; } .loot > div { padding: 6px 2px; } .loot small { font-size: 10px; }
+    .bil { gap: 2px; padding: 8px 10px; } .bil b { font-size: 14px; } .bil p { font-size: 12px; }
 
   }
   /* пять плиток в одну строку — только когда колонка справа достаточно широкая (≥ 760 px экрана); на узком телефоне лёжа остаётся 3 + 2 */
@@ -756,6 +880,10 @@
   .calib small { font-weight: 800; }
   .calib b { font: 900 20px var(--disp); }
   .calib p { font: 700 13px/1.35 var(--txt); color: var(--paper-dim); }
+  .bil { width: 100%; display: grid; gap: 4px; text-align: center; }
+  .bil b { font: 900 clamp(15px, 4.4vw, 19px)/1.25 var(--disp); }
+  .bil p { margin: 0; font: 800 14px/1.3 var(--txt); color: var(--paper-dim); }
+  .plus { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--gold); color: var(--outline); font: 900 12px var(--disp); font-style: normal; }
   .meter { height: 16px; border-radius: 99px; background: #0b1030; border: 3px solid var(--outline); overflow: hidden; }
   .meter i { display: block; height: 100%; background: linear-gradient(90deg, var(--ok), var(--gold)); }
 </style>

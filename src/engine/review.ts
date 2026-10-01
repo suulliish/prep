@@ -31,26 +31,28 @@ function shuffle<T>(a: T[], rand: () => number): T[] {
 
 /** Три карточки-объяснения: верное (по метке выбранного варианта) и два чужих (метки других неверных вариантов этой же задачи, потом любые другие).
  *  null — метки нет в словаре ошибок или нечего противопоставить: выбирать не из чего. */
-export function whyCards(item: Item, picked: number, rand: () => number = Math.random): WhyCard[] | null {
+export function whyCards(item: Item, picked: number, rand: () => number = Math.random, relaxed = false): WhyCard[] | null {
   const tag = item.choices[picked]?.tag;
   if (!tag || !(tag in MISCONCEPTIONS) || picked === item.answer) return null;
   const right = mistakeText(tag).kz;
   const seen = new Set([right]);
   const near = shuffle([...new Set(item.choices.filter((c, i) => i !== item.answer && i !== picked && c.tag in MISCONCEPTIONS).map(c => c.tag))], rand)
     .map(t => mistakeText(t).kz).filter(t => !seen.has(t) && seen.add(t));
-  if (!near.length) return null;
+  if (!near.length && !relaxed) return null;
   const other = shuffle(Object.keys(MISCONCEPTIONS), rand).map(t => mistakeText(t).kz).filter(t => !seen.has(t) && seen.add(t));
   const wrong = [...near, ...other].slice(0, 2);
   return shuffle([{ text: right, ok: true }, ...wrong.map(text => ({ text, ok: false }))], rand);
 }
 
-export function buildReview(item: Item, picked: number | null, mode: ReviewMode, rand: () => number = Math.random): Review {
+/** easy — лёгкая тема (src/engine/selfcheck.ts isEasySkill): ребёнок её знает, значит ошибка от спешки, и ему в первую очередь даётся «найди свою ошибку»:
+ *  сначала «найди неверную строку», потом «где ты ошибся» (карточки; для лёгкой темы они собираются и без «соседних» ловушек: чужие объяснения берутся из словаря ошибок), и только потом решение. */
+export function buildReview(item: Item, picked: number | null, mode: ReviewMode, rand: () => number = Math.random, opts: { easy?: boolean } = {}): Review {
   const sol = item.sol.kz;
   if (mode === 'error' && picked !== null && picked !== item.answer) {
     const your = kzPart(item.choices[picked].text);
     const turn = buildGlitch(item, rand, item.choices[picked].text);
     if (turn) return { kind: 'find', turn, your, why: mistakeText(turn.tag).kz };
-    const cards = whyCards(item, picked, rand);
+    const cards = whyCards(item, picked, rand, !!opts.easy);
     if (cards) return { kind: 'why', cards, your };
   }
   const gap = solGap(sol, item.choices[item.answer].text, rand);

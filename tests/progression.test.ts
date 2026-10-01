@@ -1,4 +1,4 @@
-// Симуляция ~60 учебных дней с настоящим планировщиком: когда каждая тема с уроком доходит до ребёнка
+// Симуляция ~90 учебных дней с настоящим планировщиком: когда каждая тема с уроком доходит до ребёнка
 // и совпадает ли порядок с docs/PLAN.md (окт: натуральные/делимость; ноя: дроби + весы/нули; дек: умножение и деление дробей,
 // часть от числа, комбинаторика, подсчёт фигур). Таблица «день → новые темы» пишется в scratchpad/progression.txt.
 import { describe, it, expect } from 'vitest';
@@ -21,7 +21,10 @@ const lessoned = defs.filter(d => d.lesson).map(d => d.id);
 const tplOf = (id: string) => byId[id]?.templates ?? [];
 
 const START = '2026-09-28';      // понедельник, старт занятий
-const DAYS = 60, ACCURACY = 0.85;
+// С 01.10 тема «выучена» при ≥ 85% верных с первой попытки в окне 15–20 (src/engine/bkt.ts): минимум 15 ответов на тему — это ≈ 2 дня на тему.
+// Прогон ведёт «собранный» ученик с честными 95%: все 36 тем за 90 учебных дней (раньше с 85% хватало 60). До экзамена (май 2028) время есть.
+// Ученик с 85–90% идёт ещё медленнее (см. последние два теста), с 70% почти стоит на месте.
+const DAYS = 90, ACCURACY = 0.95;
 
 function fresh(): Save {
   return {
@@ -102,7 +105,7 @@ describe('прогрессия: дойдут ли новые уроки до р�
     for (const id of lessoned) for (const p of byId[id].prereqs) expect(byId[p].lesson, `${id} ← ${p} без урока`).toBe(true);
   });
 
-  it('(1) все 36 тем вводятся за 60 учебных дней', () => {
+  it('(1) все 36 тем вводятся за 90 учебных дней', () => {
     const missing = lessoned.filter(id => main.intro[id] === undefined);
     expect(missing, `не дошли до ребёнка: ${missing.join(', ')}`).toEqual([]);
   });
@@ -135,16 +138,25 @@ describe('прогрессия: дойдут ли новые уроки до р�
     expect(first(dec), 'комбинаторика и фигуры не раньше конца базы дробей').toBeGreaterThan(last(fracBasics));
   });
 
-  it('устойчивость: другие зёрна при 85% и точность 95% — все темы доходят за 90 дней, предпосылки соблюдены', () => {
-    for (const [seed, acc] of [[2, 0.85], [3, 0.85], [4, 0.95]] as const) {
-      const r = simulate(seed, acc, 90);
+  it('устойчивость: другие зёрна при точности 95% — все темы доходят за 90 дней, предпосылки соблюдены', () => {
+    for (const seed of [2, 3, 4]) {
+      const r = simulate(seed, 0.95, 90);
       const missing = lessoned.filter(id => r.intro[id] === undefined);
-      expect(missing, `точность ${acc}, зерно ${seed}: не введены ${missing.join(', ')}`).toEqual([]);
-      for (const id of lessoned) for (const p of byId[id].prereqs) expect(r.learned[p], `${p} → ${id} при ${acc}`).toBeLessThanOrEqual(r.intro[id]);
+      expect(missing, `точность 0.95, зерно ${seed}: не введены ${missing.join(', ')}`).toEqual([]);
+      for (const id of lessoned) for (const p of byId[id].prereqs) expect(r.learned[p], `${p} → ${id} при 0.95`).toBeLessThanOrEqual(r.intro[id]);
     }
   });
 
-  it('слабый ученик (70%): порядок и предпосылки те же, просто медленнее (итог пишется в файл)', () => {
+  it('ученик с 85%: идёт медленнее (в прогонах 90 дней введено 26-31 из 36), порядок и предпосылки те же', () => {
+    for (const seed of [1, 2, 3]) {
+      const r = simulate(seed, 0.85, 90);
+      const done = lessoned.filter(id => r.intro[id] !== undefined);
+      expect(done.length, `зерно ${seed}`).toBeGreaterThanOrEqual(15);
+      for (const id of done) for (const p of byId[id].prereqs) expect(r.learned[p], `${p} → ${id}`).toBeLessThanOrEqual(r.intro[id]);
+    }
+  });
+
+  it('слабый ученик (70%): застрявшая тема не держит путь — через 4 дня открывается следующая, сама тема остаётся в разминке (итог пишется в файл)', () => {
     const r = simulate(5, 0.7, 90);
     for (const id of lessoned) if (r.intro[id] !== undefined) for (const p of byId[id].prereqs) expect(r.learned[p], `${p} → ${id}`).toBeLessThanOrEqual(r.intro[id]);
     const done = lessoned.filter(id => r.intro[id] !== undefined);

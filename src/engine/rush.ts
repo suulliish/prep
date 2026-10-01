@@ -12,8 +12,42 @@ export const stemChars = (kz: string) => kz.replace(/\s+/g, ' ').trim().length;
 export const tooFastMs = (chars: number) =>
   Math.round(Math.min(RUSH.maxMs, Math.max(RUSH.minMs, RUSH.baseMs + RUSH.perCharMs * Math.max(0, chars))));
 
-/** Ответ слишком быстрый: быстрее порога для этого условия и без подсказок (с подсказкой ребёнок явно думал). */
-export const isTooFast = (timeMs: number, chars: number, hintLevel = 0) => hintLevel === 0 && timeMs < tooFastMs(chars);
+/** Ответ слишком быстрый: быстрее порога для этого условия и без подсказок (с подсказкой ребёнок явно думал).
+ *  `adaptiveMs` — личный порог ребёнка (adaptiveRushMs); берётся больший из двух. */
+export const isTooFast = (timeMs: number, chars: number, hintLevel = 0, adaptiveMs: number | null = null) =>
+  hintLevel === 0 && timeMs < rushLimitMs(chars, adaptiveMs);
+
+/** Порог «слишком быстро» для этого вопроса: больший из порога по длине условия и личного (adaptiveMs, если он известен). */
+export const rushLimitMs = (chars: number, adaptiveMs: number | null = null) => Math.max(tooFastMs(chars), adaptiveMs ?? 0);
+
+// ---------- Личный порог спешки (01.10): по данным ребёнка, а не по длине условия ----------
+// Реальная история: на «nat.divide_remainder» верные ответы занимают медиану 29,9 с, неверные 10,5 с; на «nat.order_of_ops» 15,6 с и 7,5 с.
+// Он ошибается, когда отвечает в 2–3 раза быстрее, чем ему нужно на честный счёт, но всё равно дольше 5 с, поэтому общий порог их не ловит.
+export const ADAPT = { ratio: 0.45, minSamples: 3, floorMs: 5000, ceilMs: 25000, window: 30 } as const;
+
+export interface TimedAttempt { source: string; skill: string; correct: boolean; timeMs: number; hintLevel?: number; kind?: string }
+
+export function median(xs: number[]): number {
+  if (!xs.length) return NaN;
+  const a = xs.slice().sort((x, y) => x - y), m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+
+/** Время верных ответов без подсказок (последние ADAPT.window): сначала по шаблону (source), если их меньше 3 — по навыку. null — данных нет (тогда общий порог). */
+function cleanTimes(hist: TimedAttempt[], pick: (a: TimedAttempt) => boolean): number[] {
+  const out: number[] = [];
+  for (let i = hist.length - 1; i >= 0 && out.length < ADAPT.window; i--) {
+    const a = hist[i];
+    if (a.correct && !a.hintLevel && a.kind !== 'glitch' && a.timeMs > 0 && pick(a)) out.push(a.timeMs);
+  }
+  return out;
+}
+export function adaptiveRushMs(hist: TimedAttempt[], source: string, skill: string): number | null {
+  let t = cleanTimes(hist, a => a.source === source);
+  if (t.length < ADAPT.minSamples) t = cleanTimes(hist, a => a.skill === skill);
+  if (t.length < ADAPT.minSamples) return null;
+  return Math.round(Math.min(ADAPT.ceilMs, Math.max(ADAPT.floorMs, ADAPT.ratio * median(t))));
+}
 
 /** Лесенка: 1-й быстрый — мягкое «асықпа»; 2-й подряд — «егіз» вернётся через 3 вопроса; 3-й и далее — пауза и мини-проверка. */
 export type RushAction = 'none' | 'nudge' | 'twin' | 'check';

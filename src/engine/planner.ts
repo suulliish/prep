@@ -18,9 +18,16 @@ export function taught(save: Save, defs: SkillDef[], id: string): boolean {
   return !!save.skills[id]?.lessonDone || defs.find(d => d.id === id)?.lesson === false;
 }
 
+// решение командира 01.10 (порог мастерства 85%, вариант A): тема, которая не выучена за STUCK_DAYS дней занятий, не держит путь —
+// открывается следующая, а застрявшая идёт в разминку каждый день, пока не наберёт 85%
+export const STUCK_DAYS = 4;
+const daysOn = (save: Save, id: string) => new Set((save.attempts ?? []).filter(a => a.skill === id).map(a => a.day)).size;
+export const stuckSkills = (save: Save, defs: SkillDef[]) => defs.filter(d => save.skills[d.id]?.status === 'learning' && daysOn(save, d.id) >= STUCK_DAYS).map(d => d.id);
+
 export function nextSkill(save: Save, defs: SkillDef[]): string | null {
-  const learning = defs.find(d => save.skills[d.id]?.status === 'learning');
-  if (learning) return learning.id;
+  const learning = defs.filter(d => save.skills[d.id]?.status === 'learning');
+  const fresh = learning.find(d => daysOn(save, d.id) < STUCK_DAYS);
+  if (fresh) return fresh.id;
   const avail = defs.filter(d => {
     const st = save.skills[d.id];
     const open = st?.status === 'available' || (isDone(st) && !st.lessonDone); // «знает» по диагностике, но урока не было
@@ -28,14 +35,17 @@ export function nextSkill(save: Save, defs: SkillDef[]): string | null {
   });
   const g = (x: number | string) => (typeof x === 'number' ? x : 7);
   avail.sort((a, b) => g(a.grade) - g(b.grade) || b.weight - a.weight || CAT_ORDER.indexOf(a.cat) - CAT_ORDER.indexOf(b.cat));
-  return avail[0]?.id ?? null;
+  // новых тем нет — остаётся застрявшая
+  return avail[0]?.id ?? learning[0]?.id ?? null;
 }
 
 export function buildPlan(save: Save, defs: SkillDef[], day: string): Plan {
   const due = dueSkills(save, day).filter(id => taught(save, defs, id));
   const recent = defs.filter(d => isDone(save.skills[d.id]) && d.templates.length && taught(save, defs, d.id)).map(d => d.id).slice(-6);
-  const warm = [...new Set([...due, ...recent])].slice(0, 6);
   const next = nextSkill(save, defs);
+  // застрявшие и вернувшиеся в «изучается» темы (кроме сегодняшней новой) идут в разминку первыми, иначе выпадают из плана
+  const back = defs.filter(d => save.skills[d.id]?.status === 'learning' && d.id !== next && taught(save, defs, d.id)).map(d => d.id);
+  const warm = [...new Set([...back, ...due, ...recent])].slice(0, 6);
   const blocks: Block[] = [];
   if (warm.length) blocks.push({ id: 'warmup', minutes: 6, skills: warm, items: 6 });
   if (next) blocks.push({ id: 'new', minutes: 18, skills: [next], items: 10, lesson: !save.skills[next]?.lessonDone });
@@ -70,6 +80,13 @@ export function settleDay(rec: DayRecord, plan: Plan, extraTo: 'today' | 'weeken
 export const planComplete = (rec: DayRecord, plan: Plan) => plan.blocks.every(b => rec.blocksDone[b.id]);
 export const extraCap = (cap: number) => Math.max(0, Math.min(EXTRA_MISSIONS_MAX, cap));
 export const canStartExtra = (rec: DayRecord, plan: Plan, cap: number) => planComplete(rec, plan) && rec.extraMissions < extraCap(cap);
+/** Ошибки имеют цену (01.10): от REPAIR_FOR_EXTRA неисправленных поломок доп. миссия на +15 минут не обычная, а «ремонтная»
+ *  (починил 3 поломки — получил её минуты). Лимит 1 в день (extraCap) тот же. */
+export const REPAIR_FOR_EXTRA = 3;
+export const extraNeedsRepair = (repairCount: number) => repairCount >= REPAIR_FOR_EXTRA;
+// сколько чинить за ремонтную доп. миссию: все поломки, но не больше 6 — по труду как обычная доп. миссия (иначе выгодно держать корабль сломанным)
+export const REPAIR_EXTRA_MAX = 6;
+export const repairNeed = (repairCount: number) => Math.min(REPAIR_EXTRA_MAX, repairCount);
 
 /** Честная попытка: не наугад (слишком быстро) и без полного разбора. */
 export function isHonest(timeMs: number, hintLevel: number, minMs = 5000) {

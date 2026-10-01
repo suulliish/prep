@@ -4,7 +4,8 @@ import { isWeekday, parse, iso } from './dates';
 import type { Save } from './types';
 
 export function streak(save: Save, today: string): { days: number; freezesLeft: number } {
-  const ok = (d: string) => { const r = save.days[d]; return !!r && (!!r.exception || (r.planShare ?? 0) >= 0.999); };
+  // день в серии — план пройден целиком (все шаги), даже если доля честных ответов меньше 1: один ответ наугад не рвёт серию
+  const ok = (d: string) => { const r = save.days[d]; return !!r && (!!r.exception || (r.planShare ?? 0) >= 0.999 || (!!r.plan?.blocks?.length && r.plan.blocks.every(b => r.blocksDone[b.id]))); };
   let d = parse(today); let days = 0, freezes = 2;
   // сегодняшний день засчитывается, если план уже выполнен; иначе начинаем со вчера
   if (!ok(today)) d.setDate(d.getDate() - 1);
