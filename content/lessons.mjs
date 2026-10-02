@@ -10,6 +10,7 @@ import { WEEK5 } from './lessons_week5.mjs';
 import { WEEK6 } from './lessons_week6.mjs';
 import { WEEK7 } from './lessons_week7.mjs';
 import { WEEK8 } from './lessons_week8.mjs';
+import { DECIMALS } from './lessons_decimals.mjs';
 
 const RAW = {
   ...WEEK1,
@@ -20,6 +21,7 @@ const RAW = {
   ...WEEK6,
   ...WEEK7,
   ...WEEK8,
+  ...DECIMALS,
 };
 
 // Варианты ответов в контенте написаны «верный первым» (аудит 01.10: «Неге?» и финал — 36 из 36 на A, пропуски «Өзің» — 158 из 161).

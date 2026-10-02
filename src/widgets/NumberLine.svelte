@@ -23,6 +23,9 @@
   /** Верно ли поставлено: сравниваем с ИСТИННЫМ значением цели, а не с ближайшим делением. */
   export function placedOK(mv: number, target: number, tol: number): boolean { return Math.abs(mv - target) <= tol + 1e-9; }
 
+  /** Десятичная подпись значения: 0,45; 0,1; 1. */
+  export const decStr = (v: number) => String(+v.toFixed(3)).replace('.', ',');
+
   /** Итог выстрела; null, если выстрел не разрешён: маркер не сдвигали («Ату!» с нуля ничего не даёт). */
   export function shotStars(aimed: boolean, mv: number, target: number, tol: number): 0 | 1 | 2 | 3 | null {
     return aimed ? stars(Math.abs(mv - target), tol) : null;
@@ -34,6 +37,7 @@
   //  mode 'line'   — den берілсе, бөлінулерге жабысады; ориентирлер 0, 1/2, 1; «Үлкейту» (zoom) батырмасы.
   //  mode 'archer' — «Дәл ату»: бөлінулер жоқ, «Ату!» батырмасынан кейін дәлдігіне қарай 0–3 жұлдыз.
   //  showBar — бөлшектің жолағы сызыққа жатады (жолақ пен сызықты байланыстыру).
+  //  decimal  — ондық бөлшектер (C3): 'all' — нысана мен белгілер ондық бөлшекпен (0,45); 'marks' — нысана жай бөлшек, белгілер ондық (3/4 → 0,75).
   import { onDestroy } from 'svelte';
   import { audio } from '../lib/audio';
   import Frac from '../ui/Frac.svelte';
@@ -41,8 +45,8 @@
   import { val, snap, tween } from './fracdraw';
   const BAR = 'var(--code)';
 
-  let { max = 1, den, place, landmarks, tolerance, mode = 'line', showBar = false, ondone }:
-    { max?: 1 | 2 | 3; den?: number; place: Fr[]; landmarks?: boolean; tolerance?: number; mode?: 'line' | 'archer'; showBar?: boolean; ondone?: (stars?: number) => void } = $props();
+  let { max = 1, den, place, landmarks, tolerance, mode = 'line', showBar = false, decimal, ondone }:
+    { max?: 1 | 2 | 3; den?: number; place: Fr[]; landmarks?: boolean; tolerance?: number; mode?: 'line' | 'archer'; showBar?: boolean; decimal?: 'all' | 'marks'; ondone?: (stars?: number) => void } = $props();
 
   const archer = mode === 'archer';
   const useLandmarks = landmarks ?? !archer;
@@ -85,6 +89,8 @@
   });
   const marks = $derived.by(() => {
     const out: { v: number; f: (Fr & { whole?: number }) | null }[] = [];
+    // ондық: әр ондық үлес — белгі (0; 0,1; …; 1), бөлшексіз жазу
+    if (decimal) { for (let i = 0; i <= max * 10; i++) if (inWin(i / 10)) out.push({ v: i / 10, f: null }); return out; }
     for (let i = 0; i <= max; i++) {
       if (inWin(i)) out.push({ v: i, f: null });
       if (useLandmarks && i < max && inWin(i + 0.5)) out.push({ v: i + 0.5, f: { n: 1, d: 2, whole: i || undefined } });
@@ -158,7 +164,7 @@
 <div class="nl">
   <div class="goal panel flat">
     <span class="label">{archer ? 'Нысана' : 'Орнына қой'}</span>
-    <Frac n={cur.n} d={cur.d} size="lg" />
+    {#if decimal === 'all'}<b class="dec num">{decStr(tv)}</b>{:else}<Frac n={cur.n} d={cur.d} size="lg" />{/if}
     {#if place.length > 1}<span class="dots" aria-label="{Math.min(idx + 1, place.length)} / {place.length}">{#each place as _, k}<i class:on={k < idx} class:cur={k === idx}></i>{/each}</span>{/if}
     {#if archer}<span class="stars"><Icon name="star" size={22} fill="var(--gold)" /><b class="num">{total}</b></span>{/if}
   </div>
@@ -192,8 +198,8 @@
       </g>
     </svg>
     <div class="lbls" aria-hidden="true">
-      {#each marks as t}<span class="lb" style="left:{pct(xOf(t.v))};top:{(AXIS + 12) / H * 100}%">{#if t.f}<Frac whole={t.f.whole ?? null} n={t.f.n} d={t.f.d} size={15} />{:else}{t.v}{/if}</span>{/each}
-      {#each done as p}{#if inWin(p.v)}<span class="lb ok" style="left:{pct(xOf(p.v))};top:{2 / H * 100}%"><Frac n={p.f.n} d={p.f.d} size={15} /></span>{/if}{/each}
+      {#each marks as t}<span class="lb" style="left:{pct(xOf(t.v))};top:{(AXIS + 12) / H * 100}%">{#if t.f}<Frac whole={t.f.whole ?? null} n={t.f.n} d={t.f.d} size={15} />{:else if decimal}<span class="dm">{decStr(t.v)}</span>{:else}{t.v}{/if}</span>{/each}
+      {#each done as p}{#if inWin(p.v)}<span class="lb ok" style="left:{pct(xOf(p.v))};top:{2 / H * 100}%">{#if decimal === 'all'}{decStr(val(p.f))}{:else}<Frac n={p.f.n} d={p.f.d} size={15} />{/if}</span>{/if}{/each}
     </div>
   </div>
 
@@ -243,6 +249,8 @@
   .lbls { position: absolute; inset: 0; pointer-events: none; color: var(--ink); }
   .lb { position: absolute; transform: translateX(-50%); font: 800 15px var(--disp); text-shadow: 0 1px 0 var(--outline); white-space: nowrap; }
   .lb.ok { color: var(--ok); }
+  .lb .dm { font-size: 11px; }
+  .dec { font: 800 30px var(--disp); }
   .msg { text-align: center; font-weight: 800; min-height: 2.6em; max-width: 340px; display: flex; align-items: center; justify-content: center; gap: 2px; flex-wrap: wrap; }
   .msg.ok { color: var(--ok); }
   .btns { display: flex; gap: 10px; justify-content: center; }
