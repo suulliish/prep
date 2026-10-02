@@ -10,6 +10,7 @@ import fractions6 from './fractions6.mjs';
 import logic5 from './logic5.mjs';
 import logic7 from './logic7.mjs';
 import logic8 from './logic8.mjs';
+import decimals from './decimals.mjs';
 
-export const templates = [...g5, ...compute, ...equations, ...propPct, ...wordGeo, ...logic, ...fractions5, ...fractions6, ...logic5, ...logic7, ...logic8];
+export const templates = [...g5, ...compute, ...equations, ...propPct, ...wordGeo, ...logic, ...fractions5, ...fractions6, ...logic5, ...logic7, ...logic8, ...decimals];
 export const byId = Object.fromEntries(templates.map(t => [t.id, t]));

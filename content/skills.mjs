@@ -51,11 +51,11 @@ s('frac.telescoping', 'C', 'olymp', 'Телескоптық қосындылар
 s('frac.alternating_sum', 'C', 'olymp', 'Кезектесетін қосынды (98 − 97 + …)', 'Знакочередующиеся суммы', ['nat.ops']);
 
 // ---- Десятичные дроби ----
-s('dec.concept', 'C', 5, 'Ондық бөлшек ұғымы', 'Понятие десятичной дроби', ['frac.concept']);
-s('dec.compare_round', 'C', 5, 'Ондық бөлшектерді салыстыру және дөңгелектеу', 'Сравнение и округление', ['dec.concept']);
-s('dec.add_sub', 'C', 5, 'Ондық бөлшектерді қосу және азайту', 'Сложение и вычитание', ['dec.concept']);
-s('dec.mul_div', 'C', 5, 'Ондық бөлшектерді көбейту және бөлу', 'Умножение и деление', ['dec.add_sub']);
-s('dec.frac_convert', 'C', 5, 'Ондық және жай бөлшек', 'Десятичная ↔ обыкновенная', ['dec.concept', 'frac.reduce']);
+s('dec.concept', 'C', 5, 'Ондық бөлшек ұғымы', 'Понятие десятичной дроби', ['frac.concept'], { t: ['dec.place_digit', 'dec.from_fraction10', 'dec.units', 'dec.expanded'] });
+s('dec.compare_round', 'C', 5, 'Ондық бөлшектерді салыстыру және дөңгелектеу', 'Сравнение и округление', ['dec.concept'], { t: ['dec.compare_true', 'dec.order_extreme', 'dec.round', 'dec.between'] });
+s('dec.add_sub', 'C', 5, 'Ондық бөлшектерді қосу және азайту', 'Сложение и вычитание', ['dec.concept'], { t: ['dec.add_align', 'dec.sub_from_whole', 'dec.add_word'] });
+s('dec.mul_div', 'C', 5, 'Ондық бөлшектерді көбейту және бөлу', 'Умножение и деление', ['dec.add_sub'], { t: ['dec.mul_pow10', 'dec.mul_dec', 'dec.div_nat'] });
+s('dec.frac_convert', 'C', 5, 'Ондық және жай бөлшек', 'Десятичная ↔ обыкновенная', ['dec.concept', 'frac.reduce'], { t: ['dec.frac_to_dec', 'dec.dec_to_frac'] });
 s('dec.from_digits', 'C', 5, 'Цифрлардан ондық бөлшек құрау', 'Дроби из заданных цифр', ['dec.compare_round'], { t: ['compute.decimal_from_digits'] });
 s('dec.periodic', 'C', 6, 'Периодты ондық бөлшектер', 'Периодические дроби', ['dec.frac_convert']);
 s('dec.mixed_expressions', 'C', 6, 'Жай және ондық бөлшектері бар өрнектер', 'Смешанные выражения', ['dec.mul_div', 'frac.div']);
