@@ -29,4 +29,7 @@ export function completeBlock(id: BlockId | 'extra') {
   persist();
 }
 
+/** Пересчитать минуты дня (после «исправился — дозаработал») и сохранить. */
+export function resettle() { settleDay(dayRec(), ensurePlan(), game.save.settings.extraTo); persist(); }
+
 export function replan() { today.plan = null; if (game.save.days[game.day]) delete game.save.days[game.day].plan; ensurePlan(); }

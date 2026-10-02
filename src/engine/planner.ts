@@ -95,6 +95,21 @@ export const EXAM_PENALTY = 0.25;
 export function examShare(paid: number, wrong: number, answered: number): number {
   return answered ? Math.max(0, Math.min(1, (paid - EXAM_PENALTY * wrong) / answered)) : 1;
 }
+/** «Исправился — дозаработал» (02.10): честно починил сегодняшнюю ошибку шага плана — тот ответ засчитывается как верный:
+ *  ошибка снимается (−¼ больше нет) и добавляется +1, доля минут шага пересчитывается. «Білмеймін» тоже чинится (+1).
+ *  Больше 100% шаг не даёт; нарочно ошибиться и починить не выгоднее, чем ответить верно сразу. */
+export function restoreFix(rec: DayRecord, block: string, dunno: boolean): boolean {
+  const t = rec.tally?.[block];
+  if (!t || t.paid >= t.n) return false;
+  if (!dunno && t.wrong > 0) t.wrong--;
+  t.paid++;
+  rec.honest ??= {};
+  rec.honest[block] = examShare(t.paid, t.wrong, t.n);
+  return true;
+}
+/** Поломка, починка которой вернёт минуты сегодняшнего плана. */
+export const restorableFix = (r: { fixed?: boolean; addedDay: string; block?: string }, day: string) => !r.fixed && r.addedDay === day && !!r.block;
+
 /** Уход из приложения дольше этого во время задачи — ответ не честный (калькулятор, поиск, подсказка со стороны). */
 export const AWAY_MS = 3000;
 

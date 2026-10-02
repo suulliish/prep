@@ -10,7 +10,7 @@
   import Icon from '../ui/Icon.svelte';
   import MicButton from '../ui/MicButton.svelte';
   import { trackExit, awayClock } from '../lib/track.svelte';
-  import { examShare, AWAY_MS, EXAM_PENALTY } from '../engine/planner';
+  import { examShare, AWAY_MS, EXAM_PENALTY, restoreFix, restorableFix } from '../engine/planner';
   import GlitchTurn from '../ui/GlitchTurn.svelte';
   import CoinChip from '../ui/CoinChip.svelte';
   import BattleEvent from '../ui/BattleEvent.svelte';
@@ -23,7 +23,7 @@
   import { game, go, persist, skillDefs } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import type { Technique } from '../three/world';
-  import { ensurePlan, completeBlock, dayRec } from '../lib/session.svelte';
+  import { ensurePlan, completeBlock, dayRec, resettle } from '../lib/session.svelte';
   import { makeItem, mistakeText, skillTitle, templatesOf, isTemplateId, type Item } from '../engine/items';
   import { bankFor, bankToItem } from '../engine/bank';
   import { recordAttempt, isDone } from '../engine/progress';
@@ -65,7 +65,9 @@
       .map(d => d.id);
     return [...new Set([...learning, ...weak])].slice(0, 5);
   }
-  const broken = game.save.repairShop.filter(r => !r.fixed);
+  // сегодняшние ошибки плана — первыми: их починка возвращает минуты (restoreFix)
+  const broken = game.save.repairShop.filter(r => !r.fixed).sort((a, b) => +restorableFix(b, game.day) - +restorableFix(a, game.day));
+  let restoredMin = 0;   // сколько минут вернули починки этого ремонта
   // ремонт вместо доп. миссии (Screen.session.asExtra): ровно 3 починки, и бой засчитывается как доп. миссия (+15 мин); поломок меньше трёх — обычный ремонт без минут
   const scr = game.screen;
   const asExtra = block === 'repair' && scr.name === 'session' && !!scr.asExtra;
@@ -417,13 +419,26 @@
       // «сам поймал» монет сверху не даёт (02.10): иначе выгодно нарочно выбрать неверное и «поймать» себя
       if (combo >= 3) floatText(`КОМБО ×${combo}`, sceneCenter(0.25).x, sceneCenter(0.25).y, '#3ff0ff', true);
       if (block === 'repair' && hintLevel === 0) {
-        const r = game.save.repairShop.find(x => !x.fixed && x.skill === it.skill);
-        if (r) { r.fixed = true; fixedNow = true; fixedN++; floatText('ЖӨНДЕЛДІ', at.x, at.y - 50, '#5ce39c'); earn(REPAIR_FIX_COINS, { x: at.x, y: at.y - 60 }); }
+        const pool = game.save.repairShop.filter(x => !x.fixed && x.skill === it.skill);
+        const r = pool.find(x => restorableFix(x, game.day)) ?? pool[0];
+        if (r) {
+          r.fixed = true; fixedNow = true; fixedN++; floatText('ЖӨНДЕЛДІ', at.x, at.y - 50, '#5ce39c'); earn(REPAIR_FIX_COINS, { x: at.x, y: at.y - 60 });
+          // «исправился — дозаработал»: честная починка сегодняшней ошибки плана возвращает её минуты
+          if (honest && r.block && r.addedDay === game.day) {
+            const was = dayRec().minutesToday;
+            if (restoreFix(dayRec(), r.block, !!r.dunno)) {
+              resettle();
+              const got = dayRec().minutesToday - was;
+              if (got > 0) { restoredMin += got; floatText(`+${got} МИН`, at.x, at.y - 80, '#ffc94a', true); }
+            }
+          }
+        }
       }
     } else {
       if (breaksCombo(false, conf)) combo = 0;   // серию рвёт только ошибка при уверенности
       audio.play(dunno ? 'hint' : 'wrong'); if (!dunno) { flash(conf === 'sure' ? '#ff5a6e' : '#ff9a6b'); react('wrong', 0.6); }
-      if (block !== 'repair') game.save.repairShop.push({ source: it.source, skill: it.skill, ...(tag ? { tag } : {}), addedDay: game.day });
+      if (block !== 'repair') game.save.repairShop.push({ source: it.source, skill: it.skill, ...(tag ? { tag } : {}), addedDay: game.day,
+        ...(block === 'warmup' || block === 'new' || block === 'mixed' ? { block, ...(dunno ? { dunno: true } : {}) } : {}) });
     }
     // в счёт шага: верный без полного разбора и не «бонусный» близнец; в ремонте вместо доп. миссии считаются починки
     const counted = asExtra ? fixedNow : correct && hintLevel < 4 && qKind !== 'bonus';
@@ -579,7 +594,9 @@
     const tl = block !== 'repair' && block !== 'extra' ? dayRec().tally?.[b] : undefined;
     minuteShare = tl ? examShare(tl.paid, tl.wrong, tl.n) : examShare(paid, wrongN, answered);
     if (block !== 'repair' && block !== 'extra') { const r = dayRec(); r.honest ??= {}; r.honest[b] = tl ? minuteShare : Math.min(r.honest[b] ?? 1, minuteShare); }
-    if (minuteShare < 1) note = `Ойын минуты емтихандағыдай: дұрыс +1, қате −¼, «Білмеймін» 0. Минуттың ${Math.round(minuteShare * 100)}% есептелді.` + (guessed > 0 ? ' Асығыс жауап есептелмейді.' : '');
+    if (minuteShare < 1) note = `Ойын минуты емтихандағыдай: дұрыс +1, қате −¼, «Білмеймін» 0. Минуттың ${Math.round(minuteShare * 100)}% есептелді.` + (guessed > 0 ? ' Асығыс жауап есептелмейді.' : '')
+      + (block === 'warmup' || block === 'new' || block === 'mixed' ? ' Бүгінгі қателерді кемеде жөндесең, минут қайтады!' : '');
+    if (block === 'repair' && restoredMin > 0) note = `Қателерді түзеттің: +${restoredMin} мин қайтты!` + (note ? ' ' + note : '');
     if (block === 'extra' && firstRight < 7) {
       counted = false; note = `Бірінші әрекеттен ${firstRight} дұрыс, керегі — 7. Миссия есептелмеді, тағы көр!`;
     }
@@ -604,6 +621,7 @@
     const got = dayRec().minutesToday - before, stars = counted ? starsOf() : 0;
     // строка «★ N · келесі сыйлық» считает по общему счёту звёзд (look.totalStars: DayRecord.stars) ДО и ПОСЛЕ записи звёзд этого боя
     const all0 = totalStars();
+    if (block === 'repair' && restoredMin > 0) await showReward({ minutes: restoredMin, title: 'Минут қайтты!', why: 'Қателерді түзеттің', today: dayRec().minutesToday, weekend: dayRec().minutesWeekend });
     if (got > 0) await showReward({ minutes: got, title: b === 'extra' || extraRepair ? 'Қосымша миссия!' : 'Қадам аяқталды!', why: TITLE[b], today: dayRec().minutesToday, weekend: dayRec().minutesWeekend });
     if (stars) {
       const r = dayRec();
