@@ -76,4 +76,49 @@ describe('облако: загрузка истории ответов при в
     const months = remote.sets.filter(s => s.path.startsWith('users/u2/attempts/')).map(s => s.path).sort();
     expect(months).toEqual(['users/u2/attempts/2026-09', 'users/u2/attempts/2026-10']);
   });
+
+  // 02.10: устройство, сохранившее что-то до загрузки облака, не должно затирать облако
+  it('новый телефон брата: PIN задан (сохранение «новее» облака), но прогресса нет — берётся облако, в облако ничего не пишется', async () => {
+    const { game } = await import('../src/lib/store.svelte');
+    const { cloud } = await import('../src/lib/cloud.svelte');
+    const kid = { ...JSON.parse(JSON.stringify(game.save)), attempts: undefined, xp: 750, diagnosticDone: true, heroName: 'Муртаза', updatedAt: 1_000 };
+    remote.docs['users/u3'] = { save: JSON.stringify(kid), updatedAt: 1_000 };
+    remote.docs['users/u3/attempts/2026-10'] = { list: JSON.stringify([att(10, '2026-10-01'), att(20, '2026-10-01')]), n: 2 };
+    game.save.attempts = []; game.save.xp = 0; game.save.diagnosticDone = false; game.save.updatedAt = 9_999_999;   // только что задан PIN
+    remote.authCb!({ uid: 'u3', email: 'bro@x', displayName: 'Bro' });
+    for (let i = 0; i < 20 && cloud.status !== 'ok'; i++) await tick();
+    expect(game.save.xp).toBe(750);
+    expect(game.save.attempts.map(a => a.at)).toEqual([10, 20]);
+    expect(remote.sets.filter(x => x.path === 'users/u3')).toEqual([]);   // главное сохранение облака не тронуто
+  });
+
+  it('обе стороны с ответами, устройство новее: ответы облака не теряются — в облако уходит объединение', async () => {
+    const { game } = await import('../src/lib/store.svelte');
+    const { cloud } = await import('../src/lib/cloud.svelte');
+    remote.docs['users/u4'] = { save: JSON.stringify({ ...JSON.parse(JSON.stringify(game.save)), attempts: undefined, xp: 5, updatedAt: 100 }), updatedAt: 100 };
+    remote.docs['users/u4/attempts/2026-10'] = { list: JSON.stringify([att(1, '2026-10-01'), att(3, '2026-10-01')]), n: 2 };
+    game.save.attempts = [att(1, '2026-10-01'), att(2, '2026-10-01')]; game.save.xp = 9; game.save.updatedAt = 200;
+    remote.authCb!({ uid: 'u4', email: 'x', displayName: 'X' });
+    for (let i = 0; i < 20 && !remote.sets.some(x => x.path === 'users/u4/attempts/2026-10'); i++) await tick();
+    await tick();
+    expect(cloud.status).toBe('ok');
+    expect(game.save.attempts.map(a => a.at)).toEqual([1, 2, 3]);
+    expect(JSON.parse(remote.docs['users/u4/attempts/2026-10'].list).map((a: Attempt) => a.at)).toEqual([1, 2, 3]);
+    expect(game.save.xp).toBe(9);
+  });
+
+  it('облако новее, а на устройстве есть ответы, которых там нет: берётся облако плюс эти ответы, и они уходят в облако', async () => {
+    const { game } = await import('../src/lib/store.svelte');
+    const { cloud } = await import('../src/lib/cloud.svelte');
+    remote.docs['users/u5'] = { save: JSON.stringify({ ...JSON.parse(JSON.stringify(game.save)), attempts: undefined, xp: 40, updatedAt: 900 }), updatedAt: 900 };
+    remote.docs['users/u5/attempts/2026-10'] = { list: JSON.stringify([att(5, '2026-10-01')]), n: 1 };
+    game.save.attempts = [att(5, '2026-10-01'), att(6, '2026-10-02')]; game.save.updatedAt = 800;
+    remote.authCb!({ uid: 'u5', email: 'x', displayName: 'X' });
+    for (let i = 0; i < 20 && !remote.sets.some(x => x.path === 'users/u5/attempts/2026-10'); i++) await tick();
+    await tick();
+    expect(cloud.status).toBe('ok');
+    expect(game.save.xp).toBe(40);
+    expect(game.save.attempts.map(a => a.at)).toEqual([5, 6]);
+    expect(JSON.parse(remote.docs['users/u5/attempts/2026-10'].list).map((a: Attempt) => a.at)).toEqual([5, 6]);
+  });
 });

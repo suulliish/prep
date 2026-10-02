@@ -32,7 +32,10 @@ function load(): Save {
       if (s.settings && s.settings.extraMissionCap > 1) s.settings = { ...s.settings, extraMissionCap: 1 };
       return s;
     }
-  } catch { /* приватный режим или испорченные данные */ }
+  } catch {
+    // испорченные данные: сырую строку не теряем (следующее сохранение её бы затёрло), облако пустое устройство не перезапишет (src/engine/sync.ts)
+    try { const raw = localStorage.getItem(KEY); if (raw) localStorage.setItem(KEY + '.corrupt', raw); } catch { /* приватный режим */ }
+  }
   return fresh();
 }
 
@@ -73,7 +76,13 @@ export function persist() {
 
 /** Заменить сохранение целиком (импорт файла или загрузка из облака). Прежнее кладётся в резервную копию. */
 export function replaceSave(data: Save, keepTime = false) {
-  try { localStorage.setItem(KEY + '.before-replace', JSON.stringify(game.save)); } catch { /* */ }
+  // три последние заменённые копии: .before-replace (самая свежая), .before-replace.2, .before-replace.3
+  try {
+    const p1 = localStorage.getItem(KEY + '.before-replace'), p2 = localStorage.getItem(KEY + '.before-replace.2');
+    if (p2) localStorage.setItem(KEY + '.before-replace.3', p2);
+    if (p1) localStorage.setItem(KEY + '.before-replace.2', p1);
+    localStorage.setItem(KEY + '.before-replace', JSON.stringify(game.save));
+  } catch { /* */ }
   const t = data.updatedAt;
   game.save = { ...fresh(), ...data };
   if (game.save.heroName === 'Кодер') game.save.heroName = 'Муртаза';
