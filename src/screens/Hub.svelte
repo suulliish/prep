@@ -30,10 +30,9 @@
   const plan = ensurePlan();
   const rec = $derived(dayRec());
   const weekday = isWeekday(game.day);
-  // «Еске түсір» стоит первым: темы на сегодня, не больше 3; «Өткізу» нажимается осознанно и видна командиру
+  // «Еске түсір» стоит первым: темы на сегодня, не больше 3. Пропустить нельзя (решение семьи 02.10): план дня открывается после вспоминания
   const recallList = $derived(recallDue(game.save, game.day, hasRule));
   const recallOn = $derived(game.save.diagnosticDone && weekday && recallList.length > 0);
-  const recallSkipped = $derived(!!game.save.recallOffer?.[game.day]?.skipped);
   let recallGate = $state<string | null>(null);
   const lv = $derived(levelOf(game.save.xp));
   const st = $derived(streak(game.save, game.day));
@@ -150,18 +149,9 @@
     warp = true; setTimeout(to, 380);
   }
   function openRecall() { audio.unlock(); audio.play('mission'); recallGate = null; go({ name: 'recall' }); }
-  function skipRecall(thenStart?: string | null) {
-    audio.play('click');
-    game.save.recallOffer ??= {};
-    const cur = game.save.recallOffer[game.day];
-    if (cur) cur.skipped = true; else game.save.recallOffer[game.day] = { skills: [...recallList], skipped: true };
-    persist();
-    recallGate = null;
-    if (thenStart) start(thenStart);
-  }
   function start(id: string) {
-    // пока не вспоминали и не нажали «Өткізу», мягко напоминаем: вспоминание стоит первым
-    if (recallOn && !recallSkipped) { audio.play('click'); recallGate = id; return; }
+    // пока не вспоминали, план закрыт: вспоминание стоит первым
+    if (recallOn) { audio.play('click'); recallGate = id; return; }
     audio.unlock(); audio.play('mission');
     if (id === 'summary') return go({ name: 'summary' });
     const b = plan.blocks.find(x => x.id === id)!;
@@ -221,12 +211,11 @@
   {/snippet}
 
   {#if recallOn}
-    <div class="recall" class:quiet={recallSkipped}>
-      <button class="quest" class:next={!recallSkipped} onclick={openRecall} aria-label="Еске түсір: {recallList.length} тақырып">
+    <div class="recall">
+      <button class="quest next" onclick={openRecall} aria-label="Еске түсір: {recallList.length} тақырып">
         <span class="qi" style="--c:var(--crystal)"><Icon name="book" fill="#fff" size={22} /></span>
         <span class="qt"><b>Еске түсір: {recallList.length} тақырып</b><small>Ережені өз сөзіңмен · ~3 мин</small></span>
       </button>
-      {#if !recallSkipped}<button class="skip" onclick={() => skipRecall()}>Өткізу</button>{/if}
     </div>
   {/if}
 
@@ -297,7 +286,7 @@
       <div class="gbox panel">
         <Bit text="Алдымен еске түсірейік! {recallList.length} тақырып, шамамен 3 минут. Ереже осылай ұзақ есте қалады." mood="think" compact />
         <button class="btn primary big block" onclick={openRecall}><Icon name="book" fill="var(--outline)" size={22} />Еске түсір</button>
-        <button class="btn ghost block" onclick={() => skipRecall(recallGate)}>Өткізу</button>
+        <button class="btn ghost block" onclick={() => (recallGate = null)}>Кейін</button>
       </div>
     </div>
   {/if}
@@ -398,8 +387,6 @@
 
   .recall { display: grid; gap: 0; justify-items: end; margin-bottom: 4px; }
   .recall .quest { justify-self: stretch; }
-  .recall.quiet .quest { opacity: .8; }
-  .skip { min-height: 34px; padding: 0 10px; font: 800 13px var(--txt); color: var(--dim); background: none; border: 0; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
   .gate { position: fixed; inset: 0; z-index: calc(var(--z-modal) + 4); display: grid; place-items: center; padding: 16px; background: #05071399; animation: fade .2s ease-out both; }
   .gbox { width: min(420px, 100%); display: grid; gap: 10px; padding: 14px; }
   .quests { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; position: relative; }

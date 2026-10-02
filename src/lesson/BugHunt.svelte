@@ -7,20 +7,25 @@
   let found = $state(false);
   let note = $state<{ at: number; text: string } | null>(null);
   let misses = 0;
+  // мимо — строки закрыты на LOCK_MS: подсказку надо прочитать, перебором строк ошибку не найти
+  const LOCK_MS = 2000;
+  let locked = $state(false), lockT = 0;
+  $effect(() => () => clearTimeout(lockT));
   // пояснение появилось ниже строк — показать его
   let root = $state<HTMLElement>();
   const reveal = () => tick().then(() => root?.querySelector('.fix, .note')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   function tap(k: number) {
-    if (found) return;
+    if (found || locked) return;
     if (k === bad) { found = true; note = null; audio.play('hit'); ondone(misses === 0); reveal(); return; }
     misses++; audio.play('wrong');
+    locked = true; clearTimeout(lockT); lockT = window.setTimeout(() => (locked = false), LOCK_MS);
     note = { at: k, text: follows.includes(k) ? 'Бұл жол да қате, бірақ ол — салдар. Қате одан ертерек басталды.' : 'Бұл жол дұрыс. Ары қарай ізде.' }; reveal();
   }
 </script>
 
 <div class="bh" bind:this={root}>
   {#each lines as l, k}
-    <button class="line" class:bad={found && k === bad} class:ok={note?.at === k && !follows.includes(k)} class:after={note?.at === k && follows.includes(k)} onclick={() => tap(k)}>
+    <button class="line" class:bad={found && k === bad} class:ok={note?.at === k && !follows.includes(k)} class:after={note?.at === k && follows.includes(k)} disabled={locked} onclick={() => tap(k)}>
       <span class="n">{k + 1}</span><MathLine text={l} />
       {#if found && k === bad}<i class="stamp">ҚАТЕ</i>{/if}
     </button>
@@ -33,6 +38,7 @@
   .bh { display: grid; gap: 8px; }
   .line { position: relative; display: flex; gap: 12px; align-items: center; text-align: left; color: var(--paper-ink); background: #fff; border: 3px solid var(--outline); border-radius: 12px; padding: 10px 12px; cursor: pointer; font: inherit; box-shadow: 0 3px 0 var(--outline); }
   .line:active { transform: translateY(2px); }
+  .line:disabled { cursor: default; opacity: .75; }
   .n { color: var(--paper-dim); font-weight: 800; }
   .line :global(.ml) { font-size: 19px; }
   .line.ok { background: #c9f7d8; }

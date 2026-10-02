@@ -10,7 +10,7 @@
   import Icon from '../ui/Icon.svelte';
   import { game, persist, skillDefs } from '../lib/store.svelte';
   import { audio } from '../lib/audio';
-  import { ReadGate } from '../lib/readgate.svelte';
+  import { ReadGate, readMs } from '../lib/readgate.svelte';
   import { enroll } from '../engine/recall';
   import { fieldsFor, exampleSpec, checkExample } from './notebook';
   import { checkNotebookPhoto, HELPER_ERR, type HelperError, type NotebookCheck, type NbField, type NbMark } from '../lib/helper';
@@ -50,10 +50,9 @@
   let pErr = $state('');
   let tries = $state(0);
   let alive = true;
-  // «Суретсіз тексеру» прячем: появляется после сбоя или через SKIP_AFTER_MS (ребёнок не должен проскакивать проверку)
-  const SKIP_AFTER_MS = 40000;
-  let late = $state(false), lateT = 0;
-  const failed = $derived(!!pErr || (res !== null && !res.readable));
+  // пропуска фото нет (решение семьи 02.10): дальше — когда Бит прочитал карточку, сеть/ИИ подвели
+  // или после MAX_TRIES нечитаемых снимков; нечитаемое фото (потолок, пустой лист) — только «Қайта түсір»
+  const canGo = $derived(!!pErr || (res !== null && (res.readable || tries >= MAX_TRIES)));
   const MARK: Record<NbMark, { t: string; cls: string }> = { ok: { t: '✓', cls: 'ok' }, partial: { t: '½', cls: 'half' }, wrong: { t: '✗', cls: 'bad' }, missing: { t: '—', cls: 'none' } };
   const LABEL: Record<NbField, string> = { rule: 'Ереже өз сөзіңмен', example: 'Менің мысалым', trap: 'Глитчтің қақпаны', scheme: 'Сызба' };
 
@@ -77,6 +76,8 @@
       if (ent) { ent.check = { at: Date.now(), readable: r.readable, marks, fix: r.fix, tries }; persist(); }
       const good = r.readable && Object.values(r.fields).every(v => v.mark === 'ok');
       audio.play(!r.readable ? 'wrong' : good ? 'correct' : 'hint');
+      // заметки Бита надо прочитать: «Эталонмен салыстыр» заряжается на это время
+      if (r.readable) gate.start(readMs(r.praise, r.fix, ...Object.values(r.fields).map(v => v.note)), false);
     } catch (err) {
       if (!alive) return;
       pErr = typeof err === 'string' && err in HELPER_ERR ? HELPER_ERR[err as HelperError] : 'Суретті оқи алмадым. Қайта түсіріп көр.';
@@ -84,11 +85,14 @@
     busy = false;
   }
   function toCheck() {
-    if (busy) return;
+    if (busy || !canGo) return;
+    if (gate.on) return nope('Алдымен Биттің жазғанын оқы');
     audio.play('click');
     phase = 'check'; tip = '';
-    gate.start(CHECK_MS, false);
+    startCheckGate();
   }
+  // сверка: «Дайын» заряжается на время чтения эталона (правило и разбор ловушки), не меньше CHECK_MS
+  const startCheckGate = () => gate.start(Math.max(CHECK_MS, readMs(...f!.ruleLines, f!.trap?.fix)), false);
 
   onMount(() => {
     if (signedIn === undefined) import('../lib/cloud.svelte').then(m => (C = m)).catch(() => {});
@@ -99,7 +103,7 @@
     if (!cur) game.save.notebook[skill] = { day: game.day };
     else if (cur.example) { example = cur.example; exOk = cur.exampleOk ?? null; }
     persist();
-    return () => { alive = false; gate.stop(); clearTimeout(tipT); clearTimeout(lateT); };
+    return () => { alive = false; gate.stop(); clearTimeout(tipT); };
   });
 
   function saveExample() {
@@ -120,9 +124,9 @@
     const e = game.save.notebook?.[skill];
     if (e) { e.wrote = true; persist(); }
     tip = '';
-    if (photoOn) { phase = 'photo'; lateT = window.setTimeout(() => (late = true), SKIP_AFTER_MS); return; }
+    if (photoOn) { phase = 'photo'; gate.stop(); return; }
     phase = 'check';
-    gate.start(CHECK_MS, false);
+    startCheckGate();
   }
   const bitText = $derived.by(() => {
     if (phase === 'write') return 'Дәптеріңді аш! Экранға қарамай жаз:';
@@ -149,7 +153,7 @@
   <div class="nb-scrim" role="dialog" aria-modal="true" aria-label="Дәптер">
     <div class="nb panel">
       <div class="head">
-        <Bit compact mood={phase === 'write' ? 'idle' : phase === 'photo' && (busy || failed || (res && res.fix)) ? 'think' : 'happy'} text={bitText} />
+        <Bit compact mood={phase === 'write' ? 'idle' : phase === 'photo' && (busy || !!pErr || (res && (!res.readable || res.fix))) ? 'think' : 'happy'} text={bitText} />
       </div>
       <div class="body">
         <span class="tag topic">{title}</span>
@@ -226,14 +230,12 @@
           <p class="red"><Icon name="check" fill="var(--miss)" size={18} />Түзетуді қызыл қаламмен жаз. Ескі жазуды өшірме: қатеңнен үйренесің.</p>
         {/if}
       </div>
-      <div class="foot" class:empty={phase === 'photo' && !res && !failed && !late}>
+      <div class="foot" class:empty={phase === 'photo' && !canGo}>
         {#if tip}<div class="tip" role="status">{tip}</div>{/if}
         {#if phase === 'photo'}
-          <!-- дальше — когда Бит ответил или проверить не вышло; до фото — тихий пропуск через 40 с (нет камеры, тетрадь не с собой) -->
-          {#if res || failed}
-            <button class="btn go big block" disabled={busy} onclick={toCheck}>Эталонмен салыстыр<Icon name="chevron" fill={busy ? '#d7dcf5' : 'var(--outline)'} size={20} /></button>
-          {:else if late}
-            <button class="btn ghost block skip" disabled={busy} onclick={toCheck}>Суретсіз тексеру</button>
+          <!-- дальше — только когда Бит ответил, сеть подвела или снимки кончились; пропуска фото нет -->
+          {#if canGo}
+            <button bind:this={btn} class="btn go big block" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" disabled={busy} onclick={toCheck}>Эталонмен салыстыр<Icon name="chevron" fill={busy || gate.on ? '#d7dcf5' : 'var(--outline)'} size={20} /></button>
           {/if}
         {:else if phase === 'write'}
           <button bind:this={btn} class="btn primary big block" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={wrote}><Icon name="book" fill={gate.on ? '#d7dcf5' : 'var(--outline)'} size={22} />Жаздым</button>
@@ -282,7 +284,6 @@
   .mark.none { background: var(--paper-2); color: var(--paper-dim); }
   .shot { display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; }
   .shot[aria-disabled='true'] { pointer-events: none; }
-  .skip { min-height: 44px; font-size: var(--fs-s); }
   .red { margin: 0; display: flex; gap: 8px; align-items: center; color: var(--ink); font: 800 14px/1.35 var(--txt); }
   @keyframes nb-fade { from { opacity: 0; } }
   @media (max-height: 460px) and (min-width: 640px) {

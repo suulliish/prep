@@ -9,6 +9,7 @@
   import { game, go, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
+  import { ReadGate, readMs } from '../lib/readgate.svelte';
   import { due, record, noteTask, daysToNext } from '../engine/recall';
   import { ruleLines, hasRule, makeBoard, assemble, isRight, diff, blanks, type Level } from '../lesson/recallrule';
   import { makeItem, mistakeText, skillTitle, type Item } from '../engine/items';
@@ -24,6 +25,12 @@
   let phase = $state<'brick' | 'conf' | 'cmp' | 'task' | 'res' | 'end'>(queue.length ? 'brick' : 'end');
   // 0 пусто, 1 первое слово, 2 скелет, 3 правило показано
   let level = $state<0 | 1 | 2 | 3>(0);
+  // пропуск без чтения закрыт (решение семьи 02.10): после сравнения с правилом и после неверного ответа на задачу
+  // кнопка «дальше» заряжается на время чтения; «Есімде жоқ» после подсказки открывается через DUNNO_MS — подсказку надо увидеть
+  const gate = new ReadGate();
+  const DUNNO_MS = 2500;
+  let dunnoWait = $state(false), dunnoT = 0;
+  onMount(() => () => { gate.stop(); clearTimeout(dunnoT); });
   let picks = $state<number[]>([]);
   let conf = $state<1 | 2 | 3 | null>(null);
   let pending = $state<(string | null)[]>([]);
@@ -97,6 +104,7 @@
     level = (level + 1) as 1 | 2 | 3;
     picks = [];
     note = text;
+    dunnoWait = true; clearTimeout(dunnoT); dunnoT = window.setTimeout(() => (dunnoWait = false), DUNNO_MS);
   }
   function submit() {
     if (!board || !picks.length) return;
@@ -115,7 +123,7 @@
     finish(false, 3, ans);
   }
   function dunno() {
-    if (phase !== 'brick') return;
+    if (phase !== 'brick' || dunnoWait) return;
     audio.play('hint');
     if (conf === null) conf = 1;
     if (level === 0) return climb(SAY.dunno1);
@@ -130,8 +138,10 @@
     outcome = { ok: ok && hint < 3, hint };
     shown = ans;
     phase = 'cmp';
+    gate.start(readMs(target.join(' ')), false);
   }
   function toTask() {
+    if (gate.on) { gate.nope(); audio.play('click'); return; }
     audio.play('click');
     item = makeItem(skill);
     picked = null;
@@ -149,8 +159,11 @@
     persist();
     audio.play(ok ? 'correct' : 'wrong');
     phase = 'res';
+    if (!ok) gate.start(readMs(item.sol.kz, mistakeText(item.choices[i].tag).kz), false);
   }
   function next(taskOk: boolean | null = picked === null || !item ? null : picked === item.answer) {
+    if (phase === 'res' && gate.on) { gate.nope(); audio.play('click'); return; }
+    gate.stop();
     audio.play('click');
     results.push({ skill, ok: !!outcome?.ok, hint: outcome?.hint ?? 3, task: taskOk });
     if (qi + 1 >= queue.length) { phase = 'end'; return; }
@@ -240,16 +253,16 @@
     {#if phase === 'end'}
       <button class="btn primary big grow" onclick={() => go({ name: 'hub' })}>Кемеге<Icon name="chevron" fill="var(--outline)" size={20} /></button>
     {:else if phase === 'brick'}
-      <button class="btn ghost grow" onclick={dunno}>Есімде жоқ</button>
+      <button class="btn ghost grow" disabled={dunnoWait} onclick={dunno}>Есімде жоқ</button>
       <button class="btn primary grow" class:wait={!picks.length || (!!board && !board.open && !full)} disabled={!picks.length || (!!board && !board.open && !full)} onclick={submit}>Дайын</button>
     {:else if phase === 'conf'}
       <button class="btn c3" onclick={() => pickConf(3)}>Сенімдімін</button>
       <button class="btn c3" onclick={() => pickConf(2)}>Шамамен</button>
       <button class="btn c3" onclick={() => pickConf(1)}>Білмеймін</button>
     {:else if phase === 'cmp'}
-      <button class="btn primary big grow" onclick={toTask}>Есепке өту<Icon name="chevron" fill="var(--outline)" size={20} /></button>
+      <button class="btn primary big grow" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={toTask}>Есепке өту<Icon name="chevron" fill="var(--outline)" size={20} /></button>
     {:else if phase === 'res'}
-      <button class="btn big grow {picked === item?.answer ? 'go' : 'primary'}" onclick={() => next()}>{qi + 1 >= queue.length ? 'Аяқтау' : 'Келесі тақырып'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
+      <button class="btn big grow {picked === item?.answer ? 'go' : 'primary'}" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={() => next()}>{qi + 1 >= queue.length ? 'Аяқтау' : 'Келесі тақырып'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
     {/if}
   {/snippet}
 </Screen>

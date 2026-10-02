@@ -4,6 +4,7 @@
   import MathLine from './MathLine.svelte';
   import { tick } from 'svelte';
   import { audio } from '../lib/audio';
+  import { ReadGate, readMs } from '../lib/readgate.svelte';
   type Step = { math: string; kz?: string; blank?: { choices: string[]; answer: number; why?: string } };
   // onstep — верно вписан очередной пропуск (k-й по счёту), onmiss — ошибка: урок-тренировка отвечает ударом связки и шлепком манекена
   let { task, steps, ondone, onstep, onmiss }: { task: string; steps: Step[]; ondone: (clean: boolean) => void; onstep?: (k: number) => void; onmiss?: () => void } = $props();
@@ -15,14 +16,19 @@
   let missHere = $state(0); // ошибки на текущем пропуске: 1-я — подсказка, 2-я — ответ
   const cur = $derived(shown - 1);
   const waiting = $derived(!!steps[cur]?.blank && filled[cur] === undefined);
+  // «Келесі қадам» заряжается на время чтения открытой строки: шаги не пролистываются вслепую
+  const gate = new ReadGate();
+  $effect(() => () => gate.stop());
   function advance() {
-    if (shown < steps.length) { shown++; audio.play('click'); }
+    if (gate.on) { gate.nope(); audio.play('click'); return; }
+    if (shown < steps.length) { shown++; audio.play('click'); const s = steps[shown - 1]; if (!s.blank) gate.start(readMs(s.math, s.kz), false); }
     if (shown === steps.length && !steps[shown - 1].blank) ondone(misses === 0);
   }
   function pick(k: number) {
     const b = steps[cur].blank!;
     if (k !== b.answer) { wrong = { at: cur, pick: k }; misses++; missHere++; audio.play('wrong'); onmiss?.(); return; }
     filled[cur] = b.choices[k]; wrong = null; missHere = 0; audio.play('correct'); onstep?.(++hits);
+    if (steps[cur].blank?.why) gate.start(readMs(steps[cur].blank!.why), false);
     if (shown === steps.length) ondone(misses === 0);
   }
   $effect(() => { if (steps.length === 1 && !steps[0].blank) ondone(true); });
@@ -54,7 +60,7 @@
     </div>
     {#if wrong?.at === cur}<p class="hint">{#if missHere >= 2}<MathLine text={steps[cur].blank!.why ?? ''} inherit />{:else}Әзірге қате. Жоғарыдағы қадамдарды қайта қарап, тағы ойлан.{/if}</p>{/if}
   {:else if shown < steps.length}
-    <button class="btn primary" onclick={advance}>Келесі қадам ↓</button>
+    <button class="btn primary" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={advance}>Келесі қадам ↓</button>
   {/if}
 </div>
 

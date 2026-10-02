@@ -222,7 +222,7 @@
       <section class="panel card">
         <div class="grid3">
           <div class="kpi"><span class="label">Темы: вспомнены {CREDIT_STEPS} раза</span><b>{rc.credited} из {rc.total}</b><small>зачтены: {CREDIT_STEPS} верных возврата без подсказки в разные дни</small></div>
-          <div class="kpi"><span class="label">«Өткізу» нажато</span><b>{rcAsked}</b><small>раз(а) пропущено вспоминание утром</small></div>
+          <div class="kpi"><span class="label">«Өткізу» нажато</span><b>{rcAsked}</b><small>раз(а) пропущено вспоминание утром (с 02.10 пропуска нет)</small></div>
           <div class="kpi"><span class="label">Дней без вспоминания</span><b>{rcSkipped.length}</b><small>утром предложили, но ни одна тема не пройдена</small></div>
         </div>
         <p class="note">Каждый день вспоминается до 3 тем: сначала правило из слов-кирпичиков без подсказки, потом сверка и одна задача. Возвраты идут на 1, 3, 7, 14 и 30 день, дальше редко. Ошибка откатывает тему на шаг назад. «Зачтено» считается только без подсказки. Данных о том, что это даёт баллы на экзамене, нет: это цифры самого ребёнка.</p>
