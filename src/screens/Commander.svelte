@@ -35,6 +35,7 @@
     'auth/too-many-requests': 'Слишком много попыток. Подождите пару минут.',
     'auth/network-request-failed': 'Нет интернета — попробуйте ещё раз.',
     'auth/quota-exceeded': 'Лимит писем на сегодня исчерпан. Войдите по паролю.',
+    'app/outdated': 'В облаке данные новее этой версии приложения: устройство только читает облако. Закройте и откройте приложение, чтобы оно обновилось.',
   };
   let C = $state<typeof import('../lib/cloud.svelte') | null>(null);
   onMount(() => { import('../lib/cloud.svelte').then(m => (C = m)).catch(() => {}); });

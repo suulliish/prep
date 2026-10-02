@@ -94,6 +94,9 @@ function writeLocal(key: string, json: string): boolean {
   catch (e: any) { if (e?.name === 'QuotaExceededError' || e?.code === 22 || e?.code === 1014) storage.full = true; return false; }
 }
 
+/** Записать на устройство без отправки в облако и без смены времени изменения (данные пришли из облака). */
+export function persistLocal() { writeLocal(KEY, localJson(game.save)); }
+
 export function persist() {
   try { ensureLegacy(game.save, game.day); } catch { /* снимок не важнее сохранения */ }   // открылось новое — сразу в снимок, чтобы потом не закрылось
   game.save.updatedAt = Date.now();

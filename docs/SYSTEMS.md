@@ -194,7 +194,7 @@ flowchart LR
 
 | Механика | Питается от | Открывает / влияет | Видно | Данные | Код | Заметки |
 |---|---|---|---|---|---|---|
-| **Сохранение и облако** | — | — (итог) | — | `version`, `updatedAt`, `lastBackup` | `src/lib/store.svelte.ts`<br>`src/lib/cloud.svelte.ts`<br>`src/engine/sync.ts` |  |
+| **Сохранение и облако** | — | — (итог) | — | `version`, `updatedAt`, `lastBackup` | `src/lib/store.svelte.ts`<br>`src/lib/cloud.svelte.ts`<br>`src/engine/sync.ts`<br>`src/lib/version.ts` | S1 (02.10): облако перечитывается при возврате в приложение; запись — транзакцией с rev, при расхождении — слияние по полям (mergeSave); схема новее — только чтение |
 | **Устаревшие поля (таймер игры до 30.09)** | — | — (итог) | — | `weekendSpent` | `src/engine/types.ts` | остались в старых сохранениях; удалить миграцией |
 
 ## Мёртвые поля сохранения

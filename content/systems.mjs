@@ -90,7 +90,8 @@ export const MECHANICS = [
 
   // ---------------- техника ----------------
   { id: 'storage', name: 'Сохранение и облако', group: 'техника', kind: 'rule', root: true, terminal: true, inputs: [], outputs: [], shown: 'none',
-    code: ['src/lib/store.svelte.ts', 'src/lib/cloud.svelte.ts', 'src/engine/sync.ts'], data: ['version', 'updatedAt', 'lastBackup'] },
+    code: ['src/lib/store.svelte.ts', 'src/lib/cloud.svelte.ts', 'src/engine/sync.ts', 'src/lib/version.ts'], data: ['version', 'updatedAt', 'lastBackup'],
+    notes: 'S1 (02.10): облако перечитывается при возврате в приложение; запись — транзакцией с rev, при расхождении — слияние по полям (mergeSave); схема новее — только чтение' },
   { id: 'legacy', name: 'Устаревшие поля (таймер игры до 30.09)', group: 'техника', kind: 'rule', root: true, terminal: true, inputs: [], outputs: [], shown: 'none',
     code: ['src/engine/types.ts'], data: ['weekendSpent'], notes: 'остались в старых сохранениях; удалить миграцией' },
 ];
