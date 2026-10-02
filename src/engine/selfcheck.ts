@@ -11,7 +11,7 @@ export const isEasySkill = (st?: { status: string; lessonDone?: boolean; p: numb
 
 /** Самопроверка не чаще одного раза в 2 вопроса, не на лёгкой теме её нет, не на боссе, не в ходе Глитча и не после полного разбора (подсказка 4/4). */
 export const SELF_GAP = 2;
-export const SELF_CATCH_COINS = 3;
+export const SELF_CATCH_COINS = 0;   // 02.10: было 3 — нарочно выбрать неверное и «поймать» себя выходило выгоднее верного ответа
 export function selfCheckDue(a: { served: number; lastAt: number; easy: boolean; block: string; glitch: boolean }): boolean {
   return a.easy && a.block !== 'boss' && !a.glitch && a.served - a.lastAt >= SELF_GAP;
 }
@@ -29,7 +29,7 @@ export const SELF_SAY = {
   ok: 'Тексердім, дұрыс',
   change: 'Қателесіппін, өзгертемін',
   caught: 'Өзің таптың!',
-  caughtSmall: `Қатені өзің түзеттің: +${SELF_CATCH_COINS} тиын`,
+  caughtSmall: 'Қатені өзің түзеттің!',
 } as const;
 
 const NUM = String.raw`\d[\d   ]*(?:,\d+)?`;

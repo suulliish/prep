@@ -48,6 +48,8 @@ export interface Analytics {
   teach: Record<string, number>;
   notebook: { n: number; marks: Record<string, Record<string, number>>; unreadable: number };
   ai: { n: number; voice: number };
+  errors: { at: number; v: string }[];            // сбои экрана (App.svelte, 02.10): последние 10
+  awayAnswers: number;                            // ответов, во время которых приложение было свёрнуто (Attempt.away)
   flags: string[];
 }
 
@@ -163,7 +165,7 @@ export function analyze(save: Save, o: AnalyticsOpts): Analytics {
   };
   const rv = { n: reviews.length, medianSec: Math.round(median(reviews.map(r => r.ms)) / 1000), withNope: reviews.filter(r => r.nope > 0).length };
 
-  const a: Analytics = { from, to, days: dayRows, totals, nopeBy, steps: stepRows, reviews: rv, skills: skillRows, mistakes, hours, fatigue, confidence, recall, teach, notebook, ai, flags: [] };
+  const a: Analytics = { from, to, days: dayRows, totals, nopeBy, steps: stepRows, reviews: rv, awayAnswers: att.filter(x => (x.away ?? 0) > 0).length, errors: events.filter(e => e.k === 'error').slice(-10).map(e => ({ at: e.at, v: e.v ?? '' })), skills: skillRows, mistakes, hours, fatigue, confidence, recall, teach, notebook, ai, flags: [] };
   a.flags = flags(a);
   return a;
 }
@@ -180,6 +182,8 @@ export function flags(a: Analytics): string[] {
     else if (s.readRatio > 0 && s.readRatio < 1.15) out.push(`«${s.label}»: уходит дальше почти сразу, как кнопка открылась (в ${s.readRatio} раза дольше нужного) — читает по минимуму.`);
   }
   if (a.reviews.n >= 5 && a.reviews.withNope / a.reviews.n >= 0.4) out.push(`Разбор ошибки: в ${Math.round((a.reviews.withNope / a.reviews.n) * 100)}% разборов пытается пролистать.`);
+  if (a.errors.length) out.push(`Сбои в приложении: ${a.errors.length} (последний: ${a.errors[a.errors.length - 1].v.slice(0, 120)}). Пришлите отчёт разработчику.`);
+  if (a.awayAnswers >= 3) out.push(`Сворачивал приложение посреди задачи (калькулятор, поиск?) в ${a.awayAnswers} ответах — они не засчитаны в минуты.`);
   if (t.awayMin >= 10) out.push(`Сворачивал приложение посреди задания: ${t.awayMin} мин за период.`);
   if (t.exits >= 3) out.push(`Выходил из урока или задач на середине: ${t.exits} раз.`);
   const f = a.fatigue;
@@ -230,5 +234,6 @@ export function reportMarkdown(a: Analytics, name = ''): string {
   if (tv.length) L.push(`- Биткә түсіндір: ${tv.map(([k, n]) => `${TEACH_RU[k] ?? k} ${n}`).join(', ')}`);
   if (a.notebook.n) L.push(`- Дәптер по фото: ${a.notebook.n} карточек, нечитаемых ${a.notebook.unreadable}; ${Object.entries(a.notebook.marks).map(([f, m]) => `${f}: ${Object.entries(m).map(([k, n]) => `${k} ${n}`).join(' ')}`).join('; ')}`);
   L.push(`- Вопросы к Биту: ${a.ai.n} (голосом ${a.ai.voice})`);
+  if (a.errors.length) { L.push('', '## Сбои'); for (const e of a.errors) L.push(`- ${new Date(e.at).toISOString().slice(0, 16)} ${e.v}`); }
   return L.join('\n');
 }

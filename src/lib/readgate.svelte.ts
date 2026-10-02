@@ -4,10 +4,12 @@
 import { audio } from './audio';
 import { trackNope } from './track.svelte';
 
-/** Время чтения: ~0.35 с на слово (беглое чтение 5-го класса), от 2 до 9 с. */
+/** Время чтения: ~0.5 с на слово, от 2,5 до 18 с (02.10: было 0,35 с и до 9 с — ~170 слов в минуту, быстро для казахского текста
+ *  в 10 лет; длинное правило упиралось в 9 с). Подстраивать по столбцу «Читал / нужно» во вкладке «Аналитика». */
+export const READ = { perWordMs: 500, minMs: 2500, maxMs: 18000 } as const;
 export const readMs = (...texts: (string | undefined | null)[]) => {
   const words = texts.join(' ').split(/\s+/).filter(w => /[\p{L}\p{N}]/u.test(w)).length;
-  return Math.round(Math.min(9000, Math.max(2000, words * 350)));
+  return Math.round(Math.min(READ.maxMs, Math.max(READ.minMs, words * READ.perWordMs)));
 };
 
 export class ReadGate {

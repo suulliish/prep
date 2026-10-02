@@ -26,6 +26,7 @@ export interface Attempt {
   honest: boolean;
   timeMs: number;
   fast?: boolean;            // быстрее порога для длины условия (src/engine/rush.ts); в старых сохранениях поля нет
+  away?: number;             // сколько мс приложение было свёрнуто во время задачи (≥ AWAY_MS — ответ не честный), с 02.10
   tag?: string;              // метка выбранной ошибки
   mode: 'lesson' | 'practice' | 'warmup' | 'mixed' | 'boss' | 'diagnostic' | 'extra' | 'mock';
 }
@@ -37,6 +38,9 @@ export interface DayRecord {
   minutesToday: number;
   minutesWeekend: number;
   extraMissions: number;
+  /** Ответы шага за день, включая брошенные бои (02.10): выйти и начать заново больше не обнуляет плохой результат. */
+  tally?: Record<string, { n: number; paid: number; wrong: number }>;
+  bossTried?: boolean;       // бой с бас жау сегодня уже был (одна попытка в день, 02.10)
   extraHonest?: number;      // сумма долей честных ответов по доп. миссиям дня (минуты = 15 × сумма), Session.svelte finish()
   bonuses: { reason: string; minutes: number; mastery?: boolean }[];
   hard?: string; // «что было трудно» из итога дня (id темы или 'none') — для командира

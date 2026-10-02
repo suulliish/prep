@@ -123,3 +123,39 @@ describe('Скрипт отчёта (scripts/analytics/report.mjs)', () => {
     expect(out).toContain('Ответов: 5, верно 100%');
   });
 });
+
+describe('Защиты 02.10', () => {
+  it('экзаменный счёт минут: угадывание в среднем = «Білмеймін», ошибки отнимают, не ниже 0', async () => {
+    const { examShare, EXAM_PENALTY } = await import('../src/engine/planner');
+    expect(EXAM_PENALTY).toBe(0.25);
+    expect(examShare(10, 0, 10)).toBe(1);
+    expect(examShare(8, 2, 10)).toBeCloseTo(0.75);
+    expect(examShare(0, 10, 10)).toBe(0);
+    expect(examShare(0, 0, 0)).toBe(1);
+    // 5 вариантов наугад: 20% верных, 80% неверных → 0,2 − 0,25·0,8 = 0, как «Білмеймін»
+    expect(examShare(20, 80, 100)).toBeCloseTo(0);
+  });
+  it('локальная копия: при переполнении в неё идут целые последние месяцы ответов', async () => {
+    const { localJson } = await import('../src/engine/sync');
+    const list = ['2025-08-31', '2025-09-01', '2026-08-15', '2026-09-30'].map((d, k) => att(d, k));
+    const s = save(list);
+    expect(JSON.parse(localJson(s)).attempts).toHaveLength(4);                 // помещается — всё как есть
+    const cut = JSON.parse(localJson(s, 10, 12)).attempts.map((a: Attempt) => a.day);
+    expect(cut).toEqual(['2026-08-15', '2026-09-30']);                         // окт 2025 – сен 2026; август 2025 и 1 сентября 2025 — нет
+  });
+  it('сбои попадают в аналитику и в «Главное»', () => {
+    const u = { ...blankDay('2026-10-01'), events: [{ at: T0, k: 'error', v: 'screen · lesson · TypeError: x' }] };
+    const a = analyze(save([], [u]), { today: '2026-10-01' });
+    expect(a.errors).toHaveLength(1);
+    expect(a.flags.some(f => f.startsWith('Сбои в приложении: 1'))).toBe(true);
+    expect(reportMarkdown(a)).toContain('## Сбои');
+  });
+  it('сервер Бита: пустой список пускает всех, иначе только почты/uid из списка', async () => {
+    // @ts-ignore
+    const { isAllowed } = await import('../helper/allow.mjs');
+    expect(isAllowed({ uid: 'u', email: 'a@x' }, [])).toBe(true);
+    expect(isAllowed({ uid: 'u', email: 'A@X' }, ['a@x'])).toBe(true);
+    expect(isAllowed({ uid: 'U1', email: '' }, ['u1'])).toBe(true);
+    expect(isAllowed({ uid: 'u2', email: 'b@x' }, ['a@x', 'u1'])).toBe(false);
+  });
+});

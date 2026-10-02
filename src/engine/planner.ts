@@ -89,6 +89,15 @@ export const REPAIR_EXTRA_MAX = 6;
 export const repairNeed = (repairCount: number) => Math.min(REPAIR_EXTRA_MAX, repairCount);
 
 /** Честная попытка: не наугад (слишком быстро) и без полного разбора. */
+/** Доля минут шага по правилам экзамена (решение 02.10): верный честный ответ +1, неверный −¼, «Білмеймін» 0, делённое на число ответов.
+ *  Угадывание из пяти вариантов в среднем даёт 0 — столько же, сколько честное «не знаю» (раньше угадать было выгоднее). */
+export const EXAM_PENALTY = 0.25;
+export function examShare(paid: number, wrong: number, answered: number): number {
+  return answered ? Math.max(0, Math.min(1, (paid - EXAM_PENALTY * wrong) / answered)) : 1;
+}
+/** Уход из приложения дольше этого во время задачи — ответ не честный (калькулятор, поиск, подсказка со стороны). */
+export const AWAY_MS = 3000;
+
 export function isHonest(timeMs: number, hintLevel: number, minMs = 5000) {
   return timeMs >= minMs && hintLevel < 4;
 }

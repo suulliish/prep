@@ -20,8 +20,8 @@
   const curIdx = $derived(WORLDS.findIndex(w => w.id === cur.id));
   const nextLocked = $derived(WORLDS.findIndex((_, i) => !worldOpen(i)));
   const doneCount = $derived(Object.values(game.save.skills).filter(s => ['learned', 'mastered', 'automatic'].includes(s.status)).length);
-  const bossReady = $derived(isWeekday(game.day) && planComplete(dayRec(), plan) && doneCount >= 3);
-  const bossWhy = $derived(!isWeekday(game.day) ? 'Демалыс күні шайқас жоқ' : doneCount < 3 ? 'Алдымен кемінде 3 тақырып үйрен' : !planComplete(dayRec(), plan) ? 'Алдымен бүгінгі жоспарды орында' : '');
+  const bossReady = $derived(isWeekday(game.day) && planComplete(dayRec(), plan) && doneCount >= 3 && !dayRec().bossTried);
+  const bossWhy = $derived(!isWeekday(game.day) ? 'Демалыс күні шайқас жоқ' : doneCount < 3 ? 'Алдымен кемінде 3 тақырып үйрен' : !planComplete(dayRec(), plan) ? 'Алдымен бүгінгі жоспарды орында' : dayRec().bossTried ? 'Бүгін бас жаумен шайқастың. Ертең тағы!' : '');
 
   let sel = $state(0);
   let flying = $state(false);
