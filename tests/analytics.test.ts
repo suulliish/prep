@@ -159,3 +159,38 @@ describe('Защиты 02.10', () => {
     expect(isAllowed({ uid: 'u2', email: 'b@x' }, ['a@x', 'u1'])).toBe(false);
   });
 });
+
+describe('«Исправился — дозаработал» (restoreFix)', () => {
+  const rec = (t: { n: number; paid: number; wrong: number }) => ({ date: 'd', blocksDone: {}, planShare: 0, minutesToday: 0, minutesWeekend: 0, extraMissions: 0, bonuses: [], tally: { new: { ...t } }, honest: {} as Record<string, number> });
+  it('починка ошибки: −¼ снимается, +1 добавляется, доля шага растёт', async () => {
+    const { restoreFix, examShare } = await import('../src/engine/planner');
+    const r = rec({ n: 12, paid: 9, wrong: 3 });
+    expect(examShare(9, 3, 12)).toBeCloseTo(0.6875);
+    expect(restoreFix(r, 'new', false)).toBe(true);
+    expect(r.tally.new).toEqual({ n: 12, paid: 10, wrong: 2 });
+    expect(r.honest.new).toBeCloseTo((10 - 0.5) / 12);
+    restoreFix(r, 'new', false); restoreFix(r, 'new', false);
+    expect(r.honest.new).toBeCloseTo(1);               // все ошибки исправлены — шаг даёт 100%
+    expect(restoreFix(r, 'new', false)).toBe(false);   // больше 100% не бывает
+  });
+  it('«Білмеймін» тоже чинится (+1, штрафа не было); без записи шага — ничего', async () => {
+    const { restoreFix } = await import('../src/engine/planner');
+    const r = rec({ n: 10, paid: 8, wrong: 0 });
+    restoreFix(r, 'new', true);
+    expect(r.tally.new).toEqual({ n: 10, paid: 9, wrong: 0 });
+    expect(restoreFix(r, 'mixed', false)).toBe(false);
+  });
+  it('нарочно ошибиться и починить не выгоднее, чем ответить верно сразу', async () => {
+    const { restoreFix, examShare } = await import('../src/engine/planner');
+    const r = rec({ n: 10, paid: 9, wrong: 1 });
+    restoreFix(r, 'new', false);
+    expect(r.honest.new).toBe(examShare(10, 0, 10));   // ровно как десять верных сразу, не больше
+  });
+  it('возврат только за сегодняшние ошибки шагов плана', async () => {
+    const { restorableFix } = await import('../src/engine/planner');
+    expect(restorableFix({ addedDay: '2026-10-02', block: 'new' }, '2026-10-02')).toBe(true);
+    expect(restorableFix({ addedDay: '2026-10-01', block: 'new' }, '2026-10-02')).toBe(false);
+    expect(restorableFix({ addedDay: '2026-10-02' }, '2026-10-02')).toBe(false);
+    expect(restorableFix({ addedDay: '2026-10-02', block: 'new', fixed: true }, '2026-10-02')).toBe(false);
+  });
+});

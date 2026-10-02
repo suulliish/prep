@@ -167,6 +167,7 @@
       <b class="num">{integrity}%</b>
     </div>
     {#if broken.length}
+      <div class="paper rule">Бүгінгі қатені бүгін түзетсең, сол қадамның минуты қайтады.</div>
       <div class="paper rule">{REPAIR_FOR_EXTRA} ақау болса, қосымша миссия жөндеу арқылы ашылады: барлық ақауды жөнде (бір күнде {REPAIR_EXTRA_MAX}-ға дейін), +{EXTRA_MIN} мин аласың.{#if coinsHalved(broken.length)} Ақау 6-дан көп болса, тиындар жартылай беріледі.{/if}</div>
     {/if}
     {#if broken.length}

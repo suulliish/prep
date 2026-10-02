@@ -9,7 +9,7 @@
   import { game, go, levelOf, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { ensurePlan, dayRec } from '../lib/session.svelte';
-  import { canStartExtra, planComplete, TODAY_MAX, round5, extraCap, extraNeedsRepair, REPAIR_FOR_EXTRA, EXTRA_MIN, repairNeed } from '../engine/planner';
+  import { canStartExtra, planComplete, TODAY_MAX, round5, extraCap, extraNeedsRepair, REPAIR_FOR_EXTRA, EXTRA_MIN, repairNeed, restorableFix } from '../engine/planner';
   import { openBreaks, shipIntegrity, integrityColor, coinsHalved, claimShipChest } from '../engine/repair';
   import { isWeekday } from '../engine/dates';
   import { streak } from '../engine/streak';
@@ -68,6 +68,8 @@
   const extraOk = $derived(canStartExtra(rec, plan, game.save.settings.extraMissionCap));
   // доп. миссия при ≥ 3 поломках — ремонтная: починил 3, получил её +15 минут (засчитывает бой)
   const extraRepair = $derived(extraOk && needsRepair);
+  // «исправился — дозаработал»: сегодняшние ошибки плана, починка которых вернёт минуты (план уже пройден)
+  const fixable = $derived(game.save.repairShop.filter(r => restorableFix(r, game.day)).length);
   const name = $derived(game.save.heroName);
   const bossReady = $derived(weekday && done && !game.save.worldsCleared?.includes(game.save.world ?? 'village') && learnedTotal >= 3);
 
@@ -175,6 +177,7 @@
     : !weekday ? { label: 'Картаны ашу', go: () => nav('map') }
     : nextBlock ? { label: resume && nextBlock.id === 'new' ? 'Жалғастыру' : 'Бастау', go: () => start(nextBlock!.id) }
     : extraRepair ? { label: 'Жөндеуді бастау', go: () => { audio.unlock(); audio.play('energy'); portal(() => go({ name: 'session', block: 'repair', asExtra: true })); } }
+    : fixable > 0 && TODAY_MAX > rec.minutesToday ? { label: `Қатені түзет · минутты қайтар (${fixable})`, go: () => { audio.unlock(); audio.play('energy'); portal(() => go({ name: 'session', block: 'repair' })); } }
     : extraOk ? { label: 'Бастау', go: () => { audio.unlock(); audio.play('energy'); portal(() => go({ name: 'session', block: 'extra' })); } }
     : { label: 'Картаны ашу', go: () => nav('map') }
   );
