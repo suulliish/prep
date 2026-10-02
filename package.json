@@ -11,7 +11,8 @@
     "check:templates": "node scripts/check-templates.mjs 2000",
     "samples": "node scripts/sample-templates.mjs 3",
     "bank": "node scripts/bank/build-bank.mjs",
-    "check:all": "npm test && npm run check:templates"
+    "check:all": "npm test && npm run check:templates",
+    "systems": "SYSTEMS_WRITE=1 vitest run tests/systems.test.ts"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.1",
