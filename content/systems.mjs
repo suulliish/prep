@@ -80,7 +80,7 @@ export const MECHANICS = [
     code: ['src/screens/Album.svelte'] },
 
   // ---------------- родитель ----------------
-  { id: 'commander', name: 'Экран командира (брат / отец)', group: 'родитель', kind: 'view', inputs: ['analytics', 'skill-status', 'plan'], outputs: ['minutes', 'streak', 'settings'], shown: 'parent',
+  { id: 'commander', name: 'Экран командира (Султан)', group: 'родитель', kind: 'view', inputs: ['analytics', 'skill-status', 'plan'], outputs: ['minutes', 'streak', 'settings'], shown: 'parent',
     code: ['src/screens/Commander.svelte'], data: ['kzReview'], notes: 'подарки +10/+15 мин без лимита; если PIN не задан, его может придумать ребёнок' },
   { id: 'settings', name: 'Настройки (имя героя, доп. миссии, голос, фото)', group: 'родитель', kind: 'rule', terminal: true, inputs: ['commander'], outputs: [], shown: 'parent',
     code: ['src/screens/Commander.svelte', 'src/lib/store.svelte.ts'], data: ['settings', 'heroName'], notes: 'settings.planMinutes нигде не читается' },

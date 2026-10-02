@@ -75,7 +75,7 @@
   const secs = (ms: number) => (ms / 1000).toFixed(ms < 10000 ? 1 : 0);
   const dayName = (d: string) => (d === game.day ? 'сегодня' : dm(d));
   const brokenNow = $derived(openBreaks(game.save));
-  // отец открывает вкладку на своём устройстве: если вошёл в облако, подтягиваем свежие ответы (один раз за вход в раздел)
+  // командир открывает вкладку на своём устройстве: если вошёл в облако, подтягиваем свежие ответы (один раз за вход в раздел)
   let ansSynced = false;
   // «Аналитика»: поведение (src/lib/track.svelte.ts) + ответы, вспоминания, «Дәптер», Бит — src/engine/analytics.ts
   let stPeriod = $state(14);
