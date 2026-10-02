@@ -71,9 +71,8 @@ export function settleDay(rec: DayRecord, plan: Plan, extraTo: 'today' | 'weeken
   rec.planShare = total ? done / total : 0;
   // доп. миссии: 15 мин × доля честных ответов в каждой (extraHonest — сумма долей; в старых сохранениях её нет — считаем честными)
   const extra = Math.min(EXTRA_MIN * EXTRA_MISSIONS_MAX, round5((rec.extraHonest ?? rec.extraMissions) * EXTRA_MIN));
-  // в счёт идут только подарки командира; старые бонусы за освоение (mastery) остаются в записи для истории, но минут не дают
-  const bonus = rec.bonuses.filter(b => !b.mastery).reduce((s, b) => s + b.minutes, 0);
-  rec.minutesToday = round5(TODAY_MAX * rec.planShare) + (extraTo === 'today' ? extra : 0) + bonus;
+  // подарков командира нет (решение Султана 02.10): старые бонусы остаются в записи для истории, но минут не дают
+  rec.minutesToday = round5(TODAY_MAX * rec.planShare) + (extraTo === 'today' ? extra : 0);
   rec.minutesWeekend = Math.round(WEEKEND_PER_DAY * rec.planShare) + (extraTo === 'weekend' ? extra : 0);
 }
 
