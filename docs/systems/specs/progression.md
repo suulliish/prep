@@ -1,4 +1,7 @@
 # Спецификация: прогрессия и награды (сжатый пересказ)
+
+> **Канон — `docs/systems/IMPLEMENTATION.md` v2.** Где этот текст расходится с ним (имена полей, константы, даты, номера PR, пометки «КОНФЛИКТ»), прав IMPLEMENTATION §1–§4.
+
 Модели: scratchpad/prog/pace.mjs (темп 02.10: без каникул, Пн/Ср/Чт до 15.11.2027), catalog.mjs, econ.mjs.
 
 ## Save v2 (save.prog; у темы topics[id].home)
