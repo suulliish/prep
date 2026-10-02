@@ -7,7 +7,7 @@
   import { game, go, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
-  import { ReadGate } from '../lib/readgate.svelte';
+  import { ReadGate, readMs } from '../lib/readgate.svelte';
     import { sparksAt, sceneCenter } from '../ui/fx.svelte';
   // @ts-ignore
   import { INTRO } from '../../content/intro.mjs';
@@ -16,9 +16,8 @@
   let i = $state(0);
   let started = $state(false);
   const gate = new ReadGate();
-  // Заставка — история, а не урок: «дальше» открывается через 1 с, дослушивать голос Бита необязательно
-  // (читать-и-ждать нужно в уроках, см. docs/GAME_LOOP.md 10). Слово торопить голосом не нужно.
-  const hold = (_k: number) => gate.start(1000, false);
+  // Заставка тоже не пролистывается вслепую (решение семьи 02.10): «дальше» заряжается на время чтения слайда и ждёт конца реплики Бита.
+  const hold = (k: number) => gate.start(readMs(slides[k].title, slides[k].kz));
   const s = $derived(slides[i]);
   const voice = (k: number) => `${import.meta.env.BASE_URL}voice/intro/intro_${k}.mp3`;
 

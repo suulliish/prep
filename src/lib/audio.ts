@@ -72,6 +72,8 @@ class AudioEngine {
   private stats = { sample: 0, synth: 0 };
   /** вкладка в фоне: музыка молчит и не планируется */
   private hidden = false;
+  /** идёт запись голоса ребёнка (src/lib/mic.ts): музыка молчит, чтобы не попасть в микрофон */
+  private listening = false;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -154,7 +156,7 @@ class AudioEngine {
     const t = this.ctx.currentTime;
     this.masterGain.gain.setTargetAtTime(this.settings.master, t, 0.05);
     this.sfxGain.gain.setTargetAtTime(this.settings.sfx, t, 0.05);
-    this.musicGain.gain.setTargetAtTime(this.musicTarget() * (this.voiceEl && !this.voiceEl.paused ? 0.35 : 1), t, 0.4);
+    this.musicGain.gain.setTargetAtTime(this.listening ? 0 : this.musicTarget() * (this.voiceEl && !this.voiceEl.paused ? 0.35 : 1), t, this.listening ? 0.05 : 0.4);
     this.syncSeq();
   }
 
@@ -208,6 +210,12 @@ class AudioEngine {
     const e = this.voiceEl; if (!e) return;
     this.voiceEl = null; e.onpause = e.onended = e.onerror = null;
     e.pause(); this.applyVolumes(); this.voiceDone();
+  }
+  /** Запись голоса ребёнка: Бит замолкает, музыка гаснет; после записи музыка возвращается как была. */
+  listen(on: boolean) {
+    if (on) this.stopVoice();
+    this.listening = on;
+    this.applyVolumes();
   }
   /** Голос слышен: громкость реплик и общая выше порога. Без звука видео-объяснение идёт в темпе чтения. */
   voiceOn() { return this.settings.voice * this.settings.master > 0.01; }

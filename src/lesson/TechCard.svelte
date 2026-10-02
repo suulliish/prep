@@ -1,18 +1,19 @@
 <script lang="ts">
   // Карточка приёма (docs/GAME_LOOP.md 19): после «Есте сақта» ребёнок получает свой приём темы. Цвет приёма, значок вида удара
   // (дуга, выпад, разрез, двойной, вихрь), название, «Жаңа тәсіл!». Появляется с пружинкой, лучи за карточкой вращаются, искры разлетаются, название блестит.
-  // Звук levelup; закрывается касанием, Enter, пробелом или Esc (первые 0.5 с не закрывается: чтобы не смахнуть случайным касанием).
+  // Звук levelup; закрывается касанием, Enter, пробелом или Esc (первые ARM_MS не закрывается: название приёма надо увидеть, а не смахнуть).
   import { onMount } from 'svelte';
   import { audio } from '../lib/audio';
   let { name, color, fx, onclose }: { name: string; color: number; fx: 'arc' | 'pierce' | 'split' | 'multi' | 'spin'; onclose: () => void } = $props();
   const hex = $derived('#' + color.toString(16).padStart(6, '0'));
+  const ARM_MS = 2500;
   let armed = $state(false);
   // 14 искр: угол, дальность и задержка заранее, без случайности при перерисовке
   const sparks = Array.from({ length: 14 }, (_, k) => ({ a: (k / 14) * 360 + (k % 2) * 12, r: 120 + ((k * 37) % 70), d: (k * 41) % 260, s: 10 + (k % 3) * 5 }));
   function close() { if (!armed) return; audio.play('click'); onclose(); }
   onMount(() => {
     audio.play('levelup');
-    const t = window.setTimeout(() => (armed = true), 500);
+    const t = window.setTimeout(() => (armed = true), ARM_MS);
     return () => clearTimeout(t);
   });
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };

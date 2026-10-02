@@ -2,6 +2,7 @@
 // через время чтения текста И после конца голосовой реплики Бита — как перезарядка умения в играх.
 // Жмёт раньше — кнопка качается, Бит просит дослушать.
 import { audio } from './audio';
+import { trackNope } from './track.svelte';
 
 /** Время чтения: ~0.35 с на слово (беглое чтение 5-го класса), от 2 до 9 с. */
 export const readMs = (...texts: (string | undefined | null)[]) => {
@@ -26,5 +27,5 @@ export class ReadGate {
   }
   stop() { clearTimeout(this.#t); clearTimeout(this.#cap); this.#id++; this.on = false; this.done = false; }
   /** Нажал раньше времени: кнопка качается. */
-  nope() { const b = document.querySelector<HTMLElement>('.btn.charging'); b?.classList.remove('nope'); void b?.offsetWidth; b?.classList.add('nope'); }
+  nope() { trackNope(); const b = document.querySelector<HTMLElement>('.btn.charging'); b?.classList.remove('nope'); void b?.offsetWidth; b?.classList.add('nope'); }
 }

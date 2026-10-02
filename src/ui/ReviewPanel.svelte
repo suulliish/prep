@@ -14,8 +14,13 @@
   import { GLITCH_SAY } from '../engine/glitchturn';
   import { mistakeText } from '../engine/items';
   import type { Review, ReviewMode } from '../engine/review';
+  import { reviewStart, reviewEnd } from '../lib/track.svelte';
 
-  let { review, mode, sure = false, fastMs = 0, easy = false, onnext, children }: { review: Review; mode: ReviewMode; sure?: boolean; fastMs?: number; easy?: boolean; onnext: () => void; children?: Snippet } = $props();
+  let { review, mode, sure = false, fastMs = 0, easy = false, skill = '', onnext, children }: { review: Review; mode: ReviewMode; sure?: boolean; fastMs?: number; easy?: boolean; skill?: string; onnext: () => void; children?: Snippet } = $props();
+  // аналитика командира: сколько разбор был открыт и сколько раз нажато раньше времени (src/lib/track.svelte.ts)
+  // svelte-ignore state_referenced_locally
+  reviewStart(skill);
+  onDestroy(reviewEnd);
 
   // kind разбора не меняется, пока панель жива (Session пересоздаёт её на каждый разбор), поэтому начальные значения читаем один раз
   // svelte-ignore state_referenced_locally
