@@ -2,12 +2,13 @@
 // Только после ответа ученика и только для вошедших в облако — см. helper/README.md.
 import { game, persist } from './store.svelte';
 import { toBase64 } from './mic';
-import { payload, lessonPayload, teachPayload, type Turn, type TaskContext, type LessonContext, type TeachContext, type TeachReply } from '../engine/helperPayload';
-export type { Turn, LessonContext, TeachContext, TeachReply, Verdict } from '../engine/helperPayload';
+import { payload, lessonPayload, teachPayload, notebookPayload, readNotebookCheck, type Turn, type TaskContext, type LessonContext, type TeachContext, type TeachReply, type NotebookContext, type NotebookCheck } from '../engine/helperPayload';
+export type { Turn, LessonContext, TeachContext, TeachReply, Verdict, NotebookContext, NotebookCheck, NbField, NbMark } from '../engine/helperPayload';
 
 const HELPER_BASE = 'https://bit-helper-264603430786.europe-west1.run.app';
 export const HELPER_URL = `${HELPER_BASE}/explain`;
 export const TRANSCRIBE_URL = `${HELPER_BASE}/transcribe`;
+export const NOTEBOOK_URL = `${HELPER_BASE}/notebook`;
 export const MAX_QUESTIONS = 3; // уточняющих вопросов на одну задачу
 
 export type HelperError = 'sign_in' | 'quota' | 'offline' | 'ai_unavailable';
@@ -75,6 +76,19 @@ export async function transcribe(rec: { blob: Blob; mime: string; ms: number }, 
   const r = await postJson({ audio, mime: rec.mime, seconds: Math.round(rec.ms / 100) / 10, ...(hint ? { hint: hint.slice(0, 200) } : {}) }, TRANSCRIBE_URL);
   if (!r || typeof r.text !== 'string') throw 'ai_unavailable' as HelperError;
   return r.text.trim();
+}
+
+const MARK_RU: Record<string, string> = { ok: '✓', partial: '½', wrong: '✗', missing: '—' };
+/** «Дәптер»: Бит проверяет фото бумажной карточки по четырём полям. Фото на сервере не хранится; в журнал командира — отметки и заметки. */
+export async function checkNotebookPhoto(c: NotebookContext, image: string, mime: string): Promise<NotebookCheck> {
+  const out = readNotebookCheck(await postJson(notebookPayload(c, image, mime), NOTEBOOK_URL));
+  if (!out) throw 'ai_unavailable' as HelperError;
+  const f = out.fields;
+  const a = out.readable
+    ? `Ереже ${MARK_RU[f.rule.mark]} ${f.rule.note} · Мысал ${MARK_RU[f.example.mark]} ${f.example.note} · Қақпан ${MARK_RU[f.trap.mark]} ${f.trap.note} · Сызба ${MARK_RU[f.scheme.mark]} ${f.scheme.note}${out.fix ? ` · Түзет: ${out.fix}` : ''}`
+    : `Фото не прочитано: ${out.fix}`;
+  logAsk(c.skill, `Дәптер · ${c.title}`, '📷 фото тетради', a);
+  return out;
 }
 
 export const HELPER_ERR: Record<HelperError, string> = {

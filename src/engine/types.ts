@@ -57,6 +57,7 @@ export interface Settings {
   planMinutes: number;
   pin?: string;
   voiceInput?: boolean;             // кнопка «Айтып бер» (голосовой ввод); нет поля = включено
+  notebookPhoto?: boolean;          // «Дәптер»: Бит проверяет фото карточки; нет поля = включено
 }
 
 export interface Save {
@@ -99,6 +100,10 @@ export interface RecallEntry { day: string; ok: boolean; hint: 0 | 1 | 2 | 3; co
 /** step — сколько верных возвратов без подсказки подряд (минус откаты); зачтена при step ≥ 3. due — дата следующего возврата. */
 export interface RecallState { learnedDay: string; step: number; due: string; history: RecallEntry[] }
 /** exampleOk: true/false — игра проверила «мой пример» вычислением; null — проверить нельзя, записано как есть. */
-export interface NotebookEntry { day: string; wrote?: boolean; example?: string; exampleOk?: boolean | null }
+/** check — проверка фото карточки Битом (helper/notebook.mjs): отметки полей rule/example/trap/scheme, что исправить, сколько раз снимали. */
+export interface NotebookEntry {
+  day: string; wrote?: boolean; example?: string; exampleOk?: boolean | null;
+  check?: { at: number; readable: boolean; marks: Record<string, 'ok' | 'partial' | 'wrong' | 'missing'>; fix: string; tries: number };
+}
 
 export interface AiTurn { at: number; day: string; skill: string; task: string; q: string; a: string; voice?: boolean }   // voice — ребёнок надиктовал, а не напечатал

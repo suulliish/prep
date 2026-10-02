@@ -2,6 +2,8 @@
   // «Дәптер» после урока (docs/GAME_LOOP.md 21): бумажная тетрадь, а не конспект с экрана. Ребёнок закрывает урок и пишет на бумаге
   // карточку из четырёх полей (правило своими словами · мой пример · ловушка Глитча · схема), потом сверяет с правилом и правит красной ручкой.
   // «Менің мысалым» вводится в игру: где можно, игра проверяет вычислением (src/lesson/notebook.ts).
+  // После «Жаздым» — фото карточки: Бит проверяет все четыре поля по эталону урока (helper/notebook.mjs) и говорит, что исправить
+  // красной ручкой; на сверке рядом с эталоном видны его отметки. Без входа в облако, без сети или если командир выключил — сразу сверка, как раньше.
   // Подключение: <NotebookCard skill={id} onclose={() => …} />. Сам ставит тему на возвраты «Еске түсір» и пишет save.notebook[skill].
   import { onMount } from 'svelte';
   import Bit from '../ui/Bit.svelte';
@@ -11,14 +13,17 @@
   import { ReadGate } from '../lib/readgate.svelte';
   import { enroll } from '../engine/recall';
   import { fieldsFor, exampleSpec, checkExample } from './notebook';
+  import { checkNotebookPhoto, HELPER_ERR, type HelperError, type NotebookCheck, type NbField, type NbMark } from '../lib/helper';
+  import { shrinkPhoto } from '../lib/photo';
 
-  let { skill, onclose }: { skill: string; onclose: () => void } = $props();
+  // check — подмена запроса для проверок без сервера; signedIn — без облака (в игре не нужны)
+  let { skill, onclose, check = checkNotebookPhoto, signedIn }: { skill: string; onclose: () => void; check?: typeof checkNotebookPhoto; signedIn?: boolean } = $props();
 
   const f = $derived(fieldsFor(skill));
   const spec = $derived(exampleSpec(skill));
   const title = $derived(skillDefs.find(d => d.id === skill)?.title.kz ?? '');
 
-  let phase = $state<'write' | 'check'>('write');
+  let phase = $state<'write' | 'photo' | 'check'>('write');
   let example = $state('');
   let exMsg = $state('');
   let exOk = $state<boolean | null>(null);
@@ -34,7 +39,59 @@
     if (say) { tip = say; clearTimeout(tipT); tipT = window.setTimeout(() => (tip = ''), 2600); }
   }
 
+  // облако грузится лениво (Firebase — отдельный кусок сайта), как в TeachBack.svelte
+  let C = $state<typeof import('../lib/cloud.svelte') | null>(null);
+  const photoOn = $derived(game.save.settings.notebookPhoto !== false && (signedIn ?? !!C?.cloud.user));
+
+  // ---- фото карточки ----
+  const MAX_TRIES = 3;
+  let busy = $state(false);
+  let res = $state<NotebookCheck | null>(null);
+  let pErr = $state('');
+  let tries = $state(0);
+  let alive = true;
+  // «Суретсіз тексеру» прячем: появляется после сбоя или через SKIP_AFTER_MS (ребёнок не должен проскакивать проверку)
+  const SKIP_AFTER_MS = 40000;
+  let late = $state(false), lateT = 0;
+  const failed = $derived(!!pErr || (res !== null && !res.readable));
+  const MARK: Record<NbMark, { t: string; cls: string }> = { ok: { t: '✓', cls: 'ok' }, partial: { t: '½', cls: 'half' }, wrong: { t: '✗', cls: 'bad' }, missing: { t: '—', cls: 'none' } };
+  const LABEL: Record<NbField, string> = { rule: 'Ереже өз сөзіңмен', example: 'Менің мысалым', trap: 'Глитчтің қақпаны', scheme: 'Сызба' };
+
+  async function onPhoto(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';                       // та же карточка ещё раз — снова событие change
+    if (!file || busy || tries >= MAX_TRIES) return;
+    busy = true; pErr = ''; tries++;
+    audio.play('click');
+    try {
+      const { image, mime } = await shrinkPhoto(file);
+      const ent = game.save.notebook?.[skill];
+      const r = await check({
+        skill, title, ruleLines: f!.ruleLines, trap: f!.trap ? { bad: f!.trap.bad, fix: f!.trap.fix } : null,
+        example: ent?.example, exampleOk: ent?.exampleOk, sample: spec?.ph,
+      }, image, mime);
+      if (!alive) return;
+      res = r;
+      const marks = Object.fromEntries(Object.entries(r.fields).map(([k, v]) => [k, v.mark]));
+      if (ent) { ent.check = { at: Date.now(), readable: r.readable, marks, fix: r.fix, tries }; persist(); }
+      const good = r.readable && Object.values(r.fields).every(v => v.mark === 'ok');
+      audio.play(!r.readable ? 'wrong' : good ? 'correct' : 'hint');
+    } catch (err) {
+      if (!alive) return;
+      pErr = typeof err === 'string' && err in HELPER_ERR ? HELPER_ERR[err as HelperError] : 'Суретті оқи алмадым. Қайта түсіріп көр.';
+    }
+    busy = false;
+  }
+  function toCheck() {
+    if (busy) return;
+    audio.play('click');
+    phase = 'check'; tip = '';
+    gate.start(CHECK_MS, false);
+  }
+
   onMount(() => {
+    if (signedIn === undefined) import('../lib/cloud.svelte').then(m => (C = m)).catch(() => {});
     gate.start(WRITE_MS, false);
     enroll(game.save, skill, game.day);
     game.save.notebook ??= {};
@@ -42,7 +99,7 @@
     if (!cur) game.save.notebook[skill] = { day: game.day };
     else if (cur.example) { example = cur.example; exOk = cur.exampleOk ?? null; }
     persist();
-    return () => { gate.stop(); clearTimeout(tipT); };
+    return () => { alive = false; gate.stop(); clearTimeout(tipT); clearTimeout(lateT); };
   });
 
   function saveExample() {
@@ -62,18 +119,37 @@
     if (example.trim() && !checked) saveExample();
     const e = game.save.notebook?.[skill];
     if (e) { e.wrote = true; persist(); }
-    phase = 'check'; tip = '';
+    tip = '';
+    if (photoOn) { phase = 'photo'; lateT = window.setTimeout(() => (late = true), SKIP_AFTER_MS); return; }
+    phase = 'check';
     gate.start(CHECK_MS, false);
   }
+  const bitText = $derived.by(() => {
+    if (phase === 'write') return 'Дәптеріңді аш! Экранға қарамай жаз:';
+    if (phase === 'photo') {
+      if (busy) return 'Оқып жатырмын…';
+      if (pErr) return pErr;
+      if (!res) return 'Жазғаныңды суретке түсір, мен тексеремін! Төрт бөлім де көрінсін, жарық болсын.';
+      if (!res.readable) return res.fix || 'Жазуды көре алмадым. Жақынырақ, жарықта түсір.';
+      const all = Object.values(res.fields).every(v => v.mark === 'ok');
+      return all ? `${res.praise || 'Бәрі дұрыс!'} Енді эталонмен салыстыр.` : `${res.praise ? res.praise + ' ' : ''}Қызыл қаламмен түзет: ${res.fix}`;
+    }
+    return res?.readable && res.fix ? `Енді эталонмен салыстыр. Қызыл қаламмен: ${res.fix}` : 'Енді жазғаныңды тексер. Қызыл қаламмен түзет, өшірме!';
+  });
+
   function close() { if (gate.on) return nope(); audio.play('click'); onclose(); }
 </script>
+
+<!-- заметка Бита под эталоном на сверке: только где есть что исправить -->
+{#snippet note(k: NbField)}
+  {#if res?.readable && res.fields[k].mark !== 'ok' && res.fields[k].note}<p class="bitnote">Бит: {res.fields[k].note}</p>{/if}
+{/snippet}
 
 {#if f}
   <div class="nb-scrim" role="dialog" aria-modal="true" aria-label="Дәптер">
     <div class="nb panel">
       <div class="head">
-        <Bit compact mood={phase === 'write' ? 'idle' : 'happy'}
-          text={phase === 'write' ? 'Дәптеріңді аш! Экранға қарамай жаз:' : 'Енді жазғаныңды тексер. Қызыл қаламмен түзет, өшірме!'} />
+        <Bit compact mood={phase === 'write' ? 'idle' : phase === 'photo' && (busy || failed || (res && res.fix)) ? 'think' : 'happy'} text={bitText} />
       </div>
       <div class="body">
         <span class="tag topic">{title}</span>
@@ -103,30 +179,63 @@
             <b><i class="n">4</i>Сызба</b>
             <p>Шамалардың байланысын сыз: жолақ, сан түзуі немесе қадамдар. Заттардың суретін салма.</p>
           </section>
+        {:else if phase === 'photo'}
+          {#if res?.readable}
+            {#each Object.entries(LABEL) as [k, label], i}
+              {@const v = res.fields[k as NbField]}
+              <section class="paper fld mk">
+                <b><i class="n">{i + 1}</i>{label}<span class="mark {MARK[v.mark].cls}">{MARK[v.mark].t}</span></b>
+                {#if v.note}<p>{v.note}</p>{/if}
+              </section>
+            {/each}
+          {/if}
+          {#if tries < MAX_TRIES && !(res?.readable && Object.values(res.fields).every(v => v.mark === 'ok'))}
+            <label class="btn {res ? 'ghost' : 'primary'} big block shot" class:wait={busy} aria-disabled={busy}>
+              <Icon name="camera" fill={res ? 'var(--code)' : 'var(--outline)'} size={24} />{busy ? 'Бит оқып жатыр…' : res?.readable ? 'Түзеттім — қайта түсір' : res || pErr ? 'Қайта түсір' : 'Суретке түсір'}
+              <input type="file" accept="image/*" capture="environment" hidden disabled={busy} onchange={onPhoto} />
+            </label>
+          {/if}
+          {#if res?.readable}<p class="red"><Icon name="check" fill="var(--miss)" size={18} />Түзетуді қызыл қаламмен жаз. Ескі жазуды өшірме.</p>{/if}
         {:else}
           <section class="paper fld">
-            <b><i class="n">1</i>Ереже</b>
+            <b><i class="n">1</i>Ереже{#if res?.readable}<span class="mark {MARK[res.fields.rule.mark].cls}">{MARK[res.fields.rule.mark].t}</span>{/if}</b>
             {#each f.ruleLines as l}<p>★ {l}</p>{/each}
+            {@render note('rule')}
           </section>
-          {#if example.trim()}
+          {#if example.trim() || res?.readable}
             <section class="paper fld">
-              <b><i class="n">2</i>Менің мысалым</b>
-              <p><em>{example}</em></p>
+              <b><i class="n">2</i>Менің мысалым{#if res?.readable}<span class="mark {MARK[res.fields.example.mark].cls}">{MARK[res.fields.example.mark].t}</span>{/if}</b>
+              {#if example.trim()}<p><em>{example}</em></p>{/if}
               {#if exMsg}<p class="exmsg" class:good={exOk === true} class:bad={exOk === false}>{exMsg}</p>{/if}
+              {@render note('example')}
             </section>
           {/if}
           {#if f.trap}
             <section class="paper fld">
-              <b><i class="n">3</i>Глитчтің қақпаны</b>
+              <b><i class="n">3</i>Глитчтің қақпаны{#if res?.readable}<span class="mark {MARK[res.fields.trap.mark].cls}">{MARK[res.fields.trap.mark].t}</span>{/if}</b>
               <p>{f.trap.fix}</p>
+              {@render note('trap')}
+            </section>
+          {/if}
+          {#if res?.readable}
+            <section class="paper fld">
+              <b><i class="n">4</i>Сызба<span class="mark {MARK[res.fields.scheme.mark].cls}">{MARK[res.fields.scheme.mark].t}</span></b>
+              {@render note('scheme')}
             </section>
           {/if}
           <p class="red"><Icon name="check" fill="var(--miss)" size={18} />Түзетуді қызыл қаламмен жаз. Ескі жазуды өшірме: қатеңнен үйренесің.</p>
         {/if}
       </div>
-      <div class="foot">
+      <div class="foot" class:empty={phase === 'photo' && !res && !failed && !late}>
         {#if tip}<div class="tip" role="status">{tip}</div>{/if}
-        {#if phase === 'write'}
+        {#if phase === 'photo'}
+          <!-- дальше — когда Бит ответил или проверить не вышло; до фото — тихий пропуск через 40 с (нет камеры, тетрадь не с собой) -->
+          {#if res || failed}
+            <button class="btn go big block" disabled={busy} onclick={toCheck}>Эталонмен салыстыр<Icon name="chevron" fill={busy ? '#d7dcf5' : 'var(--outline)'} size={20} /></button>
+          {:else if late}
+            <button class="btn ghost block skip" disabled={busy} onclick={toCheck}>Суретсіз тексеру</button>
+          {/if}
+        {:else if phase === 'write'}
           <button bind:this={btn} class="btn primary big block" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={wrote}><Icon name="book" fill={gate.on ? '#d7dcf5' : 'var(--outline)'} size={22} />Жаздым</button>
         {:else}
           <button bind:this={btn} class="btn go big block" class:charging={gate.on} class:charged={gate.done} style="--gate:{gate.ms}ms" onclick={close}>Дайын<Icon name="chevron" fill={gate.on ? '#d7dcf5' : 'var(--outline)'} size={20} /></button>
@@ -164,6 +273,16 @@
   .fld .exmsg { padding: 6px 10px; border-radius: 10px; background: var(--paper-2); }
   .fld .exmsg.good { background: #c9f7d8; }
   .fld .exmsg.bad { background: #ffe0d6; }
+  .foot.empty { display: none; }
+  .fld .bitnote { padding: 6px 10px; border-radius: 10px; background: #ffe0d6; font-weight: 800; }
+  .mark { margin-left: auto; flex: none; min-width: 30px; height: 30px; display: grid; place-items: center; padding: 0 6px; font: 900 17px var(--disp); border: 2px solid var(--outline); border-radius: 10px; }
+  .mark.ok { background: var(--ok); color: var(--outline); }
+  .mark.half { background: var(--gold); color: var(--outline); }
+  .mark.bad { background: var(--miss); color: #fff; }
+  .mark.none { background: var(--paper-2); color: var(--paper-dim); }
+  .shot { display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; }
+  .shot[aria-disabled='true'] { pointer-events: none; }
+  .skip { min-height: 44px; font-size: var(--fs-s); }
   .red { margin: 0; display: flex; gap: 8px; align-items: center; color: var(--ink); font: 800 14px/1.35 var(--txt); }
   @keyframes nb-fade { from { opacity: 0; } }
   @media (max-height: 460px) and (min-width: 640px) {

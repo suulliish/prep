@@ -5,13 +5,15 @@
 // Режим «урок» (mode:'lesson', helper/lesson.mjs): объясняет шаг урока иначе; закрытые числа приходят как ▢ и не раскрываются.
 // Режим «Биткә түсіндір» (mode:'teachback', helper/teachback.mjs): ребёнок объясняет тему, Бит оценивает понимание (JSON с вердиктом).
 // Голосовой ввод (POST /transcribe, helper/transcribe.mjs): запись голоса ребёнка → текст в поле ответа; аудио не сохраняется.
+// Проверка «Дәптер» (POST /notebook, helper/notebook.mjs): фото бумажной карточки темы → отметки по четырём полям; фото не сохраняется.
 // Спрашивать могут только вошедшие в облако сайта (Firebase ID token проекта prep-b72a9).
 import http from 'node:http';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { GoogleGenAI } from '@google/genai';
 import { SYSTEM_LESSON, checkLesson, lessonPrompt } from './lesson.mjs';
 import { SYSTEM_TEACH, TEACH_SCHEMA, TEACH_THINKING, checkTeach, teachPrompt, parseTeach, roundOf } from './teachback.mjs';
-import { SYSTEM_STT, STT_SCHEMA, STT_THINKING, MAX_BODY, checkAudio, transcribePrompt, parseTranscript } from './transcribe.mjs';
+import { SYSTEM_STT, STT_SCHEMA, STT_THINKING, MAX_BODY as MAX_AUDIO_BODY, checkAudio, transcribePrompt, parseTranscript } from './transcribe.mjs';
+import { SYSTEM_NOTEBOOK, NOTEBOOK_SCHEMA, MAX_BODY as MAX_PHOTO_BODY, checkNotebook, notebookPrompt, parseNotebook } from './notebook.mjs';
 
 const FIREBASE_PROJECT = process.env.FIREBASE_PROJECT || 'prep-b72a9';
 const MODELS = (process.env.MODELS || 'gemini-3.7-flash,gemini-3.5-flash').split(',');
@@ -20,6 +22,9 @@ const ALL_DAY = +(process.env.ALL_DAY || 200);
 // голосовой ввод считается отдельно: одна запись — это не вопрос к Биту, а замена клавиатуры (ответ потом всё равно идёт в /explain)
 const VOICE_PER_USER_DAY = +(process.env.VOICE_PER_USER_DAY || 60);
 const VOICE_ALL_DAY = +(process.env.VOICE_ALL_DAY || 300);
+// проверка тетради: одна-две карточки в день, пересъёмки — до 3 на карточку
+const NOTEBOOK_PER_USER_DAY = +(process.env.NOTEBOOK_PER_USER_DAY || 15);
+const NOTEBOOK_ALL_DAY = +(process.env.NOTEBOOK_ALL_DAY || 60);
 const TIMEOUT_MS = +(process.env.TIMEOUT_MS || 25000);
 const ORIGINS = (process.env.ORIGINS || 'https://suulliish.github.io,http://localhost:5173,http://localhost:4173').split(',');
 const SKIP_AUTH = process.env.SKIP_AUTH === '1'; // только для локальной проверки
@@ -61,6 +66,7 @@ function quota(perUser, all) {
 }
 const quotaOk = quota(PER_USER_DAY, ALL_DAY);
 const voiceQuotaOk = quota(VOICE_PER_USER_DAY, VOICE_ALL_DAY);
+const notebookQuotaOk = quota(NOTEBOOK_PER_USER_DAY, NOTEBOOK_ALL_DAY);
 
 async function whoIs(req) {
   if (SKIP_AUTH) return { uid: 'local', email: 'local' };
@@ -140,17 +146,18 @@ const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin || '';
   if (req.method === 'OPTIONS') return send(res, origin, 204);
   if (req.method === 'GET' && req.url === '/health') return send(res, origin, 200, { ok: true });
-  const voice = req.url === '/transcribe';
-  if (req.method !== 'POST' || (req.url !== '/explain' && !voice)) return send(res, origin, 404, { error: 'not_found' });
+  const voice = req.url === '/transcribe', photo = req.url === '/notebook';
+  if (req.method !== 'POST' || (req.url !== '/explain' && !voice && !photo)) return send(res, origin, 404, { error: 'not_found' });
 
   const who = await whoIs(req);
   if (!who) return send(res, origin, 401, { error: 'sign_in' });
   let body = '';
-  const limit = voice ? MAX_BODY : 20000;
+  const limit = voice ? MAX_AUDIO_BODY : photo ? MAX_PHOTO_BODY : 20000;
   for await (const chunk of req) { body += chunk; if (body.length > limit) return send(res, origin, 413, { error: 'too_big' }); }
   let b;
   try { b = JSON.parse(body); } catch { return send(res, origin, 400, { error: 'bad_json' }); }
   if (voice) return transcribe(res, origin, who, b);
+  if (photo) return notebook(res, origin, who, b);
   // режим «урок» (mode:'lesson') — шаг урока; «Биткә түсіндір» (mode:'teachback') — объяснение ребёнка; без mode — разобранная задача практики
   const lesson = b?.mode === 'lesson', teach = b?.mode === 'teachback';
   if (b?.mode !== undefined && b.mode !== 'practice' && !lesson && !teach) return send(res, origin, 400, { error: 'bad_mode' });
@@ -190,6 +197,22 @@ async function transcribe(res, origin, who, b) {
     send(res, origin, 200, out);
   } catch (e) {
     console.error('transcribe failed', String(e));
+    send(res, origin, 502, { error: 'ai_unavailable' });
+  }
+}
+
+async function notebook(res, origin, who, b) {
+  const bad = checkNotebook(b);
+  if (bad) return send(res, origin, 400, { error: bad });
+  if (!notebookQuotaOk(who.uid)) return send(res, origin, 429, { error: 'quota' });
+  try {
+    const t0 = Date.now();
+    // «размышление» по умолчанию: модель пересчитывает пример ребёнка, тут нужна точность, а не скорость
+    const { out, model } = await ask(notebookPrompt(b), SYSTEM_NOTEBOOK, { temperature: 0.2, maxOutputTokens: 6000, responseMimeType: 'application/json', responseSchema: NOTEBOOK_SCHEMA }, parseNotebook);
+    console.log(JSON.stringify({ uid: who.uid, mode: 'notebook', model, ms: Date.now() - t0, kb: Math.round(b.image.length * 0.75 / 1024), skill: clip(b.topic?.skill, 60), readable: out.readable, marks: Object.values(out.fields).map(f => f.mark).join(',') }));
+    send(res, origin, 200, out);
+  } catch (e) {
+    console.error('notebook failed', String(e));
     send(res, origin, 502, { error: 'ai_unavailable' });
   }
 }

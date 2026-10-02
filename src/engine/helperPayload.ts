@@ -111,3 +111,47 @@ export function teachPayload(c: TeachContext, history: Turn[], answer: string) {
     answer: answer.trim().slice(0, 400),
   };
 }
+
+// ---------- «Дәптер»: проверка фото карточки (helper/notebook.mjs) ----------
+export type NbField = 'rule' | 'example' | 'trap' | 'scheme';
+export type NbMark = 'ok' | 'partial' | 'wrong' | 'missing';
+export const NB_FIELDS: NbField[] = ['rule', 'example', 'trap', 'scheme'];
+export interface NotebookContext {
+  skill: string; title: string;
+  /** строки «Есте сақта» — эталон */
+  ruleLines: string[];
+  /** ловушка Глитча из урока: что написано с ошибкой и верный разбор */
+  trap: { bad: string; fix: string } | null;
+  /** пример, который ребёнок ввёл в игру, и итог проверки вычислением (null — тема без проверки) */
+  example?: string; exampleOk?: boolean | null;
+  /** образец из поля ввода: если в тетради ровно он — пример списан */
+  sample?: string;
+}
+export interface NotebookCheck { readable: boolean; fields: Record<NbField, { mark: NbMark; note: string }>; praise: string; fix: string }
+
+export function notebookPayload(c: NotebookContext, image: string, mime: string) {
+  const ex = c.example?.trim();
+  return {
+    topic: { skill: c.skill, title: c.title },
+    rule: c.ruleLines.filter(l => l.trim()).slice(0, 8),
+    trap: c.trap ? { bad: c.trap.bad, fix: c.trap.fix } : undefined,
+    example: ex || undefined,
+    exampleOk: ex ? c.exampleOk ?? null : undefined,
+    sample: c.sample || undefined,
+    image, mime,
+  };
+}
+
+/** Ответ сервера → проверка или null (не тот формат). Пустой fix при «не прочитал» — тоже null: ребёнку нечего показать. */
+export function readNotebookCheck(r: any): NotebookCheck | null {
+  if (!r || typeof r !== 'object' || typeof r.readable !== 'boolean' || !r.fields) return null;
+  const fields = {} as NotebookCheck['fields'];
+  for (const k of NB_FIELDS) {
+    const f = r.fields[k];
+    if (!f || !['ok', 'partial', 'wrong', 'missing'].includes(f.mark)) return null;
+    fields[k] = { mark: f.mark, note: typeof f.note === 'string' ? f.note.trim() : '' };
+  }
+  const fix = typeof r.fix === 'string' ? r.fix.trim() : '';
+  if (!r.readable && !fix) return null;
+  return { readable: r.readable, fields, praise: typeof r.praise === 'string' ? r.praise.trim() : '', fix };
+}

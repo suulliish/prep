@@ -1,7 +1,7 @@
 <script lang="ts">
   // Иконки дизайн-системы (docs/DESIGN_SYSTEM.md 8): SVG 24×24, заливка + тёмный контур, как у кнопок.
   type Name = 'back' | 'sound' | 'mute' | 'gear' | 'map' | 'hero' | 'cards' | 'clock' | 'crystal' | 'fire' | 'bolt' | 'lock'
-    | 'check' | 'cross' | 'star' | 'play' | 'sword' | 'book' | 'flag' | 'bulb' | 'mob' | 'chevron' | 'close' | 'coin' | 'hammer' | 'mic' | 'stop';
+    | 'check' | 'cross' | 'star' | 'play' | 'sword' | 'book' | 'flag' | 'bulb' | 'mob' | 'chevron' | 'close' | 'coin' | 'hammer' | 'mic' | 'stop' | 'camera';
   let { name, size = 24, fill = 'currentColor', stroke = 'var(--outline)' }: { name: Name; size?: number; fill?: string; stroke?: string } = $props();
 </script>
 
@@ -33,6 +33,7 @@
   {:else if name === 'hammer'}<path d="M3.5 8.5 9 3l5.5 1.2 2.8 2.8L15 9.3l-1.7-1.7L8 12.9z" /><path d="M11.5 10.5 20.5 19.5a2 2 0 0 1-2.9 2.9L8.6 13.4z" />
   {:else if name === 'mic'}<rect x="8" y="2" width="8" height="13" rx="4" /><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8.5 22h7" fill="none" stroke-width="2.6" />
   {:else if name === 'stop'}<rect x="5" y="5" width="14" height="14" rx="3" />
+  {:else if name === 'camera'}<path d="M3 8a2 2 0 0 1 2-2h2.5l1.5-2.5h6L16.5 6H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><circle cx="12" cy="13" r="4" fill="var(--outline)" stroke="none" /><circle cx="12" cy="13" r="2.2" fill="#fff" stroke="none" />
   {/if}
 </svg>
 
