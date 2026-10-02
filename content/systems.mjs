@@ -36,8 +36,8 @@ export const MECHANICS = [
     code: ['src/lib/helper.ts', 'helper/server.mjs'], data: ['aiLog'] },
 
   // ---------------- мотивация ----------------
-  { id: 'minutes', name: 'Минуты игры (реальная награда)', group: 'мотивация', kind: 'currency', terminal: true, inputs: ['plan', 'battle', 'extra', 'repair', 'commander'], outputs: [], shown: 'both',
-    code: ['src/engine/planner.ts'], notes: 'до 60 за план + 15 за доп. миссию; доля «как на экзамене» (+1 / −¼ / 0)' },
+  { id: 'minutes', name: 'Минуты игры (реальная награда)', group: 'мотивация', kind: 'currency', terminal: true, inputs: ['plan', 'battle', 'extra', 'repair'], outputs: [], shown: 'both',
+    code: ['src/engine/planner.ts'], notes: 'до 60 за план + 15 за доп. миссию; доля «как на экзамене» (+1 / −¼ / 0); подарков командира нет (02.10)' },
   { id: 'extra', name: 'Доп. миссия', group: 'мотивация', kind: 'action', inputs: ['plan', 'repair'], outputs: ['battle', 'minutes'], shown: 'child',
     code: ['src/screens/Session.svelte', 'src/engine/planner.ts'], notes: 'засчитывается при 7 верных с первой попытки из 10; при ≥3 поломках — ремонтная' },
   { id: 'repair', name: 'Поломки корабля и ремонт', group: 'мотивация', kind: 'loop', inputs: ['battle'], outputs: ['ship', 'battle', 'extra', 'minutes', 'coins'], shown: 'child',
@@ -57,7 +57,7 @@ export const MECHANICS = [
   { id: 'star-rewards', name: 'Награды за звёзды (след, плащ)', group: 'мотивация', kind: 'unlock', terminal: true, inputs: ['stars'], outputs: [], shown: 'child',
     code: ['content/worlds.mjs', 'src/screens/Hero.svelte'], data: ['style'], notes: 'все 8 наград — за 45 звёзд (1–2 недели)' },
   { id: 'streak', name: 'Серия дней', group: 'мотивация', kind: 'progress', inputs: ['plan', 'commander'], outputs: ['hero-stats'], shown: 'both',
-    code: ['src/engine/streak.ts'], notes: 'заморозки: 2 на всю серию (комментарий обещает 2 в месяц), ребёнок их не видит' },
+    code: ['src/engine/streak.ts'], notes: '2 заморозки в каждом месяце (K1, 02.10), без потолка длины; дни-исключения командира засчитываются' },
 
   // ---------------- прогресс по миру ----------------
   { id: 'crystals', name: 'Кристаллы (темы, прошедшие проверку)', group: 'прогресс', kind: 'progress', inputs: ['skill-status'], outputs: ['energy', 'outfits', 'hero-stats'], shown: 'child',
@@ -81,8 +81,8 @@ export const MECHANICS = [
     code: ['src/screens/Album.svelte'] },
 
   // ---------------- родитель ----------------
-  { id: 'commander', name: 'Экран командира (Султан)', group: 'родитель', kind: 'view', inputs: ['analytics', 'skill-status', 'plan'], outputs: ['minutes', 'streak', 'settings'], shown: 'parent',
-    code: ['src/screens/Commander.svelte'], data: ['kzReview'], notes: 'подарки +10/+15 мин без лимита; если PIN не задан, его может придумать ребёнок' },
+  { id: 'commander', name: 'Экран командира (Султан)', group: 'родитель', kind: 'view', inputs: ['analytics', 'skill-status', 'plan'], outputs: ['streak', 'settings'], shown: 'parent',
+    code: ['src/screens/Commander.svelte'], data: ['kzReview'], notes: 'подарков нет (02.10); если PIN не задан, его может придумать ребёнок (исправляется в K2)' },
   { id: 'settings', name: 'Настройки (имя героя, доп. миссии, голос, фото)', group: 'родитель', kind: 'rule', terminal: true, inputs: ['commander'], outputs: [], shown: 'parent',
     code: ['src/screens/Commander.svelte', 'src/lib/store.svelte.ts'], data: ['settings', 'heroName'], notes: 'settings.planMinutes нигде не читается' },
   { id: 'analytics', name: 'Аналитика поведения', group: 'родитель', kind: 'view', inputs: ['battle', 'lesson', 'teachback', 'notebook', 'recall'], outputs: ['commander'], shown: 'parent',

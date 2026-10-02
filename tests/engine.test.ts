@@ -104,6 +104,23 @@ describe('серия дней', () => {
     const r = streak(s, '2026-10-20');
     expect(r.days).toBe(6); expect(r.freezesLeft).toBe(1); // 14-е пропущено → заморозка
   });
+  it('две заморозки в КАЖДОМ месяце: 2 пропуска в октябре и 2 в ноябре серию не рвут, третий за месяц — рвёт', () => {
+    const s = newSave();
+    const all: string[] = [];
+    for (let d = new Date('2026-10-01T12:00:00Z'); d <= new Date('2026-11-30T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1)) all.push(d.toISOString().slice(0, 10));
+    const skip = ['2026-10-07', '2026-10-21', '2026-11-04', '2026-11-18'];
+    for (const d of all) if (!skip.includes(d)) s.days[d] = { ...blankDay(d), planShare: 1 };
+    const r = streak(s, '2026-11-30');
+    expect(r.freezesLeft).toBe(0);
+    expect(r.days).toBeGreaterThan(35);   // серия идёт до начала истории
+    delete s.days['2026-11-25'];          // третий пропуск в ноябре
+    expect(streak(s, '2026-11-30').days).toBe(16);  // назад от 30.11: пропуски 25 и 18 — заморозки, 4.11 — третий за ноябрь, серия обрывается
+  });
+  it('длинная серия (больше 286 учебных дней) не обрывается на пределе цикла', () => {
+    const s = newSave();
+    for (let d = new Date('2026-10-01T12:00:00Z'); d <= new Date('2028-05-12T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1)) { const k = d.toISOString().slice(0, 10); s.days[k] = { ...blankDay(k), planShare: 1 }; }
+    expect(streak(s, '2028-05-12').days).toBeGreaterThan(400);
+  });
 });
 
 describe('минуты: 60 за план + 15 за одну доп. миссию, без бонусов за освоение', () => {
@@ -112,9 +129,9 @@ describe('минуты: 60 за план + 15 за одну доп. миссию
     const rec = { ...blankDay('2026-10-20'), blocksDone: { new: true, summary: true }, extraMissions: 4, extraHonest: 4 } as any;
     settleDay(rec, plan, 'today'); expect(rec.minutesToday).toBe(75);
   });
-  it('старые бонусы за освоение минут не дают, подарок командира даёт', () => {
+  it('бонусы в записи дня минут не дают: ни старые за освоение, ни подарки командира (подарков нет, 02.10)', () => {
     const rec = { ...blankDay('2026-10-20'), blocksDone: { new: true, summary: true }, bonuses: [{ reason: 'Тема освоена', minutes: 10, mastery: true }, { reason: 'Подарок командира', minutes: 15 }] } as any;
-    settleDay(rec, plan, 'today'); expect(rec.minutesToday).toBe(75);
+    settleDay(rec, plan, 'today'); expect(rec.minutesToday).toBe(60);
   });
   it('вторую доп. миссию начать нельзя, даже если в настройках 4', () => {
     const rec = { ...blankDay('2026-10-20'), blocksDone: { new: true, summary: true }, extraMissions: 1 } as any;

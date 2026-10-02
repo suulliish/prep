@@ -104,15 +104,10 @@
     .sort((a, b) => Number(isCredited(a.r)) - Number(isCredited(b.r)) || (a.r.due < b.r.due ? -1 : 1)));
   const rcDays = $derived(dayStats(game.save).slice(0, 14));
   const rcSkipped = $derived(Object.entries(game.save.recallOffer ?? {}).filter(([d, o]) => d < game.day && o.skills.length && !(game.save.recall && Object.values(game.save.recall).some(r => r.history.some(h => h.day === d)))).map(([d]) => d));
-  const rcAsked = $derived(Object.values(game.save.recallOffer ?? {}).filter(o => o.skipped).length);
   const dm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
   const confWord = (c: number | null) => (c === null ? '—' : c >= 2.5 ? 'уверен' : c >= 1.75 ? 'шамамен' : 'не знает');
   function setException(e: 'sick' | 'holiday' | 'vacation' | undefined) {
     const r = dayRec(); r.exception = e; settleDay(r, plan, game.save.settings.extraTo); persist();
-  }
-  function gift(min: number) {
-    const r = dayRec(); r.bonuses.push({ reason: 'Подарок командира', minutes: min });
-    settleDay(r, plan, game.save.settings.extraTo); persist(); audio.play('chest');
   }
   function onImport(e: Event) {
     const f = (e.currentTarget as HTMLInputElement).files?.[0]; if (!f) return;
@@ -131,7 +126,7 @@
 
   {#if !unlocked}
     <section class="panel card">
-      <p>{hasPin ? 'Введите PIN командира.' : 'Придумайте PIN из 4 цифр. Он защищает настройки и подарки от младшего брата.'}</p>
+      <p>{hasPin ? 'Введите PIN командира.' : 'Придумайте PIN из 4 цифр. Он защищает настройки от младшего брата.'}</p>
       <input id="pin" class="pin" type="password" inputmode="numeric" maxlength="4" bind:value={pin} onkeydown={(e) => e.key === 'Enter' && enter()} aria-label="PIN" />
       {#if pinErr}<p class="err">{pinErr}</p>{/if}
       <button class="btn primary" onclick={enter}>{hasPin ? 'Войти' : 'Сохранить PIN'}</button>
@@ -155,28 +150,22 @@
         <div class="grid3">
           <div class="kpi"><span class="label">Игра сегодня</span><b>{rec.minutesToday} мин</b><small>заработано, выдаёте вне игры</small></div>
           <div class="kpi"><span class="label">За неделю</span><b>{weekMin} мин</b><small>копилка выходных: {weekBank} мин</small></div>
-          <div class="kpi"><span class="label">Серия дней</span><b>{st.days}</b><small>заморозок: {st.freezesLeft}</small></div>
+          <div class="kpi"><span class="label">Серия дней</span><b>{st.days}</b><small>заморозок в этом месяце: {st.freezesLeft} из 2</small></div>
         </div>
         <ul class="blocks">
           {#each plan.blocks as b}<li class:done={rec.blocksDone[b.id]}>{rec.blocksDone[b.id] ? '✓' : '○'} {BLOCK[b.id]}</li>{/each}
           <li>Доп. миссий: {rec.extraMissions} из {extraCap(game.save.settings.extraMissionCap)}</li>
           {#if rec.hard}<li>Трудно сегодня: <b>{rec.hard === 'none' ? 'всё понятно' : skillDefs.find(d => d.id === rec.hard)?.title.ru}</b></li>{/if}
-          {#each rec.bonuses as b}<li class="bonus">★ +{b.minutes} мин — {b.reason}</li>{/each}
         </ul>
-        <p class="note">Задач сегодня: {todays.length}, верно: {todays.filter(a => a.correct).length}. Угадываний (быстрее 5 сек): <b class:warn={guesses > 2}>{guesses}</b>. «Был уверен, но ошибся»: <b>{sureWrong}</b> — это лучшие темы для разговора.</p>
+        <p class="note">Задач сегодня: {todays.length}, верно: {todays.filter(a => a.correct).length}. Нечестных ответов (наспех — быстрее его личного порога — или свернул приложение): <b class:warn={guesses > 2}>{guesses}</b>. «Был уверен, но ошибся»: <b>{sureWrong}</b> — это лучшие темы для разговора.</p>
         <div class="card-sub">
           <span class="label">Сценарий «3 вопроса» — когда помогаете</span>
           <ol><li>Не берілген? — Что дано?</li><li>Не табу керек? — Что найти?</li><li>Бірінші қадам қандай? — Какой первый шаг?</li></ol>
           <small>Закрепляйте, а не объясняйте новое: новое даёт урок.</small>
         </div>
         <div class="row">
-          <span class="label">Подарок командира</span>
-          <button class="btn gold" onclick={() => gift(10)}>+10 мин</button>
-          <button class="btn gold" onclick={() => gift(15)}>+15 мин</button>
-        </div>
-        <div class="row">
           <span class="label">Исключение на сегодня</span>
-          {#each [['sick', 'Болел'], ['holiday', 'Праздник'], ['vacation', 'Каникулы']] as [e, n]}
+          {#each [['sick', 'Болел'], ['holiday', 'Праздник']] as [e, n]}
             <button class="btn" class:on={rec.exception === e} onclick={() => setException(rec.exception === e ? undefined : (e as any))}>{n}</button>
           {/each}
         </div>
@@ -309,7 +298,6 @@
       <section class="panel card">
         <div class="grid3">
           <div class="kpi"><span class="label">Темы: вспомнены {CREDIT_STEPS} раза</span><b>{rc.credited} из {rc.total}</b><small>зачтены: {CREDIT_STEPS} верных возврата без подсказки в разные дни</small></div>
-          <div class="kpi"><span class="label">«Өткізу» нажато</span><b>{rcAsked}</b><small>раз(а) пропущено вспоминание утром (с 02.10 пропуска нет)</small></div>
           <div class="kpi"><span class="label">Дней без вспоминания</span><b>{rcSkipped.length}</b><small>утром предложили, но ни одна тема не пройдена</small></div>
         </div>
         <p class="note">Каждый день вспоминается до 3 тем: сначала правило из слов-кирпичиков без подсказки, потом сверка и одна задача. Возвраты идут на 1, 3, 7, 14 и 30 день, дальше редко. Ошибка откатывает тему на шаг назад. «Зачтено» считается только без подсказки. Данных о том, что это даёт баллы на экзамене, нет: это цифры самого ребёнка.</p>
