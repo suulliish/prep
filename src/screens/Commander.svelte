@@ -290,7 +290,7 @@
               <tbody>
                 {#each g.list as a}
                   <tr class:bad={!a.correct}>
-                    <td class="t" class:fastc={a.timeMs < FAST_MS}>{secs(a.timeMs)} с</td>
+                    <td class="t" class:fastc={a.timeMs < FAST_MS || !!a.away}>{secs(a.timeMs)} с{#if a.away}<small title="Приложение было свёрнуто во время задачи — ответ не засчитан в минуты"> · свёрнуто {secs(a.away)} с</small>{/if}</td>
                     <td>{skillRu(a.skill)}</td>
                     <td class={a.correct ? 'h-ok' : 'h-no'}>{a.correct ? '✔' : '✘'}</td>
                     <td>{a.correct ? '' : mistakeName(a.tag)}{#if !a.honest && a.hintLevel < 4} <b class="zt zl">наугад, слишком быстро</b>{/if}</td>

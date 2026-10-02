@@ -25,7 +25,7 @@ async function postJson(body: object, url = HELPER_URL): Promise<any> {
       body: JSON.stringify(body),
     });
   } catch { throw 'offline' as HelperError; }
-  if (r.status === 401) throw 'sign_in' as HelperError;
+  if (r.status === 401 || r.status === 403) throw 'sign_in' as HelperError;   // 403 — аккаунт не в списке разрешённых (helper ALLOW)
   if (r.status === 429) throw 'quota' as HelperError;
   if (!r.ok) throw 'ai_unavailable' as HelperError;
   try { return await r.json(); } catch { throw 'ai_unavailable' as HelperError; }

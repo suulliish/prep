@@ -105,7 +105,7 @@
   let won = $state(false);
   // «Мақсат»: проигрыш на «Соңғы сынақ» закрывает варианты на время — угадывать перебором нельзя
   const FINAL_LOCK_MS = 3000;
-  let finalLock = $state(false), finalT = 0;
+  let finalLock = $state(false), finalT = 0, finalMisses = 0;
   let nextBtn = $state<HTMLElement>();
   let cardEl = $state<HTMLElement>();
   const step = $derived(steps[i]);
@@ -143,7 +143,7 @@
   function enter() {
     const s = steps[i];
     ready = ['say', 'goal', 'rule'].includes(s.type) || (s.type === 'example' && s.frames.length <= 1);
-    frame = 0; pick = null; bugFound = false; stepDone = false; fadedHits = 0; finalLock = false;
+    frame = 0; pick = null; bugFound = false; stepDone = false; fadedHits = 0; finalLock = false; finalMisses = 0;
     clearTimeout(finalT); gate.stop();
     if (!replay) stepStart(skill, i, s.type);
     vid?.destroy(); vid = s.type === 'example' ? makeVideo(s) : null;
@@ -222,7 +222,7 @@
     if (step.type === 'final') {
       if (!ok) {
         audio.play('wrong'); flash('#ff9a6b'); bonk(); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake');
-        trackEvent('finalMiss', { skill });
+        trackEvent('finalMiss', { skill }); finalMisses++;
         finalLock = true; clearTimeout(finalT); finalT = window.setTimeout(() => (finalLock = false), FINAL_LOCK_MS);
         return;
       }
@@ -232,7 +232,8 @@
       W.world?.bitMood('happy');
       audio.play('levelup'); floatText('МЕҢГЕРІЛДІ!', sceneCenter(0.28).x, sceneCenter(0.28).y, techHex, true);
       sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#ffc94a', '#3ff0ff', '#b58cff'], 90, 10);
-      reward(20, true); read(readMs(step.why)); return;
+      // полные 20 XP — только с первой попытки (02.10): перебором вариантов урок проходится, но почти без награды
+      reward(finalMisses ? 3 : 20, !finalMisses); read(readMs(step.why)); return;
     }
     audio.play(ok ? 'correct' : 'wrong'); react(ok ? 'correct' : 'wrong'); reward(ok ? 5 : 0);
     // «Неге?»: верно — блок и контратака, неверно — шлепок (бонк) и почесать голову; остальные шаги — обычный удар

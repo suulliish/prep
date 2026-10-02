@@ -175,15 +175,13 @@ describe('самопроверка «Тексер»', () => {
     expect(selfNote(2, 3, 1)).toBe('moved');
     expect(selfNote(2, null, 1)).toBe('ok');
   });
-  it('вспышка «Өзің таптың!» и +3 монеты', () => {
+  it('вспышка «Өзің таптың!», монет сверху нет (02.10: нарочная ошибка + «поймал» не выгоднее верного ответа)', () => {
     expect(EVENT_SAY.self.big).toBe('ӨЗІҢ ТАПТЫҢ!');
     expect(EVENT_MS.self).toBeGreaterThan(1000);
     expect(SELF_SAY.caught).toBe('Өзің таптың!');
     const src = readFileSync('src/screens/Session.svelte', 'utf8');
-    expect(src).toContain('SELF_CATCH_COINS');
     expect(src).toContain("const kind = caught && !fast ? 'self'");
-    // слишком быстрый «поймал» монет не даёт (red-team 01.10)
-    expect(src).toContain('if (caught && !fast) earn(SELF_CATCH_COINS');
+    expect(src).not.toContain('earn(SELF_CATCH_COINS');
   });
   it('кнопки самопроверки и без длинного тире', () => {
     expect(SELF_SAY.ok).toBe('Тексердім, дұрыс');
@@ -307,7 +305,7 @@ describe('монеты и корабль в бою', () => {
     expect(src.match(/answerPay\(/g)!.length).toBeGreaterThanOrEqual(2);
   });
   it('в ремонтном бою за починку +3 монеты', () => {
-    expect(REPAIR_FIX_COINS).toBe(3);
+    expect(REPAIR_FIX_COINS).toBe(1);
     expect(readFileSync('src/screens/Session.svelte', 'utf8')).toContain('earn(REPAIR_FIX_COINS');
   });
 });

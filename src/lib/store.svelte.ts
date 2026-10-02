@@ -1,6 +1,7 @@
 // Глобальное состояние: сохранение прогресса (localStorage + файл-копия), навигация.
 // Firebase-синхронизация добавится в M1 поверх этого же объекта.
 import type { Save } from '../engine/types';
+import { localJson } from '../engine/sync';
 import { refreshAvailability, type SkillDef } from '../engine/progress';
 import { today } from '../engine/dates';
 // @ts-ignore — граф навыков на JS
@@ -68,26 +69,39 @@ if (!game.save.introSeen && !game.save.diagnosticDone) game.screen = { name: 'in
 /** Подписчики на сохранение (облачная синхронизация, src/lib/cloud.svelte.ts). */
 export const afterPersist: (() => void)[] = [];
 
+/** Место в браузере кончилось (запись не удалась): Hub и командир показывают предупреждение. */
+export const storage = $state({ full: false });
+
+/** Запись в localStorage; не вышло (переполнение) — флаг storage.full, прогресс остаётся в памяти и в облаке. */
+function writeLocal(key: string, json: string): boolean {
+  try { localStorage.setItem(key, json); storage.full = false; return true; }
+  catch (e: any) { if (e?.name === 'QuotaExceededError' || e?.code === 22 || e?.code === 1014) storage.full = true; return false; }
+}
+
 export function persist() {
   game.save.updatedAt = Date.now();
-  try { localStorage.setItem(KEY, JSON.stringify(game.save)); } catch { /* нет места/доступа */ }
+  writeLocal(KEY, localJson(game.save));
   afterPersist.forEach(f => f());
 }
 
 /** Заменить сохранение целиком (импорт файла или загрузка из облака). Прежнее кладётся в резервную копию. */
 export function replaceSave(data: Save, keepTime = false) {
   // три последние заменённые копии: .before-replace (самая свежая), .before-replace.2, .before-replace.3
+  // большие копии (больше 1 млн знаков) — только одна: три полные копии съели бы всё место браузера
   try {
+    const cur = localJson(game.save);
     const p1 = localStorage.getItem(KEY + '.before-replace'), p2 = localStorage.getItem(KEY + '.before-replace.2');
-    if (p2) localStorage.setItem(KEY + '.before-replace.3', p2);
-    if (p1) localStorage.setItem(KEY + '.before-replace.2', p1);
-    localStorage.setItem(KEY + '.before-replace', JSON.stringify(game.save));
-  } catch { /* */ }
+    if (cur.length < 1_000_000) {
+      if (p2) localStorage.setItem(KEY + '.before-replace.3', p2);
+      if (p1) localStorage.setItem(KEY + '.before-replace.2', p1);
+    } else { localStorage.removeItem(KEY + '.before-replace.2'); localStorage.removeItem(KEY + '.before-replace.3'); }
+    localStorage.setItem(KEY + '.before-replace', cur);
+  } catch { /* место кончилось — без резервной копии */ }
   const t = data.updatedAt;
   game.save = { ...fresh(), ...data };
   if (game.save.heroName === 'Кодер') game.save.heroName = 'Муртаза';
   refreshAvailability(game.save, skillDefs);
-  try { localStorage.setItem(KEY, JSON.stringify(game.save)); } catch { /* */ }
+  writeLocal(KEY, localJson(game.save));
   if (keepTime) game.save.updatedAt = t; else persist();
 }
 

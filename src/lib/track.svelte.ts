@@ -16,6 +16,10 @@ const day = (): UsageDay => usageDay((game.save.usage ??= []), game.day);
 const now = () => Date.now();
 
 let lastInput = 0, hiddenAt = 0, started = false;
+let hiddenTotal = 0;   // сколько мс приложение было свёрнуто с запуска (для «ушёл посреди задачи», src/screens/Session.svelte)
+
+/** Часы «свёрнуто»: разница двух показаний — сколько приложение было скрыто между ними. */
+export function awayClock(): number { return hiddenTotal + (hiddenAt ? Date.now() - hiddenAt : 0); }
 let step: (StepLog & { t0: number; hidAt: number }) | null = null;
 let review: (ReviewLog & { t0: number }) | null = null;
 
@@ -48,6 +52,7 @@ export function startTracking() {
       persist();   // свернул — сохраняем (и в облако): дальше браузер может страницу выгрузить
     } else if (hiddenAt) {
       const gone = now() - hiddenAt;
+      hiddenTotal += gone;
       if (busy()) day().awayMs += gone;
       if (step && step.hidAt) { step.away += gone; step.hidAt = 0; }
       hiddenAt = 0;

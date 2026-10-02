@@ -13,6 +13,7 @@ import { GoogleGenAI } from '@google/genai';
 import { SYSTEM_LESSON, checkLesson, lessonPrompt } from './lesson.mjs';
 import { SYSTEM_TEACH, TEACH_SCHEMA, TEACH_THINKING, checkTeach, teachPrompt, parseTeach, roundOf } from './teachback.mjs';
 import { SYSTEM_STT, STT_SCHEMA, STT_THINKING, MAX_BODY as MAX_AUDIO_BODY, checkAudio, transcribePrompt, parseTranscript } from './transcribe.mjs';
+import { isAllowed } from './allow.mjs';
 import { SYSTEM_NOTEBOOK, NOTEBOOK_SCHEMA, MAX_BODY as MAX_PHOTO_BODY, checkNotebook, notebookPrompt, parseNotebook } from './notebook.mjs';
 
 const FIREBASE_PROJECT = process.env.FIREBASE_PROJECT || 'prep-b72a9';
@@ -28,6 +29,11 @@ const NOTEBOOK_ALL_DAY = +(process.env.NOTEBOOK_ALL_DAY || 60);
 const TIMEOUT_MS = +(process.env.TIMEOUT_MS || 25000);
 const ORIGINS = (process.env.ORIGINS || 'https://suulliish.github.io,http://localhost:5173,http://localhost:4173').split(',');
 const SKIP_AUTH = process.env.SKIP_AUTH === '1'; // только для локальной проверки
+// Кто может спрашивать (02.10): вход по почте сам создаёт аккаунт, и без списка любой мог зарегистрироваться и выбрать общий дневной лимит.
+// ALLOW — почты и/или uid через запятую (без учёта регистра). Пусто — пускаем всех вошедших, как раньше (с предупреждением в журнале).
+const ALLOW = (process.env.ALLOW || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+if (!ALLOW.length && !SKIP_AUTH) console.warn('ALLOW не задан: помощником может пользоваться любой вошедший аккаунт');
+const allowed = who => isAllowed(who, ALLOW);
 
 const ai = new GoogleGenAI({
   vertexai: true,
@@ -151,6 +157,7 @@ const server = http.createServer(async (req, res) => {
 
   const who = await whoIs(req);
   if (!who) return send(res, origin, 401, { error: 'sign_in' });
+  if (!allowed(who)) { console.log(JSON.stringify({ denied: who.uid })); return send(res, origin, 403, { error: 'not_allowed' }); }
   let body = '';
   const limit = voice ? MAX_AUDIO_BODY : photo ? MAX_PHOTO_BODY : 20000;
   for await (const chunk of req) { body += chunk; if (body.length > limit) return send(res, origin, 413, { error: 'too_big' }); }

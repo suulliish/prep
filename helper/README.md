@@ -18,7 +18,7 @@
 | Сервер | Cloud Run `bit-helper`, регион europe-west1, `https://bit-helper-264603430786.europe-west1.run.app` |
 | Проект Google Cloud | `gen-lang-client-0929343050` — тот же, что у uka-bot; счёт идёт в кредиты Google Cloud |
 | Модель | Vertex AI, `gemini-3.7-flash` (запасная `gemini-3.5-flash`), локация `global` (модели 3.x есть только там) |
-| Доступ | только с входом в облако сайта: сервер проверяет Firebase ID token проекта `prep-b72a9`; без входа — 401 |
+| Доступ | только с входом в облако сайта: сервер проверяет Firebase ID token проекта `prep-b72a9`; без входа — 401. С 02.10 — ещё и список `ALLOW` (почты или uid через запятую): чужой аккаунт — 403 `not_allowed`. Без `ALLOW` пускает любой вошедший аккаунт, а вход по почте создаёт аккаунт сам, поэтому **`ALLOW` надо задать при выкате** |
 | Лимиты | 30 вопросов в день на ученика, 200 в день всего; одна копия сервера |
 | Разрешённые сайты | `https://suulliish.github.io`, `localhost:5173`, `localhost:4173` (переменная `ORIGINS`) |
 
@@ -141,8 +141,10 @@ cd helper
 gcloud run deploy bit-helper --source . --region europe-west1 --project gen-lang-client-0929343050 \
   --service-account uka-bot-vertex@gen-lang-client-0929343050.iam.gserviceaccount.com \
   --allow-unauthenticated --max-instances 1 --memory 512Mi --timeout 60 \
-  --set-env-vars GOOGLE_CLOUD_PROJECT=gen-lang-client-0929343050,GOOGLE_CLOUD_LOCATION=global
+  --set-env-vars GOOGLE_CLOUD_PROJECT=gen-lang-client-0929343050,GOOGLE_CLOUD_LOCATION=global,ALLOW=<почта ребёнка>
 ```
+
+`ALLOW` — почты аккаунтов, которыми входят на сайт (ребёнок, брат), через запятую. Чтобы в значении была запятая, gcloud требует другой разделитель: `--set-env-vars ^;^GOOGLE_CLOUD_PROJECT=...;GOOGLE_CLOUD_LOCATION=global;ALLOW=a@x.kz,b@y.kz`.
 
 `--allow-unauthenticated` значит «Google не проверяет вызывающего сам» — проверку входа делает код (`whoIs`).
 
