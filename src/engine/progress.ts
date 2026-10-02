@@ -15,6 +15,15 @@ const DONE: Status[] = ['learned', 'mastered', 'automatic'];
 export const isDone = (s?: SkillState) => !!s && DONE.includes(s.status);
 
 /** Навык доступен, если все предпосылки хотя бы «үйренді». */
+/** Темы «үйренді» без срока проверки (диагностика до 02.10 его не ставила): ставим проверку на ближайший учебный день. */
+export function fixMissingDue(save: Save, day: string): number {
+  let n = 0;
+  for (const st of Object.values(save.skills ?? {})) {
+    if (st.status === 'learned' && !st.due) { st.due = addSchoolDays(day, 1); st.learnedAt ??= day; n++; }
+  }
+  return n;
+}
+
 export function refreshAvailability(save: Save, defs: SkillDef[]) {
   for (const d of defs) {
     const st = (save.skills[d.id] ??= blankSkill());

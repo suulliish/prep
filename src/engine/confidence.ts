@@ -75,7 +75,7 @@ export const EVENT_SAY: Record<EventKind, { big: string; small: string; tone: 'g
   hold: { big: 'ҚАЛҚАН', small: 'Шамамен дедің: қалқан ұстады', tone: 'cyan' },
   break: { big: 'ҚАЛҚАН СЫНДЫ!', small: 'Сенімді едің, бірақ қате. Серия үзілді', tone: 'red' },
   counter: { big: 'ҚАРСЫ СОҚҚЫ!', small: 'Глитчтің қатесін таптың', tone: 'gold' },
-  self: { big: 'ӨЗІҢ ТАПТЫҢ!', small: 'Қатені өзің түзеттің: +3 тиын', tone: 'gold' },
+  self: { big: 'ӨЗІҢ ТАПТЫҢ!', small: 'Қатені өзің түзеттің!', tone: 'gold' },
 };
 
 export const REVIEW_SAY = {

@@ -22,3 +22,16 @@ describe('Слияние устройства и облака (src/engine/sync.t
     expect(chooseSide({ at: 5, blank: true }, { at: 5, blank: true })).toBe('same');
   });
 });
+
+describe('Темы скана без срока проверки (баг диагностики до 02.10)', () => {
+  it('выученным без due ставится проверка на ближайший учебный день, остальные не трогаются', async () => {
+    const { fixMissingDue } = await import('../src/engine/progress');
+    const sk = (status: string, due?: string) => ({ p: 0.95, status, lessonDone: false, stage: 0, attempts: 0, correct: 0, misconceptions: {}, ...(due ? { due } : {}) }) as any;
+    const save = { skills: { a: sk('learned'), b: sk('learned', '2026-10-05'), c: sk('learning') } } as any;
+    expect(fixMissingDue(save, '2026-10-02')).toBe(1);   // пятница
+    expect(save.skills.a.due).toBe('2026-10-05');        // ближайший учебный день — понедельник
+    expect(save.skills.a.learnedAt).toBe('2026-10-02');
+    expect(save.skills.b.due).toBe('2026-10-05');
+    expect(save.skills.c.due).toBeUndefined();
+  });
+});

@@ -71,7 +71,7 @@
   // «исправился — дозаработал»: сегодняшние ошибки плана, починка которых вернёт минуты (план уже пройден)
   const fixable = $derived(game.save.repairShop.filter(r => restorableFix(r, game.day)).length);
   const name = $derived(game.save.heroName);
-  const bossReady = $derived(weekday && done && !game.save.worldsCleared?.includes(game.save.world ?? 'village') && learnedTotal >= 3);
+  const bossReady = $derived(weekday && done && !game.save.worldsCleared?.includes(game.save.world ?? 'village') && learnedTotal >= 3 && !rec.bossTried);
 
   const greeting = $derived(
     !game.save.diagnosticDone ? `Сәлем, ${name}! Алдымен Код-күшіңді сканерлейік — бұл сынақ емес, карта ашу.`
@@ -177,7 +177,7 @@
     : !weekday ? { label: 'Картаны ашу', go: () => nav('map') }
     : nextBlock ? { label: resume && nextBlock.id === 'new' ? 'Жалғастыру' : 'Бастау', go: () => start(nextBlock!.id) }
     : extraRepair ? { label: 'Жөндеуді бастау', go: () => { audio.unlock(); audio.play('energy'); portal(() => go({ name: 'session', block: 'repair', asExtra: true })); } }
-    : fixable > 0 && TODAY_MAX > rec.minutesToday ? { label: `Қатені түзет · минутты қайтар (${fixable})`, go: () => { audio.unlock(); audio.play('energy'); portal(() => go({ name: 'session', block: 'repair' })); } }
+    : fixable > 0 && rec.planShare < 1 ? { label: `Қатені түзет · минутты қайтар (${fixable})`, go: () => { audio.unlock(); audio.play('energy'); portal(() => go({ name: 'session', block: 'repair' })); } }
     : extraOk ? { label: 'Бастау', go: () => { audio.unlock(); audio.play('energy'); portal(() => go({ name: 'session', block: 'extra' })); } }
     : { label: 'Картаны ашу', go: () => nav('map') }
   );

@@ -424,7 +424,8 @@
         if (r) {
           r.fixed = true; fixedNow = true; fixedN++; floatText('ЖӨНДЕЛДІ', at.x, at.y - 50, '#5ce39c'); earn(REPAIR_FIX_COINS, { x: at.x, y: at.y - 60 });
           // «исправился — дозаработал»: честная починка сегодняшней ошибки плана возвращает её минуты
-          if (honest && r.block && r.addedDay === game.day) {
+          // ремонт вместо доп. миссии уже платит +15 мин за починки — минуты плана в нём не возвращаем (иначе двойная выгода)
+          if (honest && !asExtra && r.block && r.addedDay === game.day) {
             const was = dayRec().minutesToday;
             if (restoreFix(dayRec(), r.block, !!r.dunno)) {
               resettle();
