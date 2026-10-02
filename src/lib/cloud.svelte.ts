@@ -6,9 +6,10 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, type User } from 'firebase/auth';
 import { getFirestore, doc, getDoc, getDocs, setDoc, collection, writeBatch } from 'firebase/firestore';
-import { game, afterPersist, replaceSave } from './store.svelte';
+import { game, afterPersist, replaceSave, persist } from './store.svelte';
 import type { Attempt, Save, UsageDay } from '../engine/types';
 import { mergeUsage } from '../engine/usage';
+import { mergeAttempts, isBlank, chooseSide } from '../engine/sync';
 
 // Конфиг веб-приложения Firebase — не секрет (доступ к данным закрывают правила Firestore, см. docs/CLOUD.md)
 const firebaseConfig = {
@@ -33,6 +34,9 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 let uid: string | null = null;
+// в облако не пишем, пока не загрузили облачную копию: иначе устройство, сохранившее что-то до загрузки
+// (экран корабля, PIN командира на новом телефоне), выглядит «новее» и затирает облако (src/engine/sync.ts)
+let pulled = false;
 let timer: number | undefined;
 const pushedCount: Record<string, number> = {}; // сколько ответов месяца уже в облаке
 const pushedUsage: Record<string, string> = {};  // что из поведения месяца уже в облаке (строка JSON)
@@ -51,7 +55,7 @@ function usageByMonth(list: UsageDay[]) {
 }
 
 async function push(all = false) {
-  if (!uid) return;
+  if (!uid || !pulled) return;
   cloud.status = 'syncing';
   try {
     const { attempts, usage = [], ...rest } = $state.snapshot(game.save) as Save;
@@ -78,25 +82,38 @@ async function pull() {
   cloud.status = 'syncing';
   try {
     const main = await getDoc(doc(db, 'users', uid));
-    const local = game.save.updatedAt ?? 0;
-    if (!main.exists()) { await push(true); return; }
+    const localSave = $state.snapshot(game.save) as Save;
+    if (!main.exists()) {
+      pulled = true;
+      if (!isBlank(localSave)) await push(true); else { cloud.status = 'ok'; cloud.lastSync = Date.now(); }
+      return;
+    }
     const remoteAt = main.data().updatedAt ?? 0;
-    if (remoteAt > local) {
-      const rest = JSON.parse(main.data().save) as Save;
-      const months = await getDocs(collection(db, 'users', uid, 'attempts'));
-      const attempts: Attempt[] = [];
-      months.forEach(d => { const list = JSON.parse(d.data().list) as Attempt[]; attempts.push(...list); pushedCount[d.id] = list.length; });
-      attempts.sort((a, b) => a.at - b.at);
-      const usage: UsageDay[] = [];
-      try {
-        const um = await getDocs(collection(db, 'users', uid, 'usage'));
-        um.forEach(d => { pushedUsage[d.id] = d.data().list; usage.push(...(JSON.parse(d.data().list) as UsageDay[])); });
-      } catch { /* поведение — не главное: без него сохранение всё равно загружается */ }
-      replaceSave({ ...rest, attempts, usage: mergeUsage(usage, $state.snapshot(game.save.usage ?? []) as UsageDay[]), updatedAt: remoteAt }, true);
-      cloud.status = 'ok'; cloud.lastSync = Date.now();
-    } else if (remoteAt < local) {
-      await push(true);
-    } else { cloud.status = 'ok'; cloud.lastSync = Date.now(); }
+    const rest = JSON.parse(main.data().save) as Save;
+    // ответы и поведение облака читаем всегда: их объединяем с устройством, а не заменяем
+    const remoteAttempts: Attempt[] = [];
+    const months = await getDocs(collection(db, 'users', uid, 'attempts'));
+    months.forEach(d => { const list = JSON.parse(d.data().list) as Attempt[]; remoteAttempts.push(...list); pushedCount[d.id] = list.length; });
+    const remoteUsage: UsageDay[] = [];
+    try {
+      const um = await getDocs(collection(db, 'users', uid, 'usage'));
+      um.forEach(d => { pushedUsage[d.id] = d.data().list; remoteUsage.push(...(JSON.parse(d.data().list) as UsageDay[])); });
+    } catch { /* поведение — не главное: без него сохранение всё равно загружается */ }
+    const attempts = mergeAttempts(localSave.attempts ?? [], remoteAttempts);
+    const usage = mergeUsage(remoteUsage, localSave.usage ?? []);
+    const side = chooseSide({ at: localSave.updatedAt ?? 0, blank: isBlank(localSave) }, { at: remoteAt, blank: isBlank({ ...rest, attempts: remoteAttempts }) });
+    pulled = true;
+    if (side === 'remote') {
+      replaceSave({ ...rest, attempts, usage, updatedAt: remoteAt }, true);
+      if (attempts.length > remoteAttempts.length) await push(true);   // ответы, которых в облаке не было, — туда
+      else { cloud.status = 'ok'; cloud.lastSync = Date.now(); }
+    } else {
+      // копия устройства главная (или та же): ответы из облака, которых тут не было, добавляются к ней
+      game.save.attempts = attempts; game.save.usage = usage;
+      if (attempts.length > (localSave.attempts?.length ?? 0)) persist();
+      if (side === 'local' || attempts.length > remoteAttempts.length) await push(true);
+      else { cloud.status = 'ok'; cloud.lastSync = Date.now(); }
+    }
   } catch (e: any) { cloud.status = 'error'; cloud.error = e?.code ?? String(e); }
 }
 
@@ -104,6 +121,7 @@ async function pull() {
 export function startCloud() {
   finishEmailLink();
   onAuthStateChanged(auth, (u: User | null) => {
+    if ((u?.uid ?? null) !== uid) pulled = false;   // другой аккаунт или выход: сначала снова загрузка
     uid = u?.uid ?? null;
     cloud.user = u ? { email: u.email, name: u.displayName } : null;
     cloud.status = u ? cloud.status : 'off';
