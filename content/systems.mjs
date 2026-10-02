@@ -82,9 +82,9 @@ export const MECHANICS = [
 
   // ---------------- родитель ----------------
   { id: 'commander', name: 'Экран командира (Султан)', group: 'родитель', kind: 'view', inputs: ['analytics', 'skill-status', 'plan'], outputs: ['streak', 'settings'], shown: 'parent',
-    code: ['src/screens/Commander.svelte'], data: ['kzReview'], notes: 'подарков нет (02.10); если PIN не задан, его может придумать ребёнок (исправляется в K2)' },
+    code: ['src/screens/Commander.svelte', 'src/screens/commander/Kz.svelte'], data: ['kzReview'], notes: 'подарков нет (02.10); если PIN не задан, его может придумать ребёнок (исправляется в K2)' },
   { id: 'settings', name: 'Настройки (имя героя, доп. миссии, голос, фото)', group: 'родитель', kind: 'rule', terminal: true, inputs: ['commander'], outputs: [], shown: 'parent',
-    code: ['src/screens/Commander.svelte', 'src/lib/store.svelte.ts'], data: ['settings', 'heroName'], notes: 'settings.planMinutes нигде не читается' },
+    code: ['src/screens/commander/Settings.svelte', 'src/lib/store.svelte.ts'], data: ['settings', 'heroName'], notes: 'settings.planMinutes нигде не читается' },
   { id: 'analytics', name: 'Аналитика поведения', group: 'родитель', kind: 'view', inputs: ['battle', 'lesson', 'teachback', 'notebook', 'recall'], outputs: ['commander'], shown: 'parent',
     code: ['src/lib/track.svelte.ts', 'src/engine/analytics.ts'], data: ['usage'] },
 
@@ -102,13 +102,13 @@ export const RULES = [
     { where: 'src/engine/rules.ts isRushed (Session, Diagnostic)', how: '2,5–8 с по длине условия, личный порог 5–25 с только для неверных; подсказка порог не выключает (L1)' },
     { where: 'src/engine/answers.ts (Commander «Ответы»)', how: 'фиксированные 5 с' },
     { where: 'src/screens/Recall.svelte', how: 'honest = дольше 5 с (только аналитика: задача после вспоминания в модель не идёт)' },
-    { where: 'src/screens/Commander.svelte «Сегодня»', how: '«угадываний» = !honest, подпись «быстрее 5 сек»' },
+    { where: 'src/screens/commander/Today.svelte «Сегодня»', how: '«угадываний» = !honest, подпись «быстрее 5 сек»' },
   ] },
   { id: 'accuracy', name: 'точность', defs: [
     { where: 'src/screens/Hero.svelte «Дәлдік»', how: 'честные без подсказки за 14 дней, от 10 ответов' },
     { where: 'src/screens/Summary.svelte «дәлдік»', how: 'все попытки дня, включая близнецов и вспоминание' },
     { where: 'src/screens/Session.svelte звёзды', how: 'верные с первой попытки в бою' },
-    { where: 'src/screens/Commander.svelte', how: '«верно с первой попытки» и «верно / честно»' },
+    { where: 'src/screens/commander/Answers.svelte, Stats.svelte', how: '«верно с первой попытки» и «верно / честно»' },
   ] },
   { id: 'schedule', name: 'расписание повторения темы', defs: [
     { where: 'src/engine/progress.ts INTERVALS', how: '1, 3, 7, 16, 35 учебных дней' },
