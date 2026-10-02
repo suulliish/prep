@@ -161,12 +161,12 @@ describe('урок сначала (решение семьи 28.09.2026)', () =>
     Object.assign(s.skills.a, { status: 'learned', p: 0.95, lessonDone: false, learnedAt: '2026-10-19', due: '2026-10-20' });
     expect(taught(s, defs, 'a')).toBe(false);
     expect(nextSkill(s, defs)).toBe('a');
-    const plan = buildPlan(s, defs, '2026-10-20');
+    const plan = buildPlan(s, defs, '2026-10-21');   // среда: день новой темы (C1)
     expect(plan.blocks.find(b => b.id === 'new')).toMatchObject({ skills: ['a'], lesson: true });
     expect(plan.blocks.find(b => b.id === 'warmup')).toBeUndefined();
     s.skills.a.lessonDone = true;
     refreshAvailability(s, defs);
-    const plan2 = buildPlan(s, defs, '2026-10-20');
+    const plan2 = buildPlan(s, defs, '2026-10-21');
     expect(plan2.blocks.find(b => b.id === 'warmup')?.skills).toContain('a');
     expect(nextSkill(s, defs)).toBe('b');
   });
@@ -202,5 +202,39 @@ describe('застрявшая тема не держит путь (порог 8
     const plan = buildPlan(s, defs as any, '2026-10-05');
     expect(plan.blocks.find(b => b.id === 'warmup')?.skills).toContain(first);
     expect(plan.blocks.find(b => b.id === 'new')?.skills).toEqual([next]);
+  });
+});
+
+import { newTopicDay, practiceTopic } from '../src/engine/planner';
+describe('очередь и потолок новых тем (C1, 02.10)', () => {
+  const defs3: any[] = [
+    { id: 'x', prereqs: [], weight: 3, cat: 'C', grade: 5, templates: ['t'], lesson: true },
+    { id: 'y', prereqs: [], weight: 3, cat: 'C', grade: 5, templates: ['t'], lesson: true },
+  ];
+  it('новая тема — только Пн, Ср, Чт и до 15.11.2027', () => {
+    expect(['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17'].map(newTopicDay)).toEqual([true, false, true, true, false, false]);
+    expect(newTopicDay('2027-11-15')).toBe(false);
+    expect(newTopicDay('2027-11-11')).toBe(true);
+  });
+  it('во вторник нового урока нет: практика последней изученной темы без урока', () => {
+    const s = newSave(); refreshAvailability(s, defs3 as any);
+    Object.assign(s.skills.x, { status: 'learned', lessonDone: true });
+    s.attempts.push({ at: 5, day: '2026-10-12', skill: 'x', source: 't', correct: true, hintLevel: 0, honest: true, timeMs: 9000, mode: 'practice' } as any);
+    expect(practiceTopic(s, defs3 as any)).toBe('x');
+    const tue = buildPlan(s, defs3 as any, '2026-10-13').blocks.find(b => b.id === 'new');
+    expect(tue).toMatchObject({ skills: ['x'], lesson: false });
+    const wed = buildPlan(s, defs3 as any, '2026-10-14').blocks.find(b => b.id === 'new');
+    expect(wed).toMatchObject({ skills: ['y'], lesson: true });
+  });
+  it('порядок новых тем — по очереди content/queue.mjs, а не по разделам', async () => {
+    const { QUEUE } = await import('../content/queue.mjs');
+    const q = QUEUE as string[];
+    expect(q.indexOf('div.primes')).toBeLessThan(q.indexOf('frac.concept'));
+    expect(new Set(q).size).toBe(q.length);
+    // каждая тема графа есть в очереди; лишние — только 6 тем, которые добавятся в граф вместе с уроками (уравнения, схемы)
+    const { skills } = await import('../content/skills.mjs');
+    const ids = new Set((skills as { id: string }[]).map(x => x.id));
+    expect([...ids].filter(id => !q.includes(id))).toEqual([]);
+    expect(q.filter(id => !ids.has(id)).sort()).toEqual(['eq.both_sides_nat', 'eq.brackets_nat', 'eq.two_step', 'word.compare', 'word.part_whole', 'word.sum_diff']);
   });
 });

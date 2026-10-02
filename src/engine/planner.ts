@@ -1,12 +1,20 @@
 // Дневной план и заработок игрового времени (docs/ARCHITECTURE.md разделы 7 и 9).
 import { dueSkills, isDone, type SkillDef } from './progress';
 import type { DayRecord, Save } from './types';
+import { parse } from './dates';
+// @ts-ignore — очередь тем на JS (content/queue.mjs)
+import { QUEUE, NEW_TOPIC_WEEKDAYS, NEW_TOPICS_END } from '../../content/queue.mjs';
 
 export type BlockId = 'warmup' | 'new' | 'mixed' | 'summary';
 export interface Block { id: BlockId; minutes: number; skills: string[]; items: number; lesson?: boolean }
 export interface Plan { day: string; blocks: Block[] }
 
 const CAT_ORDER = 'CDABFGEIHJK';
+/** Место темы в очереди (content/queue.mjs); темы вне очереди — после неё. */
+const QPOS = new Map<string, number>((QUEUE as string[]).map((id, i) => [id, i]));
+const qpos = (id: string) => QPOS.get(id) ?? 1e6;
+/** День, когда можно начать новую тему (C1, 02.10): Пн, Ср, Чт — не больше 3 новых тем в неделю; с NEW_TOPICS_END — никогда. */
+export const newTopicDay = (day: string) => day < NEW_TOPICS_END && (NEW_TOPIC_WEEKDAYS as number[]).includes(parse(day).getDay());
 
 /** Следующий навык для изучения: сначала начатый, иначе доступный с наибольшим весом и меньшим классом.
  *  Новая тема — только с готовым полным уроком (lesson !== false): без объяснения новичку не «доходит»
@@ -24,25 +32,38 @@ export const STUCK_DAYS = 4;
 const daysOn = (save: Save, id: string) => new Set((save.attempts ?? []).filter(a => a.skill === id).map(a => a.day)).size;
 export const stuckSkills = (save: Save, defs: SkillDef[]) => defs.filter(d => save.skills[d.id]?.status === 'learning' && daysOn(save, d.id) >= STUCK_DAYS).map(d => d.id);
 
-export function nextSkill(save: Save, defs: SkillDef[]): string | null {
+/** allowNew — можно ли сегодня начать новую тему (newTopicDay). Начатую тему продолжаем в любой день. */
+export function nextSkill(save: Save, defs: SkillDef[], allowNew = true): string | null {
   const learning = defs.filter(d => save.skills[d.id]?.status === 'learning');
   const fresh = learning.find(d => daysOn(save, d.id) < STUCK_DAYS);
   if (fresh) return fresh.id;
+  if (!allowNew) return learning[0]?.id ?? null;
   const avail = defs.filter(d => {
     const st = save.skills[d.id];
     const open = st?.status === 'available' || (isDone(st) && !st.lessonDone); // «знает» по диагностике, но урока не было
     return open && d.templates.length && d.lesson !== false;
   });
   const g = (x: number | string) => (typeof x === 'number' ? x : 7);
-  avail.sort((a, b) => g(a.grade) - g(b.grade) || b.weight - a.weight || CAT_ORDER.indexOf(a.cat) - CAT_ORDER.indexOf(b.cat));
+  // порядок — очередь тем (C1); вне очереди — прежний порядок: класс, вес, раздел
+  avail.sort((a, b) => qpos(a.id) - qpos(b.id) || g(a.grade) - g(b.grade) || b.weight - a.weight || CAT_ORDER.indexOf(a.cat) - CAT_ORDER.indexOf(b.cat));
   // новых тем нет — остаётся застрявшая
   return avail[0]?.id ?? learning[0]?.id ?? null;
+}
+
+/** Тема для практики в день без новой темы: последняя по ответам изученная и ещё не освоенная (иначе любая последняя). */
+export function practiceTopic(save: Save, defs: SkillDef[]): string | null {
+  const ok = (id: string) => taught(save, defs, id) && !!save.skills[id] && (defs.find(d => d.id === id)?.templates.length ?? 0) > 0;
+  const lastAt: Record<string, number> = {};
+  for (const a of save.attempts ?? []) if (a.at >= (lastAt[a.skill] ?? -1)) lastAt[a.skill] = a.at;
+  const cand = Object.keys(lastAt).filter(ok).sort((a, b) => lastAt[b] - lastAt[a]);
+  return cand.find(id => !['mastered', 'automatic'].includes(save.skills[id].status)) ?? cand[0] ?? null;
 }
 
 export function buildPlan(save: Save, defs: SkillDef[], day: string): Plan {
   const due = dueSkills(save, day).filter(id => taught(save, defs, id));
   const recent = defs.filter(d => isDone(save.skills[d.id]) && d.templates.length && taught(save, defs, d.id)).map(d => d.id).slice(-6);
-  const next = nextSkill(save, defs);
+  // Пн/Ср/Чт — новая тема по очереди; в остальные дни — практика начатой или последней изученной темы (без урока)
+  const next = nextSkill(save, defs, newTopicDay(day)) ?? practiceTopic(save, defs);
   // застрявшие и вернувшиеся в «изучается» темы (кроме сегодняшней новой) идут в разминку первыми, иначе выпадают из плана
   const back = defs.filter(d => save.skills[d.id]?.status === 'learning' && d.id !== next && taught(save, defs, d.id)).map(d => d.id);
   const warm = [...new Set([...back, ...due, ...recent])].slice(0, 6);

@@ -17,7 +17,7 @@ export const MECHANICS = [
   { id: 'diagnostic', name: 'Код-сканер (диагностика)', group: 'учёба', kind: 'action', inputs: ['intro'], outputs: ['skill-status'], shown: 'child',
     code: ['src/screens/Diagnostic.svelte'], data: ['diagnosticDone'], notes: 'тема «знает» = 2 верных подряд; верный быстрее 3 с считается провалом; прогресс скана не сохраняется' },
   { id: 'plan', name: 'План дня (разминка, новая тема, смешанный бой, итог)', group: 'учёба', kind: 'loop', inputs: ['skill-status', 'recall'], outputs: ['lesson', 'battle', 'minutes', 'streak', 'boss', 'extra'], shown: 'child',
-    code: ['src/engine/planner.ts', 'src/lib/session.svelte.ts', 'src/screens/Hub.svelte'], data: ['days'], notes: 'шаги идут «до N верных»; «Еске түсір» обязателен перед планом' },
+    code: ['src/engine/planner.ts', 'src/lib/session.svelte.ts', 'src/screens/Hub.svelte', 'content/queue.mjs'], data: ['days'], notes: 'шаги идут «до N верных»; «Еске түсір» обязателен перед планом; новая тема по очереди content/queue.mjs, только Пн/Ср/Чт (C1), в остальные дни — практика' },
   { id: 'lesson', name: 'Урок-тренировка', group: 'учёба', kind: 'action', inputs: ['plan'], outputs: ['skill-status', 'xp', 'technique', 'teachback', 'notebook'], shown: 'child',
     code: ['src/screens/Lesson.svelte', 'content/lessons.mjs'], data: ['lessonPos'], notes: 'ошибки урока в модель знаний не идут' },
   { id: 'teachback', name: '«Биткә түсіндір» (объясни тему)', group: 'учёба', kind: 'action', inputs: ['lesson'], outputs: ['analytics'], shown: 'child',
