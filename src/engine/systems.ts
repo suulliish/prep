@@ -14,13 +14,17 @@ export interface Mechanic {
   root?: boolean; terminal?: boolean;
 }
 export interface RuleDef { id: string; name: string; defs: { where: string; how: string }[] }
+export interface FieldIssue { field: string; issue: string }
 export interface Check { id: string; name: string; ok: boolean; detail: string }
+
+/** «2 определения», «5 определений» */
+export const defsWord = (n: number) => `${n} ${n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'определения' : n % 10 === 1 && n % 100 !== 11 ? 'определение' : 'определений'}`;
 
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
 
 export function checkSystems(
   m: Mechanic[], rules: RuleDef[], sim: SimResult,
-  facts: { saveFields: string[]; fileExists: (f: string) => boolean; outfitsMax: number; worldsMax: number; arenaOpen: boolean },
+  facts: { saveFields: string[]; fileExists: (f: string) => boolean; outfitsMax: number; worldsMax: number; arenaOpen: boolean; fieldIssues: { field: string; issue: string }[] },
 ): Check[] {
   const ids = new Set(m.map(x => x.id));
   const out: Check[] = [];
@@ -43,7 +47,7 @@ export function checkSystems(
 
   // ---- одно определение каждого правила ----
   const multi = rules.filter(r => r.defs.length > 1);
-  add('one-rule', 'Каждое правило определено в одном месте', !multi.length, multi.map(r => `«${r.name}» — ${r.defs.length} определения`).join('; ') || 'ок');
+  add('one-rule', 'Каждое правило определено в одном месте', !multi.length, multi.map(r => `«${r.name}» — ${defsWord(r.defs.length)}`).join('; ') || 'ок');
 
   // ---- экономика на весь срок ----
   const ms = sim.milestones;
@@ -63,5 +67,9 @@ export function checkSystems(
   const minutesOk = sim.days.filter(d => d.n > 0 && d.minutes > 0);
   const avgMin = minutesOk.length ? Math.round(minutesOk.reduce((s, d) => s + d.minutes, 0) / minutesOk.length) : 0;
   add('minutes-fair', 'Хороший ученик зарабатывает не меньше 45 мин в будний день', avgMin >= 45, `в среднем ${avgMin} мин при точности ${Math.round(sim.params.accuracy * 100)}%`);
+  const kb = lastSchool.mainKb;
+  add('cloud-size', 'Главный документ облака не подходит к пределу Firestore (1 МБ) до экзамена', kb < 700, `к экзамену ≈ ${kb} КБ (дни с планом, поломки навсегда, журнал ИИ)`);
+  add('data-clean', 'В сохранении нет мёртвых полей (пишутся, но не читаются; устаревшие)', !facts.fieldIssues.length,
+    facts.fieldIssues.length ? `${facts.fieldIssues.length}: ${facts.fieldIssues.map(f => f.field).join(', ')}` : 'ок');
   return out;
 }

@@ -1,5 +1,7 @@
 # Архитектура: сайт-подготовка к Өскемен ерлер БИЛ (версия 3.1)
 
+> **Система целиком:** карта механик и проверок — `docs/SYSTEMS.md` (генерируется, `npm run systems`), аудит — `docs/systems/AUDIT.md`, план — `docs/systems/PLAN.md`, все числа — `docs/systems/constants.md`, решения семьи — `docs/DECISIONS.md`. Новая механика сначала вписывается в `content/systems.mjs`.
+
 Обновлено 27.09.2026 после банка задач (`bank/`), дополнения к исследованию (`reports/Дополнение 2026-09-27 БИЛ Өскемен.md`), разбора «Дарын» 2023 с генераторами (`bank/similar/README.md`) и сравнения источников (`bank/similar/COMPARISON.md`).
 План работ и учёбы по датам — `docs/PLAN.md`. Игра — `docs/GAME_DESIGN.md`.
 

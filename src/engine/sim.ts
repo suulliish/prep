@@ -36,6 +36,7 @@ export interface SimDay {
   xp: number; level: number; stars: number; starRewards: number;
   learned: number; crystals: number; energy: number; worlds: number; outfits: number;
   broken: number; integrity: number; minutes: number;
+  mainKb: number;                              // оценка главного документа облака users/{uid}, КБ (предел Firestore — 1024)
 }
 export interface SimResult {
   params: SimParams; days: SimDay[];
@@ -62,7 +63,7 @@ export function simulate(params: Partial<SimParams> = {}): SimResult {
   const starRewards = (STAR_REWARDS as { need: number }[]);
   const p = P.accuracy;
 
-  let coins = 0, spent = 0, owned = 0, xp = 0, stars = 0, broken = 0, n = 0;
+  let coins = 0, spent = 0, owned = 0, xp = 0, stars = 0, broken = 0, n = 0, calDays = 0, errorsAll = 0;
   let taught = 0, learnedOnly = P.knownAtStart, crystals = 0, newCredit = 0;
   const pending: { day: number; kind: 'learn' | 'check' }[] = [];
   const days: SimDay[] = [];
@@ -94,7 +95,7 @@ export function simulate(params: Partial<SimParams> = {}): SimResult {
         coins += 3 * COINS.enemy;                                   // 3 волны — 3 врага
         const st = starsFor(p); stars += st; if (st >= 3) coins += COINS.stars3;
         xp += b.items * (10 + comboBonus(p));
-        broken += wrong;
+        broken += wrong; errorsAll += wrong;
         planDone += b.minutes * examShare(b.items, wrong, answers);
       }
       minutes = round5(TODAY_MAX * (planDone + SIM_SUMMARY_MIN) / (SIM_BLOCKS.reduce((s, b) => s + b.minutes, 0) + SIM_SUMMARY_MIN));
@@ -110,6 +111,9 @@ export function simulate(params: Partial<SimParams> = {}): SimResult {
       // монеты сразу тратятся на самый дешёвый некупленный предмет
       while (owned < items.length && coins >= items[owned].price) { coins -= items[owned].price; spent += items[owned].price; owned++; }
     }
+    calDays++;
+    // главный документ облака: запись дня с планом (~0,8 КБ на открытый день), поломки навсегда (~0,11 КБ), журнал ИИ (100 × ~1,5 КБ), темы и прочее (~60 КБ)
+    const mainKb = Math.round(calDays * (5 / 7) * 0.8 + errorsAll * 0.11 + 150 + 60);
     const starR = starRewards.filter(r => r.need <= stars).length, outf = outfits.filter(o => o.need <= crystals).length;
     if (!ms.shopDone && owned >= items.length) ms.shopDone = d;
     if (!ms.starRewardsDone && starR >= starRewards.length) ms.starRewardsDone = d;
@@ -118,7 +122,7 @@ export function simulate(params: Partial<SimParams> = {}): SimResult {
     days.push({
       day: d, n, coins: Math.round(coins), spent, owned, xp: Math.round(xp), level: levelOf(xp).lvl, stars: Math.round(stars), starRewards: starR,
       learned: learnedOnly + crystals, crystals, energy: energyOf(), worlds: cleared + 1, outfits: outf,
-      broken: Math.round(broken), integrity: shipIntegrity(Math.round(broken)), minutes,
+      broken: Math.round(broken), integrity: shipIntegrity(Math.round(broken)), minutes, mainKb,
     });
   }
   return { params: P, days, shop: { items: items.length, total: shopTotal }, lessonsInContent, milestones: ms };
