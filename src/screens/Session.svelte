@@ -10,7 +10,8 @@
   import Icon from '../ui/Icon.svelte';
   import MicButton from '../ui/MicButton.svelte';
   import { trackExit, awayClock } from '../lib/track.svelte';
-  import { examShare, AWAY_MS, EXAM_PENALTY, restoreFix, restorableFix } from '../engine/planner';
+  import { examShare, EXAM_PENALTY, restoreFix, restorableFix } from '../engine/planner';
+  import { RULES_V, isClosed, isRushed, isHonest } from '../engine/rules';
   import GlitchTurn from '../ui/GlitchTurn.svelte';
   import CoinChip from '../ui/CoinChip.svelte';
   import BattleEvent from '../ui/BattleEvent.svelte';
@@ -27,8 +28,8 @@
   import { makeItem, mistakeText, skillTitle, templatesOf, isTemplateId, type Item } from '../engine/items';
   import { bankFor, bankToItem } from '../engine/bank';
   import { recordAttempt, isDone } from '../engine/progress';
-  import { isHonest, settleDay, taught, sequenceSlots, extraCap, repairNeed } from '../engine/planner';
-  import { stemChars, isTooFast, rushLimitMs, adaptiveRushMs, tooFastMs, changedMarkup, varyAnswerPos, type Seg } from '../engine/rush';
+  import { settleDay, taught, sequenceSlots, extraCap, repairNeed } from '../engine/planner';
+  import { stemChars, adaptiveRushMs, changedMarkup, varyAnswerPos, type Seg } from '../engine/rush';
   import { GLITCH_SAY, buildGlitch, glitchAllowed, firstGlitchAt, nextGlitchAt, shortMistake, type GlitchTurn as GlitchData } from '../engine/glitchturn';
   import { eventOf, breaksCombo, critCoins, eventMs, nextSureFirst, calibOf, calibLine, TWIN_TAG, halfCoins, HALF_COINS_OVER, REPAIR_FIX_COINS, REPAIR_EXTRA_FIXES, repairAsExtra, SHIP_SAY, bilLine, BIL_NOTE, rightOfLine, type Conf, type EventKind } from '../engine/confidence';
   import { buildReview, type Review, type ReviewMode } from '../engine/review';
@@ -362,7 +363,6 @@
   }
 
   const MODE: Attempt['mode'] = block === 'new' ? 'practice' : block === 'extra' ? 'extra' : block === 'boss' ? 'boss' : block === 'warmup' ? 'warmup' : block === 'repair' ? 'practice' : 'mixed';
-  const DUNNO_MIN_MS = 1500;   // «Білмеймін» быстрее этого — тоже не чтение условия
   // монеты за ответ: на корабле больше 6 поломок — вполовину
   const answerPay = (n: number) => (halfOn ? halfCoins(n) : n);
   // после ответа шаг «до N верных» ведёт счёт: верный (идёт в счёт) — к N; ошибка — близнец в конец очереди, пока не исчерпан лимит
@@ -381,9 +381,10 @@
     // Личный порог ребёнка (медиана его верных ответов на этом шаблоне × 0,45, от 5 до 25 с) ловит спешку, которую общий порог пропускает
     // личный порог — только для неверных ответов: быстрый верный ответ (знает) не наказываем, на его истории ~20% верных были бы «спешкой»
     const chars = stemChars(it.kz), adaptive = correct ? null : adaptiveRushMs(game.save.attempts, it.source, it.skill);
-    // свернул приложение посреди задачи (калькулятор, поиск) — ответ не честный, в минуты не идёт
-    const honest = away < AWAY_MS && (dunno ? hintLevel < 4 && timeMs >= DUNNO_MIN_MS : isHonest(timeMs, hintLevel, hintLevel === 0 ? rushLimitMs(chars, adaptive) : tooFastMs(chars)));
-    const fast = !dunno && isTooFast(timeMs, chars, hintLevel, adaptive);
+    // свернул приложение посреди задачи (калькулятор, поиск) дольше 5 с — ответ не честный, для модели знаний это ошибка (rules.ts)
+    // наспех — с подсказкой тоже (L1, 02.10): раньше лампа выключала порог, и «подсказка → тык» считался честным
+    const closed = isClosed(away), fast = !dunno && isRushed(timeMs, chars, adaptive);
+    const honest = isHonest({ timeMs, hintLevel, rushed: fast, closed, dunno });
     // сам поймал: после самопроверки сменил неверный ответ на верный (в звёзды не идёт, но ответ верный)
     const note: SelfNote | null = scDue && scDone ? selfNote(selfFirst, pk, it.answer) : null;
     const caught = note === 'caught' && hintLevel < 4 && !dunno;
@@ -398,7 +399,7 @@
     if (conf === 'sure' && hintLevel === 0) { sureN++; if (correct) sureRight++; }
     const rec: Attempt & { selfCheck?: SelfNote } = {
       at: Date.now(), day: game.day, skill: it.skill, source: it.source, correct, confidence: conf,
-      hintLevel, honest, timeMs: Math.round(timeMs), ...(fast ? { fast: true } : {}), ...(away >= AWAY_MS ? { away } : {}), ...(tag ? { tag } : {}), mode: MODE, ...(note ? { selfCheck: note } : {}),
+      hintLevel, honest, timeMs: Math.round(timeMs), ...(fast ? { fast: true } : {}), ...(closed ? { away, closed: true } : {}), ...(tag ? { tag } : {}), mode: MODE, ...(note ? { selfCheck: note } : {}), r: RULES_V,
     };
     const events = recordAttempt(game.save, rec);
     const at = sceneCenter(0.42), wasTwin = twin;
@@ -486,9 +487,9 @@
     const correct = k === g.bad;
     const follow = g.follows.includes(k);
     glPick = k;
-    const honest = away < AWAY_MS && isHonest(timeMs, hint, tooFastMs(stemChars(item.kz) + g.lines.join('').length));
-    // читать нужно и условие, и все строки: порог «слишком быстро» растёт с их длиной
-    const fast = isTooFast(timeMs, stemChars(item.kz) + g.lines.join('').length, hint);
+    // читать нужно и условие, и все строки: порог «слишком быстро» растёт с их длиной; вторая попытка (hint 1) — тот же порог (L1)
+    const closed = isClosed(away), fast = isRushed(timeMs, stemChars(item.kz) + g.lines.join('').length);
+    const honest = isHonest({ timeMs, hintLevel: hint, rushed: fast, closed });
     answered++; firstTries++; if (correct) firstRight++;
     if (!honest) { honestAll = false; guessed++; }
     if (honest && correct) paid++;
@@ -496,7 +497,7 @@
     tally(honest && correct ? 1 : 0, correct ? 0 : 1);
     const rec: Attempt & { kind: 'glitch' } = {
       at: Date.now(), day: game.day, skill: sk, source: item.source, correct, hintLevel: hint, honest, timeMs: Math.round(timeMs),
-      ...(fast ? { fast: true } : {}), ...(away >= AWAY_MS ? { away } : {}), tag: correct ? 'correct' : follow ? g.tag : 'glitch_miss', mode: MODE, kind: 'glitch',
+      ...(fast ? { fast: true } : {}), ...(closed ? { away, closed: true } : {}), tag: correct ? 'correct' : follow ? g.tag : 'glitch_miss', mode: MODE, kind: 'glitch', r: RULES_V,
     };
     const events = recordAttempt(game.save, rec);
     const at = sceneCenter(0.42);
@@ -510,7 +511,7 @@
       floatText(`+${xp} XP`, at.x, at.y - 20, '#ffc94a', true);
       earn(answerPay(answerCoins({ correct, tries: 1, hintLevel: hint, fast })), { x: at.x, y: at.y - 30 });
       if (combo >= 3) floatText(`КОМБО ×${combo}`, sceneCenter(0.25).x, sceneCenter(0.25).y, '#3ff0ff', true);
-      carry = (!honest && !fast ? 'Дұрыс, бірақ тым жылдам! Асықпа. ' : '') + `${GLITCH_SAY.right} ${shortMistake(g.tag)}`;
+      carry = (fast ? 'Дұрыс, бірақ тым жылдам! Асықпа. ' : '') + `${GLITCH_SAY.right} ${shortMistake(g.tag)}`;
     } else {
       combo = 0;
       audio.play('wrong'); flash('#ff9a6b'); react('wrong', 0.6);
@@ -523,7 +524,7 @@
     await playEvent(correct ? 'counter' : 'hold', show => correct ? strikeOrCheer(true, show) : enemyTurn(false, show), correct ? '' : 'Қате жолды таппадың — қалқан ұстады');
     if (dead) return;
     if (correct) return advance(null);
-    enterReview('error', null, false, fast && !honest ? timeMs : 0, { kind: 'glitch', turn: g, picked: k });
+    enterReview('error', null, false, fast ? timeMs : 0, { kind: 'glitch', turn: g, picked: k });
   }
 
   // Шаг «до N верных»: следующий вопрос берёт очередь (StepQueue): исходные задачи, потом близнецы за ошибки; bonus — близнец после быстрого ответа сразу (в счёт не идёт)

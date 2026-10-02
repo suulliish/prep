@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { bktUpdate, MASTERY_P } from '../src/engine/bkt';
 import { addSchoolDays, schoolDaysBetween } from '../src/engine/dates';
 import { recordAttempt, refreshAvailability, blankSkill, dueSkills } from '../src/engine/progress';
-import { buildPlan, settleDay, blankDay, isHonest, canStartExtra } from '../src/engine/planner';
+import { buildPlan, settleDay, blankDay, canStartExtra } from '../src/engine/planner';
+import { isHonest } from '../src/engine/rules';
 import type { Save, Attempt } from '../src/engine/types';
 
 const newSave = (): Save => ({ version: 1, heroName: 'Кодер', xp: 0, skills: {}, attempts: [], days: {}, settings: { extraMissionCap: 4, extraTo: 'today', planMinutes: 40 }, diagnosticDone: false, repairShop: [] });
@@ -89,8 +90,10 @@ describe('заработок', () => {
     delete rec.extraHonest; settleDay(rec, plan, 'today');
     expect(rec.minutesToday).toBe(75);                     // старое сохранение без поля — миссии честные, но доп. минут всё равно не больше 15
   });
-  it('угадывание быстрее 5 секунд — нечестно', () => {
-    expect(isHonest(3000, 0)).toBe(false); expect(isHonest(12000, 4)).toBe(false); expect(isHonest(12000, 2)).toBe(true);
+  it('наспех, полный разбор и «свернул» — нечестно', () => {
+    const f = { timeMs: 12000, hintLevel: 0, rushed: false, closed: false };
+    expect(isHonest({ ...f, rushed: true })).toBe(false); expect(isHonest({ ...f, hintLevel: 4 })).toBe(false);
+    expect(isHonest({ ...f, hintLevel: 2 })).toBe(true); expect(isHonest({ ...f, closed: true })).toBe(false);
   });
 });
 

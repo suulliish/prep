@@ -12,11 +12,7 @@ export const stemChars = (kz: string) => kz.replace(/\s+/g, ' ').trim().length;
 export const tooFastMs = (chars: number) =>
   Math.round(Math.min(RUSH.maxMs, Math.max(RUSH.minMs, RUSH.baseMs + RUSH.perCharMs * Math.max(0, chars))));
 
-/** Ответ слишком быстрый: быстрее порога для этого условия и без подсказок (с подсказкой ребёнок явно думал).
- *  `adaptiveMs` — личный порог ребёнка (adaptiveRushMs); берётся больший из двух. */
-export const isTooFast = (timeMs: number, chars: number, hintLevel = 0, adaptiveMs: number | null = null) =>
-  hintLevel === 0 && timeMs < rushLimitMs(chars, adaptiveMs);
-
+// «Слишком быстро» для ответа — isRushed в src/engine/rules.ts (L1, 02.10): порог больше не выключается подсказкой.
 /** Порог «слишком быстро» для этого вопроса: больший из порога по длине условия и личного (adaptiveMs, если он известен). */
 export const rushLimitMs = (chars: number, adaptiveMs: number | null = null) => Math.max(tooFastMs(chars), adaptiveMs ?? 0);
 

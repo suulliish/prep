@@ -10,6 +10,8 @@
   import { makeItem, skillTitle, type Item } from '../engine/items';
   import { blankSkill, refreshAvailability } from '../engine/progress';
   import { addSchoolDays } from '../engine/dates';
+  import { isRushed } from '../engine/rules';
+  import { stemChars } from '../engine/rush';
   import { replan } from '../lib/session.svelte';
   import { audio } from '../lib/audio';
   import { sparksAt, centerOf } from '../ui/fx.svelte';
@@ -41,7 +43,7 @@
   function pick(i: number) {
     if (!item || picked !== null) return;
     picked = i;
-    const ok = i === item.answer && performance.now() - t0 > 3000;
+    const ok = i === item.answer && !isRushed(performance.now() - t0, stemChars(item.kz));   // тот же порог «наспех», что в бою (L1)
     const c = centerOf(el);
     if (ok) { audio.play('xp'); sparksAt(c.x, c.y, ['#3ff0ff'], 16, 4); streak++; }
     else audio.play('click');

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { RUSH, stemChars, tooFastMs, isTooFast, rushAction, nextStreak, twinSlot, pickRevengeTpl, changedMarkup, varyAnswerPos, canReorder, askKind, miniCheck } from '../src/engine/rush';
+import { isRushed } from '../src/engine/rules';
+import { RUSH, stemChars, tooFastMs, rushAction, nextStreak, twinSlot, pickRevengeTpl, changedMarkup, varyAnswerPos, canReorder, askKind, miniCheck } from '../src/engine/rush';
 import { sequenceSlots } from '../src/engine/planner';
 import { templatesOf, makeItem } from '../src/engine/items';
 // @ts-ignore
@@ -26,11 +27,10 @@ describe('порог «слишком быстро» (D2)', () => {
     expect(stemChars('  Кітапта неше бет бар?\n')).toBe('Кітапта неше бет бар?'.length);
     expect(stemChars('а\n\nб')).toBe(3);
   });
-  it('граница порога: быстрее — быстрый, ровно порог — нормальный; с подсказкой не считается', () => {
+  it('граница порога: быстрее — быстрый, ровно порог — нормальный (подсказка порог не выключает, L1)', () => {
     const c = 50;
-    expect(isTooFast(3999, c)).toBe(true);
-    expect(isTooFast(4000, c)).toBe(false);
-    expect(isTooFast(1000, c, 1)).toBe(false);
+    expect(isRushed(3999, c)).toBe(true);
+    expect(isRushed(4000, c)).toBe(false);
   });
   it('пороги согласованы с константами', () => {
     expect(RUSH).toMatchObject({ minMs: 2500, maxMs: 8000, pauseMs: 3000, twinGap: 3 });
