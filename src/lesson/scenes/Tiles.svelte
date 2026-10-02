@@ -1,13 +1,13 @@
 <script lang="ts">
   // Выражение из плиток: числа — голубые блоки, знаки — золотые шестерёнки, [..] — «процессор» (выполняется сейчас).
-  // 3/4 и 2 3/4 — одна плитка с этажной дробью.
+  // 3/4 и 2 3/4 — одна плитка с этажной дробью; десятичное 0,45 — тоже одна плитка (C3).
   import Frac from '../../ui/Frac.svelte';
   import { parseFrac } from '../../widgets/fracdraw';
   let { math, broken = false }: { math: string; broken?: boolean } = $props();
   type Tok = { t: string; kind: 'num' | 'frac' | 'op' | 'par' | 'sup' | 'txt' | 'sep'; hl: boolean };
   const toks = $derived.by(() => {
     const out: Tok[] = []; let hl = false;
-    for (const m of math.matchAll(/ {2,}|\[|\]|(?<![\d/.,])(?:\d+ )?\d+\/\d+(?![\d/])|\d{1,3}(?: \d{3})+(?!\d)|\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]+|[+−·:=≠<>]|[()]|✔|[^\s\[\]\d+−·:=()⁰-⁹ⁿ✔]+/g)) {
+    for (const m of math.matchAll(/ {2,}|\[|\]|(?<![\d/.,])(?:\d+ )?\d+\/\d+(?![\d/])|\d+,\d+(?!\d)|\d{1,3}(?: \d{3})+(?!\d)|\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]+|[+−·:=≠<>]|[()]|✔|[^\s\[\]\d+−·:=()⁰-⁹ⁿ✔]+/g)) {
       const t = m[0];
       if (t === '[') { hl = true; continue; } if (t === ']') { hl = false; continue; }
       if (/^ {2,}$/.test(t)) { out.push({ t: '', kind: 'sep', hl: false }); continue; } // две формулы — две строки

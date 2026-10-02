@@ -24,7 +24,7 @@ const START = '2026-09-28';      // понедельник, старт заня�
 // С 01.10 тема «выучена» при ≥ 85% верных с первой попытки в окне 15–20 (src/engine/bkt.ts): минимум 15 ответов на тему — это ≈ 2 дня на тему.
 // Прогон ведёт «собранный» ученик с честными 95%: все 36 тем за 90 учебных дней (раньше с 85% хватало 60). До экзамена (май 2028) время есть.
 // Ученик с 85–90% идёт ещё медленнее (см. последние два теста), с 70% почти стоит на месте.
-const DAYS = 90, ACCURACY = 0.95;
+const DAYS = 110, ACCURACY = 0.95;
 
 function fresh(): Save {
   return {
@@ -96,8 +96,8 @@ describe('прогрессия: дойдут ли новые уроки до р�
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, report(main, 'основной прогон') + '\n');
 
-  it('всего 36 тем с полным уроком, у каждой есть генераторы', () => {
-    expect(lessoned).toHaveLength(36);
+  it('всего 41 тема с полным уроком (36 + 5 десятичных), у каждой есть генераторы', () => {
+    expect(lessoned).toHaveLength(41);
     for (const id of lessoned) expect(tplOf(id).length, id).toBeGreaterThan(0);
   });
 
@@ -105,7 +105,7 @@ describe('прогрессия: дойдут ли новые уроки до р�
     for (const id of lessoned) for (const p of byId[id].prereqs) expect(byId[p].lesson, `${id} ← ${p} без урока`).toBe(true);
   });
 
-  it('(1) все 36 тем вводятся за 90 учебных дней', () => {
+  it('(1) все 41 тема вводится за 110 учебных дней (с десятичными, C3; потолок 3 новых темы в неделю)', () => {
     const missing = lessoned.filter(id => main.intro[id] === undefined);
     expect(missing, `не дошли до ребёнка: ${missing.join(', ')}`).toEqual([]);
   });
@@ -138,9 +138,9 @@ describe('прогрессия: дойдут ли новые уроки до р�
     expect(first(dec), 'комбинаторика и фигуры не раньше конца базы дробей').toBeGreaterThan(last(fracBasics));
   });
 
-  it('устойчивость: другие зёрна при точности 95% — все темы доходят за 90 дней, предпосылки соблюдены', () => {
+  it('устойчивость: другие зёрна при точности 95% — все темы доходят за 110 дней, предпосылки соблюдены', () => {
     for (const seed of [2, 3, 4]) {
-      const r = simulate(seed, 0.95, 90);
+      const r = simulate(seed, 0.95, DAYS);
       const missing = lessoned.filter(id => r.intro[id] === undefined);
       expect(missing, `точность 0.95, зерно ${seed}: не введены ${missing.join(', ')}`).toEqual([]);
       for (const id of lessoned) for (const p of byId[id].prereqs) expect(r.learned[p], `${p} → ${id} при 0.95`).toBeLessThanOrEqual(r.intro[id]);

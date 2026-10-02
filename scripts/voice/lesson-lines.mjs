@@ -35,8 +35,11 @@ const words = n => (n >= 1e9 ? `${words(Math.floor(n / 1e9))} миллиард${
 const LETTER = { a: 'а', b: 'бэ', c: 'цэ', d: 'дэ', e: 'е', f: 'эф', k: 'ка', m: 'эм', n: 'эн', p: 'пэ', q: 'ку', r: 'эр', s: 'эс', t: 'тэ', u: 'у', x: 'икс', y: 'игрек', i: 'и' };
 const CYR = 'а-яәіңғүұқөһё', GRAM = '(?:лер|лар|дер|дар|тер|тар)?(?:нің|ның|тің|тың|дің|дың|ге|ке|қа|ға|ден|дан|тен|тан|нен|нан|де|да|те|та|ді|ті|ды|ты|ні|ны|мен|бен|пен|інен|ынан|ін|ын|сі|сы|і|ы)?';
 const suffixOf = (f, n) => f(n).split('-')[1];           // abl(6) → «6-дан» → «дан»
+/** Десятичная дробь словами (C3): 0,45 → «нөл бүтін жүзден қырық бес», 2,005 → «екі бүтін мыңнан бес»; окончание — к последнему слову (0,3-тен → «…оннан үштен»). */
+export function decimalKz(w, f) { return `${words(+w)} бүтін ${fractionKz(+f, 10 ** f.length, { half: false })}`; }
 export function speakable(t) {
   return speakFractions(t)
+    .replace(new RegExp(`(\\d+),(\\d+)(?:-(${GRAM}))?(?![${CYR}\\d])`, 'g'), (_, w, f, sf) => decimalKz(w, f) + (sf || ''))
     .replace(/\?\/(\d+)(?:-(ге|ке|ға|қа|нің|тің|дің|ның|дың|тың))?(?![а-яәіңғүұқөһ\d])/g, (_, b, sf) => `${kzWords(+b)}${suffixOf(abl, +b)} белгісіз сан${sf || ''}`)   // ?/24 → жиырма төрттен белгісіз сан
     .replace(new RegExp(`(\\d+)\\s?[–…]\\s?(\\d+|[a-zA-Z])(?:-(${GRAM}))?(?![A-Za-z${CYR}\\d])`, 'g'), (_, a, b, sf) => {   // 1–9 → бірден тоғызға дейін; 1…20-дан → бірден жиырмадан; 1…n → бірден эн-ге дейін
       const from = `${kzWords(+a)}${suffixOf(abl, +a)}`, to = /\d/.test(b) ? kzWords(+b) : LETTER[b.toLowerCase()];
@@ -76,6 +79,11 @@ const ONES_W = ['бір', 'екі', 'үш', 'төрт', 'бес', 'алты', '�
 const ALT = { екі: ['екі', 'еке'], алты: ['алты', 'алт'], жеті: ['жеті', 'жет'] };
 export function numeralLeak(text, answer) {
   const ans = String(answer).replace(/\s/g, '');
+  if (/^\d+,\d+$/.test(ans)) {                                // десятичный ответ (C3): цифрами или словами «нөл бүтін жүзден жеті»
+    if (new RegExp(`(^|[^\\d,])${ans}(?!\\d|,\\d)`).test(text)) return ans;
+    const [w, f] = ans.split(','), sp = decimalKz(w, f);
+    return text.toLowerCase().includes(sp) ? sp : null;
+  }
   if (!/^\d+$/.test(ans)) return null;
   text = text.replace(/(\d) (?=\d{3}\b)/g, '$1');            // 7 245 → 7245
   if (new RegExp(`(^|[^\\d/,])${ans}(?![\\d/]|,\\d)`).test(text)) return ans;

@@ -62,12 +62,14 @@
   import TreeBuilder from '../widgets/TreeBuilder.svelte';
   import GridSquares from '../widgets/GridSquares.svelte';
   import LetterDigit from '../widgets/LetterDigit.svelte';
+  import DecPlace from '../widgets/DecPlace.svelte';
+  import DecColumn from '../widgets/DecColumn.svelte';
 
   // replay — пересмотр из альбома: без XP и без перехода к практике
   let { skill, replay = false }: { skill: string; replay?: boolean } = $props();
   // FractionCircle и FillOne подгоняют себя сами (пицца и мост по высоте); остальные виджеты сжимаются целиком не сильнее 0.8
   const SELF_FIT = ['FractionCircle', 'FillOne'];
-  const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline, MultipleHunt, StarPicker, SetSort, FractionCircle, FractionBar, NumberLine, FillOne, Scales, ZeroCounter, FracArea, TreeBuilder, GridSquares, LetterDigit };
+  const WIDGETS: Record<string, any> = { DivideGame, FactorTree, OrderOps, PlaceValue, PowerBlocks, CommonFactors, BusTimeline, MultipleHunt, StarPicker, SetSort, FractionCircle, FractionBar, NumberLine, FillOne, Scales, ZeroCounter, FracArea, TreeBuilder, GridSquares, LetterDigit, DecPlace, DecColumn };
   const steps: any[] = (LESSONS as Record<string, any[]>)[skill] ?? [{ type: 'say', kz: 'Бұл тақырыптың сабағы әзірленуде. Бірден жаттығуға көшейік!' }];
   const goal = steps.find(s => s.type === 'goal');
   const target = goal?.title ?? skillTitle(skill).kz;

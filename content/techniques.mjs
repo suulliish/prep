@@ -32,6 +32,12 @@ export const TECHNIQUES = [
   { skill: 'frac.mul', kz: 'Көбейту соққысы', ru: 'Удар умножения', color: 0xffcb2e, fx: 'spin' },
   { skill: 'frac.div', kz: 'Аударма соққысы', ru: 'Удар переворота', color: 0xff4fb8, fx: 'spin' },
   { skill: 'frac.part_of_number', kz: 'Бөлік соққысы', ru: 'Удар части', color: 0x3ddc6e, fx: 'split' },
+  // ---- ондық бөлшектер (C3, 02.10) ----
+  { skill: 'dec.concept', kz: 'Үтір соққысы', ru: 'Удар запятой', color: 0x35e6ff, fx: 'pierce' },
+  { skill: 'dec.compare_round', kz: 'Дөңгелек тәсілі', ru: 'Приём округления', color: 0x7dffd4, fx: 'spin' },
+  { skill: 'dec.add_sub', kz: 'Үтір бағанасы', ru: 'Столбик запятых', color: 0x5ea0ff, fx: 'arc' },
+  { skill: 'dec.mul_div', kz: 'Үтір секірісі', ru: 'Прыжок запятой', color: 0xffcb2e, fx: 'multi' },
+  { skill: 'dec.frac_convert', kz: 'Екі жүз соққысы', ru: 'Удар двух лиц', color: 0xa77bff, fx: 'split' },
   { skill: 'frac.find_whole', kz: 'Бүтінді табу тәсілі', ru: 'Приём целого', color: 0x7dffd4, fx: 'arc' },
   // ---- жиындар, тізбектер, логика ----
   { skill: 'sets.basics', kz: 'Жиын торы', ru: 'Сеть множеств', color: 0x5ea0ff, fx: 'multi' },
