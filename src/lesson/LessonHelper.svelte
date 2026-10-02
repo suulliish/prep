@@ -5,6 +5,7 @@
   import { onMount, untrack } from 'svelte';
   import Bit from '../ui/Bit.svelte';
   import Icon from '../ui/Icon.svelte';
+  import MicButton from '../ui/MicButton.svelte';
   import { audio } from '../lib/audio';
   import { askBitLesson, HELPER_ERR, MAX_QUESTIONS, type Turn, type LessonContext, type HelperError } from '../lib/helper';
   import { helperVisible, helperKey } from './helperGate';
@@ -20,6 +21,7 @@
   let busy = $state(false);
   let err = $state('');
   let q = $state('');
+  let talking = $state(false);   // идёт запись голоса или расшифровка
   let open = $state(false);
   let gen = 0;   // номер разговора: ответ, пришедший после смены шага, выбрасывается
   const asked = $derived(turns.filter(t => t.role === 'kid').length);
@@ -65,9 +67,10 @@
         {#if err}<p class="lh-err">{err}</p>{/if}
         {#if turns.length}
           {#if asked < MAX_QUESTIONS}
-            <form class="lh-ask" onsubmit={(e) => { e.preventDefault(); if (q.trim()) helpMe(q); }}>
-              <input bind:value={q} maxlength="200" placeholder="Тағы сұрағың бар ма? Жаз…" disabled={busy} onkeydown={(e) => e.stopPropagation()} />
-              <button class="btn" disabled={busy || !q.trim()}>{busy ? '…' : 'Сұрау'}</button>
+            <form class="lh-ask" onsubmit={(e) => { e.preventDefault(); if (q.trim() && !talking) helpMe(q); }}>
+              <input bind:value={q} maxlength="200" placeholder="Тағы сұрағың бар ма? Жаз не айт…" disabled={busy || talking} onkeydown={(e) => e.stopPropagation()} />
+              <MicButton bind:value={q} bind:active={talking} max={200} hint={ctx.title} disabled={busy} maxSec={25} compact label="Сұрағыңды айт" />
+              <button class="btn" disabled={busy || talking || !q.trim()}>{busy ? '…' : 'Сұрау'}</button>
             </form>
           {/if}
           <button class="btn ghost lh-close" onclick={() => (open = false)}>Жабу</button>
@@ -83,7 +86,7 @@
   .lh-hint { margin: 8px 0 0; font: 700 12px var(--txt); color: var(--dim); opacity: .8; }
   .lh-kid { margin: 0; color: var(--dim); font-style: italic; }
   .lh-err { margin: 0; color: var(--gold); }
-  .lh-ask { display: flex; gap: 8px; }
+  .lh-ask { display: flex; flex-wrap: wrap; gap: 8px; }
   .lh-ask input { flex: 1; min-width: 0; font: 700 16px var(--txt); color: var(--paper-ink); background: var(--paper); border: 3px solid var(--outline); border-radius: 12px; padding: 8px 10px; }
   .lh-close { justify-self: end; min-height: 36px; padding: 4px 12px 7px; font-size: 13px; }
 </style>

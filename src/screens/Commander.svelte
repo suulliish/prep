@@ -262,6 +262,8 @@
           <label><input type="radio" name="to" value="weekend" bind:group={game.save.settings.extraTo} onchange={persist} /> в копилку выходных</label>
         </fieldset>
         <p class="note">Правило: в будни за план — до 60 мин сегодня и до 48 мин в копилку выходных (4 часа за неделю), пропорционально выполненному. Засчитываются только честные задачи.</p>
+        <label class="check"><input type="checkbox" checked={game.save.settings.voiceInput !== false} onchange={(e) => { game.save.settings.voiceInput = e.currentTarget.checked; persist(); }} /> Голосовой ввод: кнопка «Айтып бер» (микрофон)</label>
+        <p class="note">Вместо того чтобы печатать, ребёнок может сказать ответ Биту вслух. Запись уходит на сервер Бита и в Gemini (Vertex) только для расшифровки и нигде не хранится; в поле появляется текст, ребёнок его видит и сам отправляет. Работает при входе в облако; браузер один раз спросит разрешение на микрофон.</p>
         <button class="btn ghost" onclick={() => go({ name: 'sound' })}>Звук и музыка: громкость, режим фокуса…</button>
         <button class="btn ghost" onclick={() => { game.save.settings.pin = undefined; persist(); unlocked = false; }}>Сменить PIN</button>
       </section>
@@ -284,11 +286,11 @@
       </section>
     {:else if tab === 'ai'}
       <section class="panel card list">
-        <p class="note">Кнопка «Түсінбедім» появляется только после ответа, когда решение уже показано: ИИ объясняет иначе и отвечает на уточняющие вопросы (до {3} на задачу, до 30 в день). Работает, только если на устройстве выполнен вход в облако (вкладка «Данные»). Модель — Gemini через Vertex, как у бота.</p>
+        <p class="note">Кнопка «Түсінбедім» появляется только после ответа, когда решение уже показано: ИИ объясняет иначе и отвечает на уточняющие вопросы (до {3} на задачу, до 30 в день). Работает, только если на устройстве выполнен вход в облако (вкладка «Данные»). Модель — Gemini через Vertex, как у бота. 🎤 — ребёнок сказал вопрос голосом (текст — как его расслышал Бит).</p>
         {#if !(game.save.aiLog ?? []).length}<p class="note">Вопросов пока не было.</p>{/if}
         {#each [...(game.save.aiLog ?? [])].reverse().slice(0, 30) as t}
           <details class="ailog">
-            <summary><b>{t.day}</b> · {skillDefs.find(d => d.id === t.skill)?.title.ru ?? t.skill} · {t.q === 'түсінбедім' ? '«не понял»' : `«${t.q}»`}</summary>
+            <summary><b>{t.day}</b> · {skillDefs.find(d => d.id === t.skill)?.title.ru ?? t.skill} · {t.q === 'түсінбедім' ? '«не понял»' : `${t.voice ? '🎤 ' : ''}«${t.q}»`}</summary>
             <p class="note">{t.task}</p>
             <p>{t.a}</p>
           </details>
@@ -357,6 +359,7 @@
   input[type=number] { width: 100px; font: 800 20px var(--txt); padding: 8px; background: var(--deep); color: var(--ink); border: 2px solid var(--line-hi); border-radius: 6px; }
   fieldset { border: 1px solid var(--line); border-radius: 6px; display: grid; gap: 6px; }
   fieldset label { display: flex; gap: 8px; align-items: center; font-weight: 600; }
+  label.check { display: flex; gap: 8px; align-items: center; }
   .list ul { margin: 6px 0; padding: 0; list-style: none; display: grid; gap: 4px; }
   .list li { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 6px 8px; background: var(--deep); }
   .list em { font-style: normal; font-size: var(--fs-s); color: var(--dim); white-space: nowrap; }

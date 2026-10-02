@@ -4,17 +4,22 @@
 // заготовленного объяснения) — правильный ответ к этому моменту уже показан, решать за ребёнка нечего.
 // Режим «урок» (mode:'lesson', helper/lesson.mjs): объясняет шаг урока иначе; закрытые числа приходят как ▢ и не раскрываются.
 // Режим «Биткә түсіндір» (mode:'teachback', helper/teachback.mjs): ребёнок объясняет тему, Бит оценивает понимание (JSON с вердиктом).
+// Голосовой ввод (POST /transcribe, helper/transcribe.mjs): запись голоса ребёнка → текст в поле ответа; аудио не сохраняется.
 // Спрашивать могут только вошедшие в облако сайта (Firebase ID token проекта prep-b72a9).
 import http from 'node:http';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { GoogleGenAI } from '@google/genai';
 import { SYSTEM_LESSON, checkLesson, lessonPrompt } from './lesson.mjs';
 import { SYSTEM_TEACH, TEACH_SCHEMA, TEACH_THINKING, checkTeach, teachPrompt, parseTeach, roundOf } from './teachback.mjs';
+import { SYSTEM_STT, STT_SCHEMA, STT_THINKING, MAX_BODY, checkAudio, transcribePrompt, parseTranscript } from './transcribe.mjs';
 
 const FIREBASE_PROJECT = process.env.FIREBASE_PROJECT || 'prep-b72a9';
 const MODELS = (process.env.MODELS || 'gemini-3.7-flash,gemini-3.5-flash').split(',');
 const PER_USER_DAY = +(process.env.PER_USER_DAY || 30);
 const ALL_DAY = +(process.env.ALL_DAY || 200);
+// голосовой ввод считается отдельно: одна запись — это не вопрос к Биту, а замена клавиатуры (ответ потом всё равно идёт в /explain)
+const VOICE_PER_USER_DAY = +(process.env.VOICE_PER_USER_DAY || 60);
+const VOICE_ALL_DAY = +(process.env.VOICE_ALL_DAY || 300);
 const TIMEOUT_MS = +(process.env.TIMEOUT_MS || 25000);
 const ORIGINS = (process.env.ORIGINS || 'https://suulliish.github.io,http://localhost:5173,http://localhost:4173').split(',');
 const SKIP_AUTH = process.env.SKIP_AUTH === '1'; // только для локальной проверки
@@ -38,19 +43,24 @@ const SYSTEM = `Ты — Бит, дружелюбный робот-помощн�
 5. Говори только о математике и логике этой задачи. На личные, опасные или посторонние темы ответь одной фразой, что с этим лучше к брату или взрослым, и верни разговор к задаче. Никаких ссылок, никакой «дружбы».
 6. Не используй LaTeX и markdown-разметку: обычный текст, дроби пиши как 3/4, умножение как ·.`;
 
-const used = new Map(); // uid -> {day, n}
-let allDay = { day: '', n: 0 };
 const today = () => new Date().toISOString().slice(0, 10);
 
-function quotaOk(uid) {
-  const d = today();
-  if (allDay.day !== d) allDay = { day: d, n: 0 };
-  const u = used.get(uid);
-  const cur = u && u.day === d ? u : { day: d, n: 0 };
-  if (cur.n >= PER_USER_DAY || allDay.n >= ALL_DAY) return false;
-  cur.n++; allDay.n++; used.set(uid, cur);
-  return true;
+/** Дневной лимит: perUser на ученика и all на всех. Возвращает проверку, которая сразу засчитывает запрос. */
+function quota(perUser, all) {
+  const used = new Map(); // uid -> {day, n}
+  let allDay = { day: '', n: 0 };
+  return uid => {
+    const d = today();
+    if (allDay.day !== d) allDay = { day: d, n: 0 };
+    const u = used.get(uid);
+    const cur = u && u.day === d ? u : { day: d, n: 0 };
+    if (cur.n >= perUser || allDay.n >= all) return false;
+    cur.n++; allDay.n++; used.set(uid, cur);
+    return true;
+  };
 }
+const quotaOk = quota(PER_USER_DAY, ALL_DAY);
+const voiceQuotaOk = quota(VOICE_PER_USER_DAY, VOICE_ALL_DAY);
 
 async function whoIs(req) {
   if (SKIP_AUTH) return { uid: 'local', email: 'local' };
@@ -130,14 +140,17 @@ const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin || '';
   if (req.method === 'OPTIONS') return send(res, origin, 204);
   if (req.method === 'GET' && req.url === '/health') return send(res, origin, 200, { ok: true });
-  if (req.method !== 'POST' || req.url !== '/explain') return send(res, origin, 404, { error: 'not_found' });
+  const voice = req.url === '/transcribe';
+  if (req.method !== 'POST' || (req.url !== '/explain' && !voice)) return send(res, origin, 404, { error: 'not_found' });
 
   const who = await whoIs(req);
   if (!who) return send(res, origin, 401, { error: 'sign_in' });
   let body = '';
-  for await (const chunk of req) { body += chunk; if (body.length > 20000) return send(res, origin, 413, { error: 'too_big' }); }
+  const limit = voice ? MAX_BODY : 20000;
+  for await (const chunk of req) { body += chunk; if (body.length > limit) return send(res, origin, 413, { error: 'too_big' }); }
   let b;
   try { b = JSON.parse(body); } catch { return send(res, origin, 400, { error: 'bad_json' }); }
+  if (voice) return transcribe(res, origin, who, b);
   // режим «урок» (mode:'lesson') — шаг урока; «Биткә түсіндір» (mode:'teachback') — объяснение ребёнка; без mode — разобранная задача практики
   const lesson = b?.mode === 'lesson', teach = b?.mode === 'teachback';
   if (b?.mode !== undefined && b.mode !== 'practice' && !lesson && !teach) return send(res, origin, 400, { error: 'bad_mode' });
@@ -164,5 +177,21 @@ const server = http.createServer(async (req, res) => {
     send(res, origin, 502, { error: 'ai_unavailable' });
   }
 });
+
+async function transcribe(res, origin, who, b) {
+  const bad = checkAudio(b);
+  if (bad) return send(res, origin, 400, { error: bad });
+  if (!voiceQuotaOk(who.uid)) return send(res, origin, 429, { error: 'quota' });
+  try {
+    const t0 = Date.now();
+    const { out, model } = await ask(transcribePrompt(b), SYSTEM_STT, { temperature: 0, responseMimeType: 'application/json', responseSchema: STT_SCHEMA, thinkingConfig: STT_THINKING }, parseTranscript);
+    // в журнал — только размеры: что сказал ребёнок, остаётся у него в журнале на сайте
+    console.log(JSON.stringify({ uid: who.uid, mode: 'transcribe', model, ms: Date.now() - t0, kb: Math.round(b.audio.length * 0.75 / 1024), sec: b.seconds, chars: out.text.length }));
+    send(res, origin, 200, out);
+  } catch (e) {
+    console.error('transcribe failed', String(e));
+    send(res, origin, 502, { error: 'ai_unavailable' });
+  }
+}
 
 server.listen(+(process.env.PORT || 8080), () => console.log('bit-helper up'));

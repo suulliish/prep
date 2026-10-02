@@ -2,10 +2,11 @@
   // «Биткә түсіндір»: после «Есте сақта» ребёнок объясняет тему Биту своими словами (эффект «protégé», Chase 2009:
   // объясняя другому, понимаешь глубже). Бит здесь ученик, а не учитель.
   // Без входа в облако или без сети — меню из трёх объяснений: верное, с типичной ошибкой, «так написано» (Vest 2022).
-  // Со входом — свободный ответ (поле + слова-кирпичики), ИИ оценивает по правилу: понял / частично / ошибка.
+  // Со входом — свободный ответ (поле + слова-кирпичики + «Айтып бер»: можно сказать голосом), ИИ оценивает по правилу: понял / частично / ошибка.
   // Максимум 2 ответа ребёнка, потом итог. ИИ падает посреди шага — сразу переходим на меню, шаг не ломается.
   import { onMount, tick } from 'svelte';
   import Bit from '../ui/Bit.svelte';
+  import MicButton from '../ui/MicButton.svelte';
   import MathLine from './MathLine.svelte';
   import { audio } from '../lib/audio';
   import { askBitTeach, type Turn, type TeachContext, type TeachReply, type HelperError } from '../lib/helper';
@@ -59,12 +60,13 @@
   let turns = $state<Turn[]>([]);   // kid / bit по очереди; первый вопрос Бита в turns не хранится
   let text = $state('');
   let busy = $state(false);
+  let talking = $state(false);      // идёт запись голоса или расшифровка: отправить пока нельзя
   let reply = $state<TeachReply | null>(null);
   const answers = $derived(turns.filter(t => t.role === 'kid').length);
   const over = $derived(reply !== null && aiFinished(reply.verdict, answers));
   async function send(answer: string) {
     const a = answer.trim();
-    if (busy || !a) return;
+    if (busy || talking || !a) return;
     locked = 'ai'; busy = true;
     const history = $state.snapshot(turns) as Turn[];
     try {
@@ -128,13 +130,14 @@
     </div>
   {:else if mode === 'ai' && !over}
     <div class="tb-bricks" role="group" aria-label="Сөздер">
-      {#each bricks as b}<button class="brick" disabled={busy} onclick={() => (text = addBrick(text, b))}>{b}</button>{/each}
+      {#each bricks as b}<button class="brick" disabled={busy || talking} onclick={() => (text = addBrick(text, b))}>{b}</button>{/each}
     </div>
     <form class="tb-ask" onsubmit={(e) => { e.preventDefault(); send(text); }}>
-      <textarea bind:value={text} rows="3" maxlength="300" placeholder="Өз сөзіңмен жаз…" aria-label="Түсіндірмең" disabled={busy} onkeydown={(e) => e.stopPropagation()}></textarea>
+      <textarea bind:value={text} rows="3" maxlength="300" placeholder="Өз сөзіңмен жаз немесе айтып бер…" aria-label="Түсіндірмең" disabled={busy || talking} onkeydown={(e) => e.stopPropagation()}></textarea>
+      <MicButton bind:value={text} bind:active={talking} max={300} hint={`${title}. ${question}`} disabled={busy} />
       <div class="tb-row">
-        <button class="btn primary" disabled={busy || !text.trim()}>{busy ? '…' : 'Жіберу'}</button>
-        <button type="button" class="btn ghost" disabled={busy} onclick={() => send('Білмеймін')}>Білмеймін</button>
+        <button class="btn primary" disabled={busy || talking || !text.trim()}>{busy ? '…' : 'Жіберу'}</button>
+        <button type="button" class="btn ghost" disabled={busy || talking} onclick={() => send('Білмеймін')}>Білмеймін</button>
       </div>
     </form>
     {#if answers}<p class="tb-hint">Түсіндіру: {answers}/{MAX_TEACH_ROUNDS}</p>{/if}

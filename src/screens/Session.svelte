@@ -8,6 +8,7 @@
   import Bit from '../ui/Bit.svelte';
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
+  import MicButton from '../ui/MicButton.svelte';
   import GlitchTurn from '../ui/GlitchTurn.svelte';
   import CoinChip from '../ui/CoinChip.svelte';
   import BattleEvent from '../ui/BattleEvent.svelte';
@@ -118,6 +119,7 @@
   let aiBusy = $state(false);
   let aiErr = $state('');
   let aiQ = $state('');
+  let aiTalking = $state(false);   // идёт запись голоса или расшифровка
   const aiAsked = $derived(aiTurns.filter(t => t.role === 'kid').length);
   async function helpMe(question?: string) {
     if (!item || aiBusy) return;
@@ -692,9 +694,10 @@
           {#if !aiTurns.length}
             <button class="askbtn" onclick={() => helpMe()} disabled={aiBusy}><Icon name="bulb" fill="var(--gold)" size={18} />{aiBusy ? 'Бит ойланып жатыр…' : 'Түсінбедім — Биттен сұра'}</button>
           {:else if aiAsked < MAX_QUESTIONS}
-            <form class="askrow" onsubmit={(e) => { e.preventDefault(); if (aiQ.trim()) helpMe(aiQ); }}>
-              <input bind:value={aiQ} maxlength="200" placeholder="Тағы сұрағың бар ма? Жаз…" disabled={aiBusy} onkeydown={(e) => e.stopPropagation()} />
-              <button class="btn" disabled={aiBusy || !aiQ.trim()}>{aiBusy ? '…' : 'Сұрау'}</button>
+            <form class="askrow" onsubmit={(e) => { e.preventDefault(); if (aiQ.trim() && !aiTalking) helpMe(aiQ); }}>
+              <input bind:value={aiQ} maxlength="200" placeholder="Тағы сұрағың бар ма? Жаз не айт…" disabled={aiBusy || aiTalking} onkeydown={(e) => e.stopPropagation()} />
+              <MicButton bind:value={aiQ} bind:active={aiTalking} max={200} hint={skillDefs.find(d => d.id === item?.skill)?.title.kz} disabled={aiBusy} maxSec={25} compact label="Сұрағыңды айт" />
+              <button class="btn" disabled={aiBusy || aiTalking || !aiQ.trim()}>{aiBusy ? '…' : 'Сұрау'}</button>
             </form>
           {/if}
         </div>
@@ -871,7 +874,7 @@
   .askbtn { display: flex; gap: 6px; align-items: center; justify-content: center; background: none; border: 0; color: var(--dim); font: 800 14px var(--txt); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; padding: 4px; }
   .kidq { color: var(--dim); font-style: italic; }
   .aierr { color: var(--gold); }
-  .askrow { display: flex; gap: 8px; }
+  .askrow { display: flex; flex-wrap: wrap; gap: 8px; }
   .askrow input { flex: 1; min-width: 0; font: 700 16px var(--txt); color: var(--paper-ink); background: var(--paper); border: 3px solid var(--outline); border-radius: 12px; padding: 8px 10px; }
 
   .grow { flex: 1; min-width: 0; }
