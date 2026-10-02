@@ -6,6 +6,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, type User } from 'firebase/auth';
 import { getFirestore, doc, getDoc, getDocs, setDoc, collection, writeBatch } from 'firebase/firestore';
+import { APP_VERSION, deviceId, deviceLabel } from './version';
 import { game, afterPersist, replaceSave, persist } from './store.svelte';
 import type { Attempt, Save, UsageDay } from '../engine/types';
 import { mergeUsage } from '../engine/usage';
@@ -27,6 +28,8 @@ export const cloud = $state({
   lastSync: 0,
   error: '',
   linkSent: '' as string, // почта, куда ушла ссылка для входа
+  // какая версия приложения на каждом устройстве аккаунта и когда оно последний раз писало в облако (S6): видно командиру
+  devices: {} as Record<string, { app: string; at: number; label: string }>,
 });
 const EMAIL_KEY = 'razlom.emailForSignIn';
 
@@ -60,7 +63,10 @@ async function push(all = false) {
   try {
     const { attempts, usage = [], ...rest } = $state.snapshot(game.save) as Save;
     const batch = writeBatch(db);
-    batch.set(doc(db, 'users', uid), { save: JSON.stringify(rest), updatedAt: rest.updatedAt ?? Date.now(), app: 'razlom', v: 1 });
+    const me = { app: APP_VERSION, at: Date.now(), label: deviceLabel() };
+    // merge: поле devices — по одному ключу на устройство, остальные устройства не стираются
+    batch.set(doc(db, 'users', uid), { save: JSON.stringify(rest), updatedAt: rest.updatedAt ?? Date.now(), app: 'razlom', v: 1, appVersion: APP_VERSION, devices: { [deviceId()]: me } }, { merge: true });
+    cloud.devices = { ...cloud.devices, [deviceId()]: me };
     for (const [m, list] of Object.entries(byMonth(attempts))) {
       if (!all && pushedCount[m] === list.length) continue;
       batch.set(doc(db, 'users', uid, 'attempts', m), { list: JSON.stringify(list), n: list.length });
@@ -88,6 +94,7 @@ async function pull() {
       if (!isBlank(localSave)) await push(true); else { cloud.status = 'ok'; cloud.lastSync = Date.now(); }
       return;
     }
+    cloud.devices = { ...(main.data().devices ?? {}) };
     const remoteAt = main.data().updatedAt ?? 0;
     const rest = JSON.parse(main.data().save) as Save;
     // ответы и поведение облака читаем всегда: их объединяем с устройством, а не заменяем

@@ -6,7 +6,7 @@
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
   import { streak } from '../engine/streak';
-  import { OUTFITS, crystals, wearOutfit, STAR_REWARDS, totalStars, wearStyle, applyLook } from '../lib/look';
+  import { OUTFITS, crystals, wearOutfit, STAR_REWARDS, totalStars, wearStyle, applyLook, outfitGot, styleGot } from '../lib/look';
   import { sparksAt, centerOf } from '../ui/fx.svelte';
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -51,13 +51,13 @@
   });
 
   const worn = $derived(game.save.outfit ?? 'cyan');
-  const nextOutfit = $derived(OUTFITS.find(o => o.need > cr));
+  const nextOutfit = $derived(OUTFITS.find(o => !outfitGot(o)));
   // награды за звёзды уровней: след оружия и цвет плаща (GAME_LOOP.md 5)
   const stars = $derived(totalStars());
-  const nextReward = $derived(STAR_REWARDS.find(r => r.need > stars));
+  const nextReward = $derived(STAR_REWARDS.find(r => !styleGot(r)));
   const style = $derived(game.save.style ?? {});
   function toggleStyle(r: (typeof STAR_REWARDS)[number], ev: MouseEvent) {
-    if (stars < r.need) { audio.play('click'); return; }
+    if (!styleGot(r)) { audio.play('click'); return; }
     const on = style[r.kind] === r.id;
     wearStyle(r.kind, on ? undefined : r.id);
     audio.play(on ? 'click' : 'levelup');
@@ -122,7 +122,7 @@
     {/if}
     <div class="wardrobe">
       {#each OUTFITS as o}
-        {@const got = cr >= o.need}
+        {@const got = outfitGot(o)}
         {@const on = worn === o.id}
         <button class="suit" class:got class:on class:try={trying === o.id} onclick={ev => { tryOn(o); ev.currentTarget.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }} aria-pressed={trying === o.id} aria-label="{o.kz}{on ? ', киіліп тұр' : got ? '' : `, ${o.need} кристалл керек`}">
           <span class="pic"><img src={img(o.id)} alt="" width="256" height="320" draggable="false" />{#if !got}<i class="lock" aria-hidden="true"></i>{/if}</span>
@@ -134,7 +134,7 @@
     </div>
     {#if tryO && tryO.id !== worn}
       <div class="tryrow">
-        {#if cr >= tryO.need}<button class="wearbtn" onclick={ev => wear(tryO.id, ev)}>Кию</button>
+        {#if outfitGot(tryO)}<button class="wearbtn" onclick={ev => wear(tryO.id, ev)}>Кию</button>
         {:else}<p class="need">Тағы <b class="num">{tryO.need - cr}</b> кристалл керек</p>{/if}
       </div>
     {/if}
@@ -151,7 +151,7 @@
     {/if}
     <div class="rewards">
       {#each STAR_REWARDS as r}
-        {@const got = stars >= r.need}
+        {@const got = styleGot(r)}
         {@const on = style[r.kind] === r.id}
         <button class="rw" class:got class:on onclick={ev => toggleStyle(r, ev)} aria-label="{r.kz}{on ? ', киіліп тұр' : got ? ', кию' : `, ${r.need} жұлдыз керек`}">
           <span class="pic">{#if noImg[r.id]}<span class="sw {r.kind}" class:rainbow={r.rainbow} style="--c:{hex(r.color)}"></span>{:else}<img src={img('reward-' + r.id)} alt="" width="256" height="256" draggable="false" onerror={() => (noImg[r.id] = true)} />{/if}</span>

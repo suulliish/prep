@@ -13,6 +13,7 @@
   import { analyze, reportMarkdown } from '../engine/analytics';
   import { shipIntegrity, openBreaks } from '../engine/repair';
   import { audio } from '../lib/audio';
+  import { APP_VERSION, deviceId } from '../lib/version';
   // @ts-ignore
   import { LESSONS } from '../../content/lessons.mjs';
 
@@ -401,9 +402,19 @@
           {:else}
             <p class="note">Вход: <b>{C.cloud.user.email}</b>. Статус: {C.cloud.status === 'ok' ? '✓ синхронизировано' : C.cloud.status === 'syncing' ? 'синхронизация…' : C.cloud.status === 'error' ? 'ошибка' : '—'} · последняя: {fmtTime(C.cloud.lastSync)}</p>
             <div class="row"><button class="btn" onclick={() => C!.syncNow()}>Синхронизировать сейчас</button><button class="btn ghost" onclick={() => C!.signOutCloud()}>Выйти</button></div>
+            {@const devs = Object.entries(C.cloud.devices).sort((a, b) => b[1].at - a[1].at)}
+            {#if devs.length}
+              <p class="note"><b>Устройства этого аккаунта</b> (версия приложения и последняя запись в облако). Перед обновлениями правил облака все устройства должны быть на текущей версии — если устройство отстаёт или его нет в списке, откройте на нём приложение (со входом в облако), чтобы оно обновилось.</p>
+              <ul class="devs">
+                {#each devs as [id, d]}
+                  <li class:me={id === deviceId()} class:old={d.app !== APP_VERSION}>{d.label}{id === deviceId() ? ' (это устройство)' : ''} — <code>{d.app}</code>{d.app !== APP_VERSION ? ' · не текущая' : ''} · {fmtTime(d.at)}</li>
+                {/each}
+              </ul>
+            {/if}
           {/if}
           {#if C?.cloud.error}<p class="err">{ERR[C.cloud.error] ?? `Ошибка: ${C.cloud.error}`}{#if !ERR[C.cloud.error]}{C.cloud.error.includes('unauthorized-domain') ? ' — добавьте адрес сайта в Firebase → Authentication → Settings → Authorized domains.' : C.cloud.error.includes('permission-denied') ? ' — проверьте правила Firestore (docs/CLOUD.md).' : ''}{/if}</p>{/if}
         </div>
+        <p class="note">Версия приложения: <code>{APP_VERSION}</code></p>
         <p class="note">Прогресс хранится в этом браузере. Раз в неделю скачивайте копию — её можно загрузить на другом устройстве. Последняя копия: {game.save.lastBackup ?? 'не было'}.</p>
         <button class="btn primary" onclick={downloadSave}>Скачать копию прогресса</button>
         <label class="btn" for="imp">Загрузить копию<input id="imp" type="file" accept="application/json" hidden onchange={onImport} /></label>
@@ -479,4 +490,7 @@
   .zt { color: var(--gold); font-size: 12px; }
   .zl { margin-left: 6px; }
   .cloud { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line-hi); border-radius: 8px; background: var(--deep); }
+  .devs { margin: 0; padding-left: 18px; font-size: 13px; }
+  .devs li.old { color: #ffb36b; }
+  .devs li.me { font-weight: 700; }
 </style>

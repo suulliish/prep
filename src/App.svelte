@@ -7,6 +7,7 @@
   import { audio } from './lib/audio';
   import { applyLook } from './lib/look';
   import { syncDecor } from './lib/ship.svelte';
+  import { APP_VERSION } from './lib/version';
   import MapScreen from './screens/Map.svelte';
   import Hero from './screens/Hero.svelte';
   import Intro from './screens/Intro.svelte';
@@ -28,7 +29,7 @@
   // сбой где угодно — в журнал поведения (вкладка «Аналитика» командира), ребёнок не застревает (02.10)
   const logError = (where: string, e: unknown) => {
     const m = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-    try { trackEvent('error', { v: `${where} · ${game.screen.name} · ${m}`.slice(0, 300) }); } catch { /* журнал не важнее экрана */ }
+    try { trackEvent('error', { v: `${where} · ${game.screen.name} · ${APP_VERSION} · ${m}`.slice(0, 300) }); } catch { /* журнал не важнее экрана */ }
   };
   onMount(() => {
     protectStorage();

@@ -1,6 +1,7 @@
 // Мир и облик героя: текущий мир (небо в 3D, вид мобов), костюм, энергия Кода, открытые порталы.
 import { game, persist } from './store.svelte';
 import { W } from './world.svelte';
+import { legacyHas } from '../engine/legacy';
 // @ts-ignore
 import { WORLDS as WS, OUTFITS as OS, STAR_REWARDS as SR, codeEnergy } from '../../content/worlds.mjs';
 
@@ -19,12 +20,17 @@ export const crystals = () => Object.values(game.save.skills).filter(s => s.stat
 export const cleared = (id: string) => !!game.save.worldsCleared?.includes(id);
 export function currentWorld(): WorldDef { return WORLDS.find(w => w.id === game.save.world) ?? WORLDS[0]; }
 
-/** Мир открыт: хватает энергии Кода и побеждён босс предыдущего мира (арена — только с пробниками). */
+/** Мир открыт: хватает энергии Кода и побеждён босс предыдущего мира (арена — только с пробниками).
+ *  Однажды открытый мир не закрывается, даже если энергия упала (снимок открытого, src/engine/legacy.ts). */
 export function worldOpen(i: number): boolean {
   const w = WORLDS[i];
   if (w.arena) return false;
-  return i === 0 || (energy() >= w.need && cleared(WORLDS[i - 1].id));
+  return i === 0 || legacyHas(game.save, 'worlds', w.id) || (energy() >= w.need && cleared(WORLDS[i - 1].id));
 }
+/** Костюм получен: хватает кристаллов или он уже был открыт (не закрывается). */
+export const outfitGot = (o: Outfit) => crystals() >= o.need || legacyHas(game.save, 'outfits', o.id);
+/** Плащ или след получен: хватает звёзд или уже был открыт. */
+export const styleGot = (r: StarReward) => totalStars() >= r.need || legacyHas(game.save, 'styles', r.id);
 
 export function applyLook() {
   const w = currentWorld();

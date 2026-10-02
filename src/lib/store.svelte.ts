@@ -4,6 +4,7 @@ import type { Save } from '../engine/types';
 import { localJson } from '../engine/sync';
 import { refreshAvailability, fixMissingDue, type SkillDef } from '../engine/progress';
 import { today } from '../engine/dates';
+import { ensureLegacy } from '../engine/legacy';
 // @ts-ignore — граф навыков на JS
 import { skills as SKILLS } from '../../content/skills.mjs';
 // @ts-ignore
@@ -31,6 +32,7 @@ function load(): Save {
       if (s.heroName === 'Кодер') s.heroName = 'Муртаза'; // старое имя-заглушка
       // доп. миссий в день не больше одной (+15 мин): старые сохранения хранили 4
       if (s.settings && s.settings.extraMissionCap > 1) s.settings = { ...s.settings, extraMissionCap: 1 };
+      try { ensureLegacy(s, today()); } catch { /* снимок не важнее загрузки */ }   // снимок открытого: только растёт (src/engine/legacy.ts)
       return s;
     }
   } catch {
@@ -93,6 +95,7 @@ function writeLocal(key: string, json: string): boolean {
 }
 
 export function persist() {
+  try { ensureLegacy(game.save, game.day); } catch { /* снимок не важнее сохранения */ }   // открылось новое — сразу в снимок, чтобы потом не закрылось
   game.save.updatedAt = Date.now();
   writeLocal(KEY, localJson(game.save));
   afterPersist.forEach(f => f());
@@ -116,6 +119,7 @@ export function replaceSave(data: Save, keepTime = false) {
   if (game.save.heroName === 'Кодер') game.save.heroName = 'Муртаза';
   refreshAvailability(game.save, skillDefs);
   fixMissingDue(game.save, game.day);
+  try { ensureLegacy(game.save, game.day); } catch { /* без снимка */ }
   writeLocal(KEY, localJson(game.save));
   if (keepTime) game.save.updatedAt = t; else persist();
 }
