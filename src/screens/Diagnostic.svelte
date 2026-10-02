@@ -50,7 +50,8 @@
       else if (streak >= 2) {
         known.add(cur!); scanned++;
         const st = (game.save.skills[cur!] ??= blankSkill());
-        st.status = 'learned'; st.p = 0.95; st.lessonDone = false; // урок не пропадает: провалит проверку — урок покажется st.learnedAt = game.day; st.due = addSchoolDays(game.day, 1);
+        st.status = 'learned'; st.p = 0.95; st.lessonDone = false; // урок не пропадает: провалит проверку — урок покажется
+        st.learnedAt = game.day; st.due = addSchoolDays(game.day, 1);   // 02.10: эта строка была внутри комментария — темы скана никогда не проверялись
         cur = null;
       }
       nextItem();

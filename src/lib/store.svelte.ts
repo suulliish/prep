@@ -2,7 +2,7 @@
 // Firebase-синхронизация добавится в M1 поверх этого же объекта.
 import type { Save } from '../engine/types';
 import { localJson } from '../engine/sync';
-import { refreshAvailability, type SkillDef } from '../engine/progress';
+import { refreshAvailability, fixMissingDue, type SkillDef } from '../engine/progress';
 import { today } from '../engine/dates';
 // @ts-ignore — граф навыков на JS
 import { skills as SKILLS } from '../../content/skills.mjs';
@@ -63,6 +63,20 @@ export const game = $state({
 });
 
 refreshAvailability(game.save, skillDefs);
+fixMissingDue(game.save, game.day);   // темы скана без срока проверки (баг диагностики до 02.10)
+
+/** Новый день, пока приложение открыто (PWA висит в фоне через полночь): день меняется при возвращении в приложение.
+ *  На экранах без задания — перезагрузка (план, «Еске түсір», серия собираются заново); посреди задания — только дата, план соберётся на корабле. */
+export function checkNewDay() {
+  const d = today();
+  if (d === game.day) return;
+  game.day = d;
+  if (!['lesson', 'session', 'recall', 'diagnostic'].includes(game.screen.name) && typeof location !== 'undefined') location.reload();
+}
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkNewDay(); });
+  setInterval(() => { if (document.visibilityState === 'visible') checkNewDay(); }, 60000);
+}
 // первый запуск — вступление-история
 if (!game.save.introSeen && !game.save.diagnosticDone) game.screen = { name: 'intro' };
 
@@ -101,6 +115,7 @@ export function replaceSave(data: Save, keepTime = false) {
   game.save = { ...fresh(), ...data };
   if (game.save.heroName === 'Кодер') game.save.heroName = 'Муртаза';
   refreshAvailability(game.save, skillDefs);
+  fixMissingDue(game.save, game.day);
   writeLocal(KEY, localJson(game.save));
   if (keepTime) game.save.updatedAt = t; else persist();
 }
