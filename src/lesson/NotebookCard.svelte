@@ -15,6 +15,7 @@
   import { fieldsFor, exampleSpec, checkExample } from './notebook';
   import { checkNotebookPhoto, HELPER_ERR, type HelperError, type NotebookCheck, type NbField, type NbMark } from '../lib/helper';
   import { shrinkPhoto } from '../lib/photo';
+  import { trackNope } from '../lib/track.svelte';
 
   // check — подмена запроса для проверок без сервера; signedIn — без облака (в игре не нужны)
   let { skill, onclose, check = checkNotebookPhoto, signedIn }: { skill: string; onclose: () => void; check?: typeof checkNotebookPhoto; signedIn?: boolean } = $props();
@@ -34,6 +35,7 @@
   const gate = new ReadGate();
   let tip = $state(''), tipT = 0, btn = $state<HTMLElement>();
   function nope(say = '') {
+    trackNope('notebook');
     btn?.classList.remove('nope'); void btn?.offsetWidth; btn?.classList.add('nope');
     audio.play('click');
     if (say) { tip = say; clearTimeout(tipT); tipT = window.setTimeout(() => (tip = ''), 2600); }

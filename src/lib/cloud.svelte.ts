@@ -1,12 +1,14 @@
 // Облачное сохранение: Firebase Auth (вход Google) + Firestore. Загружается лениво — сайт работает и без него.
 // Данные: users/{uid} — сохранение без истории ответов; users/{uid}/attempts/{ГГГГ-ММ} — история по месяцам
-// (у документа Firestore предел 1 МБ, а ответов за полтора года больше). Конфликт двух устройств решается
+// (у документа Firestore предел 1 МБ, а ответов за полтора года больше); users/{uid}/usage/{ГГГГ-ММ} — поведение по дням
+// для аналитики командира (src/lib/track.svelte.ts). Конфликт двух устройств решается
 // по времени последнего изменения (updatedAt); проигравшая копия остаётся в localStorage (…before-replace).
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, type User } from 'firebase/auth';
 import { getFirestore, doc, getDoc, getDocs, setDoc, collection, writeBatch } from 'firebase/firestore';
 import { game, afterPersist, replaceSave } from './store.svelte';
-import type { Attempt, Save } from '../engine/types';
+import type { Attempt, Save, UsageDay } from '../engine/types';
+import { mergeUsage } from '../engine/usage';
 
 // Конфиг веб-приложения Firebase — не секрет (доступ к данным закрывают правила Firestore, см. docs/CLOUD.md)
 const firebaseConfig = {
@@ -33,6 +35,7 @@ const db = getFirestore(app);
 let uid: string | null = null;
 let timer: number | undefined;
 const pushedCount: Record<string, number> = {}; // сколько ответов месяца уже в облаке
+const pushedUsage: Record<string, string> = {};  // что из поведения месяца уже в облаке (строка JSON)
 
 const monthOf = (a: Attempt) => a.day.slice(0, 7);
 function byMonth(list: Attempt[]) {
@@ -41,17 +44,29 @@ function byMonth(list: Attempt[]) {
   return m;
 }
 
+function usageByMonth(list: UsageDay[]) {
+  const m: Record<string, UsageDay[]> = {};
+  for (const d of list) (m[d.day.slice(0, 7)] ??= []).push(d);
+  return m;
+}
+
 async function push(all = false) {
   if (!uid) return;
   cloud.status = 'syncing';
   try {
-    const { attempts, ...rest } = $state.snapshot(game.save) as Save;
+    const { attempts, usage = [], ...rest } = $state.snapshot(game.save) as Save;
     const batch = writeBatch(db);
     batch.set(doc(db, 'users', uid), { save: JSON.stringify(rest), updatedAt: rest.updatedAt ?? Date.now(), app: 'razlom', v: 1 });
     for (const [m, list] of Object.entries(byMonth(attempts))) {
       if (!all && pushedCount[m] === list.length) continue;
       batch.set(doc(db, 'users', uid, 'attempts', m), { list: JSON.stringify(list), n: list.length });
       pushedCount[m] = list.length;
+    }
+    for (const [m, list] of Object.entries(usageByMonth(usage))) {
+      const json = JSON.stringify(list);
+      if (!all && pushedUsage[m] === json) continue;   // пишем только изменившийся месяц (обычно текущий)
+      batch.set(doc(db, 'users', uid, 'usage', m), { list: json, n: list.length });
+      pushedUsage[m] = json;
     }
     await batch.commit();
     cloud.status = 'ok'; cloud.lastSync = Date.now(); cloud.error = '';
@@ -72,7 +87,12 @@ async function pull() {
       const attempts: Attempt[] = [];
       months.forEach(d => { const list = JSON.parse(d.data().list) as Attempt[]; attempts.push(...list); pushedCount[d.id] = list.length; });
       attempts.sort((a, b) => a.at - b.at);
-      replaceSave({ ...rest, attempts, updatedAt: remoteAt }, true);
+      const usage: UsageDay[] = [];
+      try {
+        const um = await getDocs(collection(db, 'users', uid, 'usage'));
+        um.forEach(d => { pushedUsage[d.id] = d.data().list; usage.push(...(JSON.parse(d.data().list) as UsageDay[])); });
+      } catch { /* поведение — не главное: без него сохранение всё равно загружается */ }
+      replaceSave({ ...rest, attempts, usage: mergeUsage(usage, $state.snapshot(game.save.usage ?? []) as UsageDay[]), updatedAt: remoteAt }, true);
       cloud.status = 'ok'; cloud.lastSync = Date.now();
     } else if (remoteAt < local) {
       await push(true);

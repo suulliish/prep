@@ -14,6 +14,7 @@
   import LessonHelper from '../lesson/LessonHelper.svelte';
   import { toast } from '../ui/notify.svelte';
   import { ReadGate, readMs } from '../lib/readgate.svelte';
+  import { stepStart, stepEnd, stepNeed, trackNope, trackEvent } from '../lib/track.svelte';
   import { game, go, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { skillTitle } from '../engine/items';
@@ -110,6 +111,8 @@
   const step = $derived(steps[i]);
   // объяснения нельзя пролистать вслепую: «дальше» заряжается на время чтения (GAME_LOOP.md 10)
   const gate = new ReadGate();
+  // «дальше» заряжается на время чтения; аналитика командира запоминает, сколько было нужно (src/lib/track.svelte.ts)
+  const read = (ms: number) => { gate.start(ms); stepNeed(ms); };
   let cine = $state(true);   // катсцена входа и победы — панель урока скрыта
   let blitzPhase = $state<'ready' | 'play' | 'over'>('ready');
   // Горизонталь и широкий экран (как в Screen.svelte): сцена слева, реплика Бита поверх неё, панель узкая и низкая
@@ -142,6 +145,7 @@
     ready = ['say', 'goal', 'rule'].includes(s.type) || (s.type === 'example' && s.frames.length <= 1);
     frame = 0; pick = null; bugFound = false; stepDone = false; fadedHits = 0; finalLock = false;
     clearTimeout(finalT); gate.stop();
+    if (!replay) stepStart(skill, i, s.type);
     vid?.destroy(); vid = s.type === 'example' ? makeVideo(s) : null;
     // тренировочная площадка: глитч и мишени по шагу, доска пишет название приёма
     W.world?.trainGlitch(s.type === 'bug');
@@ -150,9 +154,9 @@
     W.world?.trainStep(s.type);
     if (s.type === 'rule' && tech) { W.world?.trainBoard(tech.kz); if (!cine) W.world?.trainMastered(tech.color); }
     // пропустить шаг нельзя (решение семьи 02.10): «дальше» на каждом читательском шаге заряжается на время чтения
-    if (s.type === 'say') gate.start(readMs(s.kz));
-    if (s.type === 'goal') gate.start(readMs(s.kz, s.task));
-    if (s.type === 'rule') gate.start(readMs(s.kz, ...s.lines));
+    if (s.type === 'say') read(readMs(s.kz));
+    if (s.type === 'goal') read(readMs(s.kz, s.task));
+    if (s.type === 'rule') read(readMs(s.kz, ...s.lines));
     if (s.type === 'faded') setTimeout(() => react('self'), 400);
     if (s.type === 'bug') setTimeout(() => react('bug'), 400);
     if (s.type === 'why') setTimeout(() => react('think'), 400);
@@ -170,7 +174,7 @@
     if (tech) W.world?.trainBoard(`Бүгінгі тәсіл: ${tech.kz}`);
     (W.world?.arrive() ?? Promise.resolve()).then(() => W.world?.setTraining(true)).then(() => (cine = false));
     audio.setMood('training'); enter();
-    return () => { clearTimeout(finalT); vid?.destroy(); W.world?.holoClear(true); W.world?.clearMob(); mq.removeEventListener('change', onLand); rm.removeEventListener('change', onRm); document.removeEventListener('visibilitychange', onVis); };
+    return () => { stepEnd(false); clearTimeout(finalT); vid?.destroy(); W.world?.holoClear(true); W.world?.clearMob(); mq.removeEventListener('change', onLand); rm.removeEventListener('change', onRm); document.removeEventListener('visibilitychange', onVis); };
   });
   // видео стоит, пока открыт вопрос о выходе, карточка приёма или вкладка в фоне
   $effect(() => { vid?.hold(askExit || card || hidden); });
@@ -213,11 +217,12 @@
       audio.play(ok ? 'correct' : 'hint'); if (ok) react('correct');
       // верно — сильный удар, потом радость; неверно — бонк (манекен шлёпает героя), потом герой чешет голову
       if (ok) W.world?.trainStrike('strong', 1, false, strikeN++).then(() => W.world?.heroEmote('cheer')); else bonk();
-      reward(ok ? 3 : 0); gate.start(readMs(step.reveal)); showChoices(); return;
+      reward(ok ? 3 : 0); read(readMs(step.reveal)); showChoices(); return;
     }
     if (step.type === 'final') {
       if (!ok) {
         audio.play('wrong'); flash('#ff9a6b'); bonk(); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake');
+        trackEvent('finalMiss', { skill });
         finalLock = true; clearTimeout(finalT); finalT = window.setTimeout(() => (finalLock = false), FINAL_LOCK_MS);
         return;
       }
@@ -227,12 +232,12 @@
       W.world?.bitMood('happy');
       audio.play('levelup'); floatText('МЕҢГЕРІЛДІ!', sceneCenter(0.28).x, sceneCenter(0.28).y, techHex, true);
       sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#ffc94a', '#3ff0ff', '#b58cff'], 90, 10);
-      reward(20, true); gate.start(readMs(step.why)); return;
+      reward(20, true); read(readMs(step.why)); return;
     }
     audio.play(ok ? 'correct' : 'wrong'); react(ok ? 'correct' : 'wrong'); reward(ok ? 5 : 0);
     // «Неге?»: верно — блок и контратака, неверно — шлепок (бонк) и почесать голову; остальные шаги — обычный удар
     if (ok) (step.type === 'why' ? W.world?.trainBlock() : W.world?.trainStrike('light'))?.then(() => W.world?.heroEmote('cheer')); else bonk();
-    if (step.why) gate.start(readMs(step.why));
+    if (step.why) read(readMs(step.why));
     showChoices();
   }
   // после ответа появляется разбор: варианты и кнопка должны остаться в поле зрения
@@ -245,6 +250,7 @@
     advance();
   }
   function advance() {
+    stepEnd(true);
     if (i < steps.length - 1) { i++; if (!replay) { game.save.lessonPos = { skill, step: i }; persist(); } enter(); audio.play('click'); return; }
     if (replay) { W.world?.trainStep(''); audio.play('mission'); go({ name: 'album' }); return; }
     W.world?.trainStep('');   // герой встаёт, если лежал
@@ -263,9 +269,9 @@
     if (nextBtn) { const c = centerOf(nextBtn); sparksAt(c.x, c.y - 40, ['#5ce39c', '#ffc94a'], 18); }
   }
   function primary() {
-    if (gapOpen) { audio.play('click'); toast('Алдымен жасырылған санды тап'); return; }
+    if (gapOpen) { trackNope(); audio.play('click'); toast('Алдымен жасырылған санды тап'); return; }
     if (gate.on) { gate.nope(); audio.play('click'); toast('Алдымен оқы — батырма зарядталып жатыр'); return; }
-    if (!ready) { toast(step.type === 'widget' ? 'Алдымен тапсырманы орында' : 'Алдымен жауап таңда'); audio.play('click'); return; }
+    if (!ready) { trackNope(); toast(step.type === 'widget' ? 'Алдымен тапсырманы орында' : 'Алдымен жауап таңда'); audio.play('click'); return; }
     next();
   }
   function leave() { askExit = false; if (!replay) { game.save.lessonPos = { skill, step: i }; persist(); } go({ name: replay ? 'album' : 'hub' }); }
@@ -351,7 +357,7 @@
         <div class="paper"><Faded task={step.kz} steps={step.steps} onstep={k => { fadedHits = k; W.world?.trainStrike('combo', Math.min(3, k)); }} onmiss={bonk} ondone={clean => { stepDone = true; if (fadedHits) { if (clean) W.world?.heroEmote('cheer'); } else combo(clean); reward(clean ? 8 : 3); }} /></div>
       {:else if step.type === 'bug'}
         <GlitchSays text={step.kz} beaten={bugFound} />
-        <div class="paper"><BugHunt lines={step.lines} bad={step.bad} follows={step.follows} fix={step.fix} ondone={clean => { bugFound = true; W.world?.trainBreakGlitch(); reward(clean ? 8 : 3); gate.start(readMs(step.fix)); }} /></div>
+        <div class="paper"><BugHunt lines={step.lines} bad={step.bad} follows={step.follows} fix={step.fix} ondone={clean => { bugFound = true; W.world?.trainBreakGlitch(); reward(clean ? 8 : 3); read(readMs(step.fix)); }} /></div>
       {:else if step.type === 'blitz'}
         {#if !land}{@render bitView()}{/if}
         <div class="paper"><Blitz title={step.title} count={step.count} make={step.make} onphase={p => (blitzPhase = p)} onhit={() => W.world?.trainTargetHit()} onmiss={() => W.world?.trainTargetMiss()} ondone={stars => { stepDone = true; reward(stars * 5, stars === 3); }} /></div>
@@ -397,7 +403,7 @@
   <div class="teach-veil" role="dialog" aria-modal="true" aria-label="Биткә түсіндір">
     <div class="teach-box">
       <TeachBack {skill} title={skillTitle(skill).kz} rule={{ kz: step.kz, lines: step.lines }}
-        ondone={() => { teach = false; advance(); }} />
+        ondone={r => { trackEvent('teach', { skill, v: r }); teach = false; advance(); }} />
     </div>
   </div>
 {/if}

@@ -9,6 +9,7 @@
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
   import MicButton from '../ui/MicButton.svelte';
+  import { trackExit } from '../lib/track.svelte';
   import GlitchTurn from '../ui/GlitchTurn.svelte';
   import CoinChip from '../ui/CoinChip.svelte';
   import BattleEvent from '../ui/BattleEvent.svelte';
@@ -613,7 +614,7 @@
   <button class="btn primary big grow" onclick={() => go({ name: block === 'boss' ? 'map' : 'hub' })}>{block === 'boss' ? 'Картаға' : 'Кемеге'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
 {/snippet}
 
-<Screen scene="strip" cinema={cine} event={stage === 'event' && !result} thin={stage === 'review' && !result} footer={result ? resultFoot : undefined} back={result ? undefined : () => go({ name: 'hub' })}>
+<Screen scene="strip" cinema={cine} event={stage === 'event' && !result} thin={stage === 'review' && !result} footer={result ? resultFoot : undefined} back={result ? undefined : () => { trackExit('session'); go({ name: 'hub' }); }}>
   {#snippet head()}
     <div class="hd">
       <div class="t1"><b>{TITLE[block]}</b>{#if combo >= 2 && !result}<span class="combo num">×{combo}</span>{/if}<CoinChip value={shownCoins} compact />
@@ -685,7 +686,7 @@
     </div>
   {:else if stage === 'review' && review && item}
     {#key rvKey}
-      <ReviewPanel {review} mode={rvMode} sure={rvSure} fastMs={rvFast} easy={qEasy} onnext={leaveReview}>
+      <ReviewPanel {review} skill={item.skill} mode={rvMode} sure={rvSure} fastMs={rvFast} easy={qEasy} onnext={leaveReview}>
         <div class="ai">
           {#each aiTurns as t}
             {#if t.role === 'bit'}<Bit text={t.text} mood="think" compact />{:else}<p class="kidq">— {t.text}</p>{/if}

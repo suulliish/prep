@@ -8,6 +8,7 @@
   import { audio } from '../lib/audio';
   import { game } from '../lib/store.svelte';
   import { Mic, micSupported, appendSpoken, clock, type MicError } from '../lib/mic';
+  import { trackEvent } from '../lib/track.svelte';
   import { transcribe, markSpoken, HELPER_ERR, type HelperError } from '../lib/helper';
 
   // value — поле, куда дописывается сказанное; active — идёт запись или расшифровка (родитель на это время прячет «Жіберу»);
@@ -67,13 +68,14 @@
     mic = null;
     audio.listen(false);
     if (!alive) return;
-    if (typeof r === 'string') { msg = MIC_ERR[r]; phase = 'idle'; return; }
+    if (typeof r === 'string') { msg = MIC_ERR[r]; phase = 'idle'; trackEvent('mic', { v: r }); return; }
     try {
       const said = await listen(r, hint);
+      trackEvent('mic', { v: said ? 'ok' : 'silent', n: Math.round(r.ms) });
       if (!alive) return;
       if (!said) msg = MIC_ERR.silent;
       else { value = appendSpoken(value, said, max); markSpoken(value); audio.play('click'); }
-    } catch (e) { if (alive) msg = NET_ERR[e as HelperError] ?? NET_ERR.ai_unavailable; }
+    } catch (e) { trackEvent('mic', { v: String(e) }); if (alive) msg = NET_ERR[e as HelperError] ?? NET_ERR.ai_unavailable; }
     if (alive) phase = 'idle';
   }
 

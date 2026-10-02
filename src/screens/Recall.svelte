@@ -10,6 +10,7 @@
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
   import { ReadGate, readMs } from '../lib/readgate.svelte';
+  import { trackExit } from '../lib/track.svelte';
   import { due, record, noteTask, daysToNext } from '../engine/recall';
   import { ruleLines, hasRule, makeBoard, assemble, isRight, diff, blanks, type Level } from '../lesson/recallrule';
   import { makeItem, mistakeText, skillTitle, type Item } from '../engine/items';
@@ -178,7 +179,7 @@
   const chunk = (c: string) => nb(c);
 </script>
 
-<Screen scene="none" title="Еске түсір" sub={phase === 'end' ? '' : `${Math.min(qi + 1, queue.length)} / ${queue.length} · ${title}`} back={() => go({ name: 'hub' })}>
+<Screen scene="none" title="Еске түсір" sub={phase === 'end' ? '' : `${Math.min(qi + 1, queue.length)} / ${queue.length} · ${title}`} back={() => { if (phase !== 'end') trackExit('recall'); go({ name: 'hub' }); }}>
   <div class="rc" bind:this={root}>
     {#if phase === 'end'}
       <Bit text={queue.length ? `Жарайсың! ${results.filter(r => r.ok && r.hint === 0).length} тақырып қатесіз еске түсті.` : 'Бүгін еске түсіретін тақырып жоқ. Жолың ашық!'} mood="happy" compact />

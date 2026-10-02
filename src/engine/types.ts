@@ -86,6 +86,7 @@ export interface Save {
   shipOwned?: string[];                       // id купленных украшений и питомцев (content/ship_items.mjs)
   shipPet?: string | null;                    // активный питомец (один) или null
   aiLog?: AiTurn[];                           // вопросы к ИИ-помощнику (видит командир), последние 100
+  usage?: UsageDay[];                         // поведение по дням (src/lib/track.svelte.ts): время, ранние нажатия, шаги урока — для аналитики командира
   // «Еске түсір»: возвраты к правилу темы по расписанию (src/engine/recall.ts)
   recall?: Record<string, RecallState>;
   // день → какие темы предложили утром и нажали ли «Өткізу» (видит командир)
@@ -107,3 +108,25 @@ export interface NotebookEntry {
 }
 
 export interface AiTurn { at: number; day: string; skill: string; task: string; q: string; a: string; voice?: boolean }   // voice — ребёнок надиктовал, а не напечатал
+
+// ---------- Поведение (src/lib/track.svelte.ts → аналитика командира src/engine/analytics.ts) ----------
+/** Шаг урока: сколько на нём был (ms), сколько было нужно на чтение (need, 0 — шаг не читательский), ранних нажатий «дальше» (nope),
+ *  сколько приложение было свёрнуто (away), дошёл ли до конца шага (done: false — ушёл из урока на этом шаге). */
+export interface StepLog { at: number; skill: string; i: number; type: string; ms: number; need: number; nope: number; away: number; done: boolean }
+/** Разбор ошибки в практике (ReviewPanel): время и ранние нажатия. */
+export interface ReviewLog { at: number; skill: string; ms: number; nope: number }
+/** Прочие события: teach (итог «Биткә түсіндір»), mic (голосовой ввод), finalMiss (промах в «Соңғы сынақ») и т. п. */
+export interface UsageEvent { at: number; k: string; skill?: string; v?: string; n?: number }
+export interface UsageDay {
+  day: string;
+  activeMs: number;                 // приложение на экране и было касание за последнюю минуту
+  awayMs: number;                   // свёрнуто посреди урока, задачи или вспоминания
+  sessions: number;                 // заходов (перерыв больше 30 мин — новый заход)
+  firstAt: number; lastAt: number;  // первое и последнее касание дня
+  screens: Record<string, number>;  // активное время по экранам, ms
+  nope: Record<string, number>;     // ранние нажатия по местам (lesson:rule, review, recall, notebook…)
+  exits: Record<string, number>;    // ушёл посреди: lesson, session, recall
+  steps: StepLog[];
+  reviews: ReviewLog[];
+  events: UsageEvent[];
+}
