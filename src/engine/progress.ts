@@ -2,6 +2,7 @@
 import { bktUpdate, MASTERY_P, MIN_ATTEMPTS, LAST_CLEAN, WINDOW_MAX, WINDOW_MIN, WINDOW_ACC } from './bkt';
 import { addSchoolDays } from './dates';
 import type { Attempt, Save, SkillState, Status } from './types';
+import { forModel, isCleanForModel } from './rules';
 
 export const INTERVALS = [1, 3, 7, 16, 35]; // учебных дней
 
@@ -31,16 +32,16 @@ export function refreshAvailability(save: Save, defs: SkillDef[]) {
   }
 }
 
-/** Скользящее окно по теме: последние WINDOW_MAX честных ответов, верных с первой попытки (без подсказки) — доля.
- *  `skip` — сколько самых свежих честных ответов пропустить (чтобы посмотреть окно «до» текущего ответа). */
+/** Скользящее окно по теме: последние WINDOW_MAX ответов, которые идут в модель (rules.ts: forModel), верных с первой попытки — доля.
+ *  `skip` — сколько самых свежих таких ответов пропустить (чтобы посмотреть окно «до» текущего ответа). */
 export function windowStat(attempts: Attempt[], skill: string, skip = 0): { n: number; clean: number; rate: number } {
   let n = 0, clean = 0, seen = 0;
   for (let i = attempts.length - 1; i >= 0 && n < WINDOW_MAX; i--) {
     const x = attempts[i];
-    if (x.skill !== skill || !x.honest) continue;
+    if (x.skill !== skill || forModel(x) === null) continue;
     if (seen++ < skip) continue;
     // «сам поймал» после самопроверки — верный, но не с первой попытки: в окно 85% как чистый не идёт
-    n++; if (x.correct && x.hintLevel === 0 && (x as { selfCheck?: string }).selfCheck !== 'caught') clean++;
+    n++; if (isCleanForModel(x)) clean++;
   }
   return { n, clean, rate: n ? clean / n : 0 };
 }
@@ -55,8 +56,11 @@ export function recordAttempt(save: Save, a: Attempt, opts: { guess?: number } =
   save.attempts.push(a);
   const st = (save.skills[a.skill] ??= blankSkill());
   if (a.tag && !a.correct) st.misconceptions[a.tag] = (st.misconceptions[a.tag] ?? 0) + 1;
-  if (!a.honest) return events;
-  st.attempts++; if (a.correct) st.correct++;
+  // что ответ говорит модели (rules.ts): наспех-ошибка и «свернул» — ошибка, наспех-верный и разбор — ничего
+  const verdict = forModel(a);
+  if (verdict === null) return events;
+  const correct = verdict === 'correct';
+  st.attempts++; if (correct) st.correct++;
 
   const doneNow = st.status === 'learned' || st.status === 'mastered' || st.status === 'automatic';
   // старая тема (выучена до порога 85%, флага strict нет): если окно ДО этого ответа < 85%, следующая же ошибка возвращает её в «изучается».
@@ -64,7 +68,7 @@ export function recordAttempt(save: Save, a: Attempt, opts: { guess?: number } =
   const weakBefore = doneNow && !st.strict && windowWeak(windowStat(save.attempts, a.skill, 1));
   const isCheck = a.hintLevel === 0 && st.due && a.day >= st.due && (st.status === 'learned' || st.status === 'mastered' || st.status === 'automatic');
   if (isCheck) {
-    if (a.correct) {
+    if (correct) {
       st.stage = Math.min(st.stage + 1, INTERVALS.length - 1);
       st.due = addSchoolDays(a.day, INTERVALS[st.stage]);
       // кристалл не даём теме, выученной «на троечку»: пока окно < 85%, проверка проходит, а статус остаётся «выучена»
@@ -78,16 +82,16 @@ export function recordAttempt(save: Save, a: Attempt, opts: { guess?: number } =
     }
     return events;
   }
-  if (weakBefore && !a.correct) {
+  if (weakBefore && !correct) {
     st.status = 'learning'; st.p = 0.6; st.stage = 0; st.due = undefined; st.strict = false;
     events.push('review_failed');
     return events;
   }
 
-  st.p = bktUpdate(st.p, a.correct, { hintLevel: a.hintLevel, guess: opts.guess });
+  st.p = bktUpdate(st.p, correct, { hintLevel: a.hintLevel, guess: opts.guess });
   if (st.status === 'available' || st.status === 'locked') st.status = 'learning';
-  const recent = save.attempts.filter(x => x.skill === a.skill && x.honest).slice(-LAST_CLEAN);
-  const clean = recent.length === LAST_CLEAN && recent.every(x => x.correct && x.hintLevel === 0);
+  const recent = save.attempts.filter(x => x.skill === a.skill && forModel(x) !== null).slice(-LAST_CLEAN);
+  const clean = recent.length === LAST_CLEAN && recent.every(x => forModel(x) === 'correct' && x.hintLevel === 0);
   if (st.status === 'learning' && st.p >= MASTERY_P && st.attempts >= MIN_ATTEMPTS && clean && windowPasses(windowStat(save.attempts, a.skill))) {
     st.status = 'learned'; st.strict = true; st.learnedAt = a.day; st.stage = 0; st.due = addSchoolDays(a.day, INTERVALS[0]);
     events.push('learned');

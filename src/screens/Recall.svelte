@@ -15,7 +15,7 @@
   import { ruleLines, hasRule, makeBoard, assemble, isRight, diff, blanks, type Level } from '../lesson/recallrule';
   import { makeItem, mistakeText, skillTitle, type Item } from '../engine/items';
   import { recordAttempt } from '../engine/progress';
-  import { isHonest } from '../engine/planner';
+  import { RULES_V } from '../engine/rules';
   import { nb } from '../ui/text';
   import type { Attempt } from '../engine/types';
 
@@ -154,7 +154,7 @@
     if (phase !== 'task' || !item) return;
     picked = i;
     const ok = i === item.answer, ms = Date.now() - taskAt;
-    const a: Attempt = { at: Date.now(), day: game.day, skill, source: item.source, correct: ok, hintLevel: 0, honest: isHonest(ms, 0), timeMs: ms, mode: 'warmup', ...(ok ? {} : { tag: item.choices[i].tag }) };
+    const a: Attempt = { at: Date.now(), day: game.day, skill, source: item.source, correct: ok, hintLevel: 0, honest: ms >= 5000, timeMs: ms, mode: 'recall', r: RULES_V, ...(ok ? {} : { tag: item.choices[i].tag }) };
     recordAttempt(game.save, a);
     noteTask(game.save, skill, ok);
     persist();

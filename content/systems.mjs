@@ -99,10 +99,9 @@ export const MECHANICS = [
 /** Понятия, которые должны иметь ОДНО определение. Каждая строка defs — отдельное место, где понятие считается по-своему. */
 export const RULES = [
   { id: 'fast', name: 'быстро / наугад', defs: [
-    { where: 'src/engine/rush.ts + Session.svelte', how: '2,5–8 с по длине условия, личный порог 5–25 с только для неверных' },
+    { where: 'src/engine/rules.ts isRushed (Session, Diagnostic)', how: '2,5–8 с по длине условия, личный порог 5–25 с только для неверных; подсказка порог не выключает (L1)' },
     { where: 'src/engine/answers.ts (Commander «Ответы»)', how: 'фиксированные 5 с' },
-    { where: 'src/screens/Recall.svelte', how: 'isHonest по умолчанию: 5 с' },
-    { where: 'src/screens/Diagnostic.svelte', how: 'верно только если дольше 3 с' },
+    { where: 'src/screens/Recall.svelte', how: 'honest = дольше 5 с (только аналитика: задача после вспоминания в модель не идёт)' },
     { where: 'src/screens/Commander.svelte «Сегодня»', how: '«угадываний» = !honest, подпись «быстрее 5 сек»' },
   ] },
   { id: 'accuracy', name: 'точность', defs: [

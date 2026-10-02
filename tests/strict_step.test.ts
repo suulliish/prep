@@ -9,7 +9,8 @@ import { rng } from '../content/templates/lib.mjs';
 import { skillById } from '../content/skills.mjs';
 import { StepQueue, MAX_STEP_TWINS } from '../src/engine/twin';
 import { isEasySkill, selfCheckFor, selfCheckDue, selfNote, answerOp, SELF_GAP, SELF_SAY } from '../src/engine/selfcheck';
-import { adaptiveRushMs, rushLimitMs, isTooFast, median, ADAPT, type TimedAttempt } from '../src/engine/rush';
+import { isRushed } from '../src/engine/rules';
+import { adaptiveRushMs, rushLimitMs, median, ADAPT, type TimedAttempt } from '../src/engine/rush';
 import { halfCoins, HALF_COINS_OVER, bilScore, bilLine, BIL_NOTE, rightOfLine, repairAsExtra, REPAIR_FIX_COINS, REPAIR_EXTRA_FIXES, EVENT_SAY, EVENT_MS, SHIP_SAY } from '../src/engine/confidence';
 import { buildReview } from '../src/engine/review';
 import { settleDay, blankDay, buildPlan, EXTRA_MIN } from '../src/engine/planner';
@@ -240,8 +241,8 @@ describe('личный порог спешки', () => {
     const thr = adaptiveRushMs(h, 'nat.divide_remainder', 'nat.ops')!;
     expect(10500 < thr).toBe(true);
     expect(20000 < thr).toBe(false);
-    expect(isTooFast(10500, 40, 0, thr)).toBe(true);
-    expect(isTooFast(20000, 40, 0, thr)).toBe(false);
+    expect(isRushed(10500, 40, thr)).toBe(true);
+    expect(isRushed(20000, 40, thr)).toBe(false);
     // и второй шаблон: медиана 15,6 → порог 7,0 с; ошибки за 7,5 с общий порог по длине (≤ 8 с) уже ловит, за 6 с ловит личный
     const h2 = times('nat.order_of_ops', [15.6, 15.6, 15.6]);
     expect(adaptiveRushMs(h2, 'nat.order_of_ops', 'nat.ops')).toBe(7020);
@@ -287,8 +288,8 @@ describe('личный порог спешки', () => {
   it('Session: спешка не идёт в честную долю и не даёт монет, как и ответ быстрее 5 с', () => {
     const src = readFileSync('src/screens/Session.svelte', 'utf8');
     expect(src).toContain('adaptiveRushMs(game.save.attempts, it.source, it.skill)');
-    expect(src).toContain('isTooFast(timeMs, chars, hintLevel, adaptive)');
-    expect(src).toContain('rushLimitMs(chars, adaptive)');
+    expect(src).toContain('isRushed(timeMs, chars, adaptive)');
+    expect(src).toContain('isHonest({ timeMs, hintLevel, rushed: fast, closed, dunno })');
   });
 });
 

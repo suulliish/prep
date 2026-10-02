@@ -26,9 +26,11 @@ export interface Attempt {
   honest: boolean;
   timeMs: number;
   fast?: boolean;            // быстрее порога для длины условия (src/engine/rush.ts); в старых сохранениях поля нет
-  away?: number;             // сколько мс приложение было свёрнуто во время задачи (≥ AWAY_MS — ответ не честный), с 02.10
+  away?: number;             // сколько мс приложение было свёрнуто во время задачи, с 02.10
+  closed?: boolean;          // свернул дольше AWAY_CLOSE_MS (src/engine/rules.ts: isClosed) — для модели знаний это ошибка
+  r?: 2;                     // версия правил (rules.ts RULES_V): с ней ответ судит forModel; без неё — прежний фильтр honest
   tag?: string;              // метка выбранной ошибки
-  mode: 'lesson' | 'practice' | 'warmup' | 'mixed' | 'boss' | 'diagnostic' | 'extra' | 'mock';
+  mode: 'lesson' | 'practice' | 'warmup' | 'mixed' | 'boss' | 'diagnostic' | 'extra' | 'mock' | 'recall';   // recall — задача после «Еске түсір» (в модель не идёт)
 }
 
 export interface DayRecord {

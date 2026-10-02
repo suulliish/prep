@@ -108,7 +108,6 @@ export const extraNeedsRepair = (repairCount: number) => repairCount >= REPAIR_F
 export const REPAIR_EXTRA_MAX = 6;
 export const repairNeed = (repairCount: number) => Math.min(REPAIR_EXTRA_MAX, repairCount);
 
-/** Честная попытка: не наугад (слишком быстро) и без полного разбора. */
 /** Доля минут шага по правилам экзамена (решение 02.10): верный честный ответ +1, неверный −¼, «Білмеймін» 0, делённое на число ответов.
  *  Угадывание из пяти вариантов в среднем даёт 0 — столько же, сколько честное «не знаю» (раньше угадать было выгоднее). */
 export const EXAM_PENALTY = 0.25;
@@ -130,12 +129,7 @@ export function restoreFix(rec: DayRecord, block: string, dunno: boolean): boole
 /** Поломка, починка которой вернёт минуты сегодняшнего плана. */
 export const restorableFix = (r: { fixed?: boolean; addedDay: string; block?: string }, day: string) => !r.fixed && r.addedDay === day && !!r.block;
 
-/** Уход из приложения дольше этого во время задачи — ответ не честный (калькулятор, поиск, подсказка со стороны). */
-export const AWAY_MS = 3000;
-
-export function isHonest(timeMs: number, hintLevel: number, minMs = 5000) {
-  return timeMs >= minMs && hintLevel < 4;
-}
+// «Свернул», «наспех», «честно» — в src/engine/rules.ts (02.10, PR L1).
 
 // ---------- Очередь вопросов боя: чередование (D5, docs/GAME_LOOP.md 15) ----------
 export interface Slot { skill: string; tpl: string | null }
