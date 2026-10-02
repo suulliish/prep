@@ -129,12 +129,8 @@ export function importSave(json: string) {
   replaceSave(data);
 }
 
-// Уровень героя из XP: каждый следующий уровень чуть дороже
-export function levelOf(xp: number) {
-  let lvl = 1, need = 100, left = xp;
-  while (left >= need) { left -= need; lvl++; need = Math.round(need * 1.15); }
-  return { lvl, into: left, need };
-}
+// Уровень героя из XP — src/engine/level.ts (там же его считает симулятор систем)
+export { levelOf } from '../engine/level';
 
 // PIN командира хранится как SHA-256 (не в открытом виде)
 export async function hashPin(pin: string) {
