@@ -71,7 +71,8 @@ export const MECHANICS = [
   { id: 'arena', name: 'Арена «Жарық» (пробники)', group: 'прогресс', kind: 'unlock', inputs: [], outputs: [], shown: 'child',
     code: ['content/worlds.mjs', 'src/lib/look.ts'], notes: 'всегда закрыта: режима пробников нет' },
   { id: 'outfits', name: 'Костюмы героя', group: 'прогресс', kind: 'unlock', terminal: true, inputs: ['crystals'], outputs: [], shown: 'child',
-    code: ['content/worlds.mjs', 'src/screens/Hero.svelte'], data: ['outfit'] },
+    code: ['content/worlds.mjs', 'src/screens/Hero.svelte', 'src/engine/legacy.ts'], data: ['outfit', 'prog'],
+    notes: 'снимок открытого prog.legacy только растёт (02.10): открытый костюм, плащ, мир больше не закрываются' },
   { id: 'hero-stats', name: 'Статы и ранги героя (Күш, Ақыл, Дәлдік, Табандылық)', group: 'прогресс', kind: 'progress', inputs: ['crystals', 'skill-status', 'battle', 'streak'], outputs: [], shown: 'child',
     code: ['src/screens/Hero.svelte'], notes: 'ранги ничего не открывают' },
   { id: 'technique', name: 'Приёмы (тәсіл) тем', group: 'прогресс', kind: 'unlock', inputs: ['lesson'], outputs: ['album', 'battle'], shown: 'child',
@@ -89,7 +90,8 @@ export const MECHANICS = [
 
   // ---------------- техника ----------------
   { id: 'storage', name: 'Сохранение и облако', group: 'техника', kind: 'rule', root: true, terminal: true, inputs: [], outputs: [], shown: 'none',
-    code: ['src/lib/store.svelte.ts', 'src/lib/cloud.svelte.ts', 'src/engine/sync.ts'], data: ['version', 'updatedAt', 'lastBackup'] },
+    code: ['src/lib/store.svelte.ts', 'src/lib/cloud.svelte.ts', 'src/engine/sync.ts', 'src/lib/version.ts'], data: ['version', 'updatedAt', 'lastBackup'],
+    notes: 'S1 (02.10): облако перечитывается при возврате в приложение; запись — транзакцией с rev, при расхождении — слияние по полям (mergeSave); схема новее — только чтение' },
   { id: 'legacy', name: 'Устаревшие поля (таймер игры до 30.09)', group: 'техника', kind: 'rule', root: true, terminal: true, inputs: [], outputs: [], shown: 'none',
     code: ['src/engine/types.ts'], data: ['weekendSpent'], notes: 'остались в старых сохранениях; удалить миграцией' },
 ];

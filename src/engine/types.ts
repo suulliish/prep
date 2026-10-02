@@ -98,7 +98,13 @@ export interface Save {
   recallOffer?: Record<string, { skills: string[]; skipped?: boolean }>;
   // «Дәптер»: что сделано на карточке темы после урока (src/lesson/NotebookCard.svelte)
   notebook?: Record<string, NotebookEntry>;
+  // прогрессия «Жаңа жүйе» (docs/systems/DESIGN.md, specs/progression.md); пока только снимок открытого (src/engine/legacy.ts)
+  prog?: Prog;
 }
+
+/** Прогрессия. legacy — всё открытое в старой системе (только растёт): костюмы, плащи и следы, миры, купленное. */
+export interface Prog { legacy?: ProgLegacy }
+export interface ProgLegacy { day: string; outfits: string[]; styles: string[]; worlds: string[]; cleared: string[]; owned: string[] }
 
 /** Один возврат к правилу: ok — собрал правило верно; hint — подсказка (0 нет, 1 первое слово, 2 скелет, 3 показали правило: не засчитывается);
  *  conf — уверенность до показа (1 не знаю, 2 шамамен, 3 сенімдімін); task — решил ли задачу темы после сверки. */

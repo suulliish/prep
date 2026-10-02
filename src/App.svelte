@@ -7,6 +7,7 @@
   import { audio } from './lib/audio';
   import { applyLook } from './lib/look';
   import { syncDecor } from './lib/ship.svelte';
+  import { APP_VERSION } from './lib/version';
   import MapScreen from './screens/Map.svelte';
   import Hero from './screens/Hero.svelte';
   import Intro from './screens/Intro.svelte';
@@ -25,10 +26,11 @@
   import Recall from './screens/Recall.svelte';
 
   let canvas: HTMLCanvasElement;
+  let cloudMod = $state<typeof import('./lib/cloud.svelte') | null>(null);
   // сбой где угодно — в журнал поведения (вкладка «Аналитика» командира), ребёнок не застревает (02.10)
   const logError = (where: string, e: unknown) => {
     const m = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-    try { trackEvent('error', { v: `${where} · ${game.screen.name} · ${m}`.slice(0, 300) }); } catch { /* журнал не важнее экрана */ }
+    try { trackEvent('error', { v: `${where} · ${game.screen.name} · ${APP_VERSION} · ${m}`.slice(0, 300) }); } catch { /* журнал не важнее экрана */ }
   };
   onMount(() => {
     protectStorage();
@@ -42,7 +44,8 @@
       W.world.onShipDamageTap(() => { if (game.screen.name === 'hub') { audio.play('click'); go({ name: 'album', tab: 'repair' }); } });
     } catch (e) { logError('3d', e); }   // нет WebGL или 3D упал: учёба и облако работают и без мира
     // облачная синхронизация — отдельным куском, чтобы не тормозить первую загрузку
-    import('./lib/cloud.svelte').then(m => m.startCloud()).catch(() => {});
+    // если кусок не загрузился (старая версия в кэше после выкладки) — это сбой, а не тихо выключенное облако
+    import('./lib/cloud.svelte').then(m => { m.startCloud(); cloudMod = m; }).catch(e => logError('cloud-load', e));
     return () => W.world?.dispose();
   });
 </script>
@@ -76,6 +79,7 @@
     {/snippet}
     </svelte:boundary>
   {/key}
+{#if cloudMod?.cloud.readOnly}<button class="storage-full update" onclick={() => location.reload()}>Қосымшаның жаңа нұсқасы бар — жаңарту үшін бас</button>{/if}
 {#if storage.full}<p class="storage-full" role="status">Құрылғыда орын таусылды: прогресс тек облакта сақталады. Ағаңа айт.</p>{/if}
 </div>
 <FxLayer />
@@ -91,6 +95,7 @@
   .crash p { margin: 0; color: var(--dim); }
   .storage-full { position: fixed; left: 8px; right: 8px; top: calc(env(safe-area-inset-top, 0px) + 6px); z-index: var(--z-toast); margin: 0; padding: 8px 12px;
     font: 800 13px var(--txt); color: var(--outline); background: var(--gold); border: 3px solid var(--outline); border-radius: 12px; text-align: center; pointer-events: none; }
+  .storage-full.update { pointer-events: auto; cursor: pointer; width: calc(100% - 16px); }
   /* экран пропускает касания к 3D-миру, кроме панелей и кнопок */
   .screen :global(:is(.panel, button, input, label, a, .pe)) { pointer-events: auto; }
 </style>

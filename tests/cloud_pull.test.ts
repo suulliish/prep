@@ -29,6 +29,11 @@ vi.mock('firebase/firestore', () => {
     },
     setDoc: async () => {},
     writeBatch: () => ({ set: (r: { path: string }, data: any) => { remote.sets.push({ path: r.path, data }); remote.docs[r.path] = data; }, commit: async () => {} }),
+    // транзакция: чтения и записи сразу в «облако» (одно устройство за раз — гонок в тесте нет)
+    runTransaction: async (_db: any, fn: (tx: any) => any) => fn({
+      get: async (r: { path: string }) => ({ exists: () => r.path in remote.docs, data: () => remote.docs[r.path] }),
+      set: (r: { path: string }, data: any, opts?: { merge?: boolean }) => { remote.sets.push({ path: r.path, data }); remote.docs[r.path] = opts?.merge ? { ...remote.docs[r.path], ...data } : data; },
+    }),
     __path: path,
   };
 });
@@ -120,5 +125,50 @@ describe('облако: загрузка истории ответов при в
     expect(game.save.xp).toBe(40);
     expect(game.save.attempts.map(a => a.at)).toEqual([5, 6]);
     expect(JSON.parse(remote.docs['users/u5/attempts/2026-10'].list).map((a: Attempt) => a.at)).toEqual([5, 6]);
+  });
+
+  // 02.10 (S1): телефон брата с копией недельной давности меняет одну настройку — дни, темы, монеты ребёнка в облаке целы
+  it('старая копия на другом телефоне меняет настройку: прогресс ребёнка в облаке не откатывается, настройка доходит', async () => {
+    const { game } = await import('../src/lib/store.svelte');
+    const { cloud, pushNow } = await import('../src/lib/cloud.svelte');
+    const old = { ...JSON.parse(JSON.stringify(game.save)), attempts: undefined, usage: undefined, xp: 100, coins: 50, diagnosticDone: true,
+      days: { '2026-10-01': { date: '2026-10-01', blocksDone: { warmup: true }, planShare: 0.2, minutesToday: 10, minutesWeekend: 0, extraMissions: 0, bonuses: [] } },
+      settings: { ...game.save.settings, voiceInput: true }, updatedAt: 1_000 };
+    remote.docs['users/u6'] = { save: JSON.stringify(old), updatedAt: 1_000, rev: 3, v: 1 };
+    remote.docs['users/u6/attempts/2026-10'] = { list: JSON.stringify([att(11, '2026-10-01')]), n: 1 };
+    game.save.attempts = []; game.save.xp = 0; game.save.diagnosticDone = false; game.save.updatedAt = 0;   // пустой телефон брата
+    remote.authCb!({ uid: 'u6', email: 'bro@x', displayName: 'Bro' });
+    for (let i = 0; i < 20 && cloud.status !== 'ok'; i++) await tick();
+    expect(game.save.xp).toBe(100);
+    // неделя прошла: ребёнок на своём телефоне занимался — облако ушло вперёд
+    const kid = { ...old, xp: 900, coins: 320, updatedAt: 9_000,
+      days: { ...old.days, '2026-10-08': { date: '2026-10-08', blocksDone: { warmup: true, new: true, mixed: true }, planShare: 1, minutesToday: 60, minutesWeekend: 48, extraMissions: 0, bonuses: [] } },
+      skills: { 'frac.add': { p: 0.97, status: 'mastered', lessonDone: true, stage: 2, attempts: 40, correct: 37, misconceptions: {} } } };
+    remote.docs['users/u6'] = { save: JSON.stringify(kid), updatedAt: 9_000, rev: 9, v: 1 };
+    // брат на старой копии выключает голос (копия «новее» по часам)
+    game.save.settings = { ...game.save.settings, voiceInput: false }; game.save.updatedAt = 20_000;
+    await pushNow();
+    const saved = JSON.parse(remote.docs['users/u6'].save);
+    expect(saved.xp).toBe(900);
+    expect(saved.coins).toBe(320);
+    expect(Object.keys(saved.days).sort()).toEqual(['2026-10-01', '2026-10-08']);
+    expect(saved.days['2026-10-08'].minutesToday).toBe(60);
+    expect(saved.skills['frac.add'].status).toBe('mastered');
+    expect(saved.settings.voiceInput).toBe(false);       // изменение брата дошло
+    expect(remote.docs['users/u6'].rev).toBe(10);
+    expect(game.save.xp).toBe(900);                      // и на телефон брата пришло свежее
+  });
+
+  it('облако записано приложением новее этого — только чтение, ничего не пишем', async () => {
+    const { game } = await import('../src/lib/store.svelte');
+    const { cloud, pushNow } = await import('../src/lib/cloud.svelte');
+    remote.docs['users/u7'] = { save: JSON.stringify({ ...JSON.parse(JSON.stringify(game.save)), attempts: undefined, version: 2 }), updatedAt: 5, rev: 1, v: 2 };
+    remote.authCb!({ uid: 'u7', email: 'x', displayName: 'X' });
+    for (let i = 0; i < 20 && !cloud.readOnly; i++) await tick();
+    expect(cloud.readOnly).toBe(true);
+    expect(cloud.error).toBe('app/outdated');
+    remote.sets = [];
+    await pushNow();
+    expect(remote.sets).toEqual([]);
   });
 });
