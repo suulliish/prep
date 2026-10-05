@@ -39,6 +39,10 @@ export const TECHNIQUES = [
   { skill: 'dec.mul_div', kz: 'Үтір секірісі', ru: 'Прыжок запятой', color: 0xffcb2e, fx: 'multi' },
   { skill: 'dec.frac_convert', kz: 'Екі жүз соққысы', ru: 'Удар двух лиц', color: 0xa77bff, fx: 'split' },
   { skill: 'frac.find_whole', kz: 'Бүтінді табу тәсілі', ru: 'Приём целого', color: 0x7dffd4, fx: 'arc' },
+  // ---- әріпті өрнектер және теңдеулер (C7) ----
+  { skill: 'expr.variables', kz: 'Әріп қою тәсілі', ru: 'Приём подстановки', color: 0x7dffd4, fx: 'pierce' },
+  { skill: 'eq.linear_basic', kz: 'Кері амал тәсілі', ru: 'Приём обратного действия', color: 0xffcb2e, fx: 'arc' },
+  { skill: 'eq.two_step', kz: 'Екі қадам соққысы', ru: 'Удар двух шагов', color: 0xff9a3d, fx: 'multi' },
   // ---- жиындар, тізбектер, логика ----
   { skill: 'sets.basics', kz: 'Жиын торы', ru: 'Сеть множеств', color: 0x5ea0ff, fx: 'multi' },
   { skill: 'sets.venn', kz: 'Венн шеңбері', ru: 'Круг Венна', color: 0xa77bff, fx: 'spin' },

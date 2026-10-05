@@ -10,6 +10,7 @@ import { WEEK5 } from './lessons_week5.mjs';
 import { WEEK6 } from './lessons_week6.mjs';
 import { WEEK7 } from './lessons_week7.mjs';
 import { WEEK8 } from './lessons_week8.mjs';
+import { WEEK10 } from './lessons_week10.mjs';
 import { DECIMALS } from './lessons_decimals.mjs';
 
 const RAW = {
@@ -21,6 +22,7 @@ const RAW = {
   ...WEEK6,
   ...WEEK7,
   ...WEEK8,
+  ...WEEK10,
   ...DECIMALS,
 };
 

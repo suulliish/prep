@@ -112,12 +112,13 @@ s('coord.graph_point', 'K', 6, 'Нүкте графикте жата ма', 'Т�
 s('coord.symmetry', 'K', 6, 'Симметрия', 'Симметрия', ['coord.plane']);
 
 // ---- Выражения, уравнения, неравенства, системы ----
-s('expr.variables', 'A', 5, 'Әріпті өрнектер және олардың мәні', 'Буквенные выражения', ['nat.order_ops']);
+s('expr.variables', 'A', 5, 'Әріпті өрнектер және олардың мәні', 'Буквенные выражения', ['nat.order_ops'], { t: ['expr.substitute', 'expr.compose_one', 'expr.substitute_two', 'expr.compose_two'] });
 s('expr.brackets', 'A', 6, 'Жақшаны ашу', 'Раскрытие скобок', ['expr.variables', 'rat.mul_div']);
 s('expr.like_terms', 'A', 6, 'Ұқсас мүшелерді біріктіру', 'Приведение подобных', ['expr.brackets'], { t: ['eq.collect_like_terms'] });
 s('expr.factor_out', 'A', 6, 'Ортақ көбейткішті жақша сыртына шығару', 'Вынесение общего множителя', ['expr.like_terms'], { t: ['compute.factor_substitute'] });
 s('expr.monomials', 'A', 6, 'Дәрежелері бар бөлшектерді қысқарту', 'Сокращение дробей со степенями', ['nat.powers', 'frac.reduce'], { t: ['compute.monomial_fraction'] });
-s('eq.linear_basic', 'A', 5, 'Қарапайым теңдеулер', 'Простые уравнения', ['nat.ops']);
+s('eq.linear_basic', 'A', 5, 'Қарапайым теңдеулер', 'Простые уравнения', ['nat.ops', 'expr.variables'], { t: ['eq.add_sub_unknown', 'eq.mul_div_unknown', 'eq.reverse_order', 'eq.check_root', 'eq.story_one'] });
+s('eq.two_step', 'A', 5, 'Екі қадамды теңдеулер', 'Уравнения в два шага', ['eq.linear_basic'], { t: ['eq.two_step_mul_add', 'eq.two_step_mul_sub', 'eq.two_step_div', 'eq.think_number', 'eq.two_step_story', 'eq.two_step_minus'] });
 s('eq.linear_negative', 'A', 6, 'Теріс сандары бар теңдеулер', 'Уравнения с отрицательными числами', ['eq.linear_basic', 'rat.add_sub'], { t: ['eq.one_step_negative'] });
 s('eq.linear', 'A', 6, 'Сызықтық теңдеулер', 'Линейные уравнения', ['eq.linear_negative', 'expr.like_terms']);
 s('eq.compose', 'A', 6, 'Теңдеу құру арқылы есептер', 'Задачи на составление уравнений', ['eq.linear'], { t: ['eq.three_shelves'] });

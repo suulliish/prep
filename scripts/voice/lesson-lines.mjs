@@ -39,6 +39,7 @@ const suffixOf = (f, n) => f(n).split('-')[1];           // abl(6) → «6-да�
 export function decimalKz(w, f) { return `${words(+w)} бүтін ${fractionKz(+f, 10 ** f.length, { half: false })}`; }
 export function speakable(t) {
   return speakFractions(t)
+    .replace(/(\d+)([a-z])(?![A-Za-z])/g, '$1 $2')              // 5n → 5 n → «бес эн», 3x → «үш икс» (число при букве, без знака)
     .replace(new RegExp(`(\\d+),(\\d+)(?:-(${GRAM}))?(?![${CYR}\\d])`, 'g'), (_, w, f, sf) => decimalKz(w, f) + (sf || ''))
     .replace(/\?\/(\d+)(?:-(ге|ке|ға|қа|нің|тің|дің|ның|дың|тың))?(?![а-яәіңғүұқөһ\d])/g, (_, b, sf) => `${kzWords(+b)}${suffixOf(abl, +b)} белгісіз сан${sf || ''}`)   // ?/24 → жиырма төрттен белгісіз сан
     .replace(new RegExp(`(\\d+)\\s?[–…]\\s?(\\d+|[a-zA-Z])(?:-(${GRAM}))?(?![A-Za-z${CYR}\\d])`, 'g'), (_, a, b, sf) => {   // 1–9 → бірден тоғызға дейін; 1…20-дан → бірден жиырмадан; 1…n → бірден эн-ге дейін

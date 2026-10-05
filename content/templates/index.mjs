@@ -11,6 +11,7 @@ import logic5 from './logic5.mjs';
 import logic7 from './logic7.mjs';
 import logic8 from './logic8.mjs';
 import decimals from './decimals.mjs';
+import equations5 from './equations5.mjs';
 
-export const templates = [...g5, ...compute, ...equations, ...propPct, ...wordGeo, ...logic, ...fractions5, ...fractions6, ...logic5, ...logic7, ...logic8, ...decimals];
+export const templates = [...g5, ...compute, ...equations, ...propPct, ...wordGeo, ...logic, ...fractions5, ...fractions6, ...logic5, ...logic7, ...logic8, ...decimals, ...equations5];
 export const byId = Object.fromEntries(templates.map(t => [t.id, t]));

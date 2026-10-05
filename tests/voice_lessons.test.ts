@@ -6,14 +6,28 @@ import { join } from 'node:path';
 import { LESSONS } from '../content/lessons.mjs';
 // @ts-ignore
 import VOICED from '../content/voice_lessons.json';
+// @ts-ignore — уроки, которым озвучка ещё не нужна (C5: 5 аварийных уроков без mp3): плеер молчит на шагах без id в voice_lessons.json
+import PENDING from '../content/voice_pending.json';
 // @ts-ignore — скрипт на JS
 import { buildLines, numeralLeak, UNKNOWN, speakable } from '../scripts/voice/lesson-lines.mjs';
 import { planGaps } from '../src/lesson/gap';
 
 const DIR = join(__dirname, '..', 'public', 'voice', 'lessons');
 const ids = VOICED as string[];
-const lines: { id: string; kz: string }[] = buildLines(LESSONS, planGaps);
+const pending = new Set(PENDING as string[]);
+/** Уроки с озвучкой: без «ожидающих» (content/voice_pending.json). Когда урок озвучен, его убирают из списка. */
+const VOICED_LESSONS = Object.fromEntries(Object.entries(LESSONS as Record<string, any[]>).filter(([k]) => !pending.has(k)));
+const lines: { id: string; kz: string }[] = buildLines(VOICED_LESSONS, planGaps);
 const byId = new Map(lines.map(l => [l.id, l.kz]));
+
+describe('уроки без озвучки (content/voice_pending.json)', () => {
+  it('каждый есть в курсе, ни один id из них не попал в список озвученного', () => {
+    for (const sk of pending) {
+      expect(Object.keys(LESSONS as object), `${sk}: нет такого урока`).toContain(sk);
+      expect(ids.filter(i => i.startsWith(sk + '_')), `${sk}: уже есть озвучка, уберите урок из voice_pending.json`).toEqual([]);
+    }
+  });
+});
 
 describe('список озвученного (content/voice_lessons.json)', () => {
   it('без повторов и отсортирован', () => {
@@ -42,7 +56,7 @@ describe('список озвученного (content/voice_lessons.json)', () 
 describe('текст, который уходит в Piper', () => {
   it('все шаги озвученных типов собраны; id вида <skill>_<i>[_f<k>|_why|_reveal|_full]', () => {
     for (const { id } of lines) expect(id, id).toMatch(/^[a-z_]+\.[a-z_0-9]+_\d+(?:_f\d+|_why|_reveal|_full)?$/);
-    for (const [skill, steps] of Object.entries(LESSONS as Record<string, any[]>)) {
+    for (const [skill, steps] of Object.entries(VOICED_LESSONS)) {
       steps.forEach((s, i) => {
         const id = `${skill}_${i}`;
         if (['goal', 'widget', 'faded', 'bug', 'rule', 'why', 'predict', 'final'].includes(s.type)) expect(byId.has(id), id).toBe(true);
@@ -67,7 +81,7 @@ describe('текст, который уходит в Piper', () => {
 
 describe('правила с пропуском: голос до решения не называет ответ', () => {
   const cases: { skill: string; i: number; answer: string; line: number }[] = [];
-  for (const [skill, steps] of Object.entries(LESSONS as Record<string, any[]>)) {
+  for (const [skill, steps] of Object.entries(VOICED_LESSONS)) {
     steps.forEach((s, i) => {
       const g = s.type === 'rule' ? planGaps(skill, i, s)?.rule : null;
       if (g) cases.push({ skill, i, answer: g.gap.answer, line: g.line });
@@ -87,7 +101,7 @@ describe('правила с пропуском: голос до решения �
   }
   it('у правил без пропуска версии _full нет', () => {
     const gapped = new Set(cases.map(c => `${c.skill}_${c.i}`));
-    for (const [skill, steps] of Object.entries(LESSONS as Record<string, any[]>)) {
+    for (const [skill, steps] of Object.entries(VOICED_LESSONS)) {
       steps.forEach((s, i) => { if (s.type === 'rule' && !gapped.has(`${skill}_${i}`)) expect(byId.has(`${skill}_${i}_full`), `${skill}_${i}`).toBe(false); });
     }
   });

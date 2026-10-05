@@ -27,7 +27,7 @@ describe('«Биткә түсіндір»: тело запроса', () => {
     expect(b.examples).toEqual(['1', '2', '3']);
     expect(roundOf(b)).toBe(2);
   });
-  it('по всем 41 уроку правило без пропусков ▢ собирается и проходит проверку сервера', () => {
+  it('по всем 44 урокам правило без пропусков ▢ собирается и проходит проверку сервера', () => {
     for (const [skill, steps] of Object.entries(LESSONS)) {
       const r = steps.find(s => s.type === 'rule');
       const b = teachPayload({ skill, title: 't', rule: { kz: r.kz, lines: r.lines }, question: teachQuestion(skill) }, [], 'жауап');
@@ -90,8 +90,8 @@ describe('«Биткә түсіндір»: сервер (helper/teachback.mjs)',
 
 describe('«Биткә түсіндір»: заготовки без ИИ (teachback_bank.ts)', () => {
   const skills = Object.keys(LESSONS);
-  it('все 41 тема покрыта (36 + 5 десятичных, C3), лишних нет', () => {
-    expect(skills).toHaveLength(41);
+  it('все 44 темы покрыты (36 + 5 десятичных, C3 + 3 про букву и уравнения, C7), лишних нет', () => {
+    expect(skills).toHaveLength(44);
     expect(Object.keys(TEACHBACK_BANK).sort()).toEqual([...skills].sort());
   });
   it('у каждой темы вопрос, три разных объяснения, разбор ошибки, кирпичики; тексты короткие', () => {

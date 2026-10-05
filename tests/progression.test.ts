@@ -96,8 +96,8 @@ describe('прогрессия: дойдут ли новые уроки до р�
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, report(main, 'основной прогон') + '\n');
 
-  it('всего 41 тема с полным уроком (36 + 5 десятичных), у каждой есть генераторы', () => {
-    expect(lessoned).toHaveLength(41);
+  it('всего 44 темы с полным уроком (36 + 5 десятичных + 3 про букву и уравнения), у каждой есть генераторы', () => {
+    expect(lessoned).toHaveLength(44);
     for (const id of lessoned) expect(tplOf(id).length, id).toBeGreaterThan(0);
   });
 
@@ -105,7 +105,7 @@ describe('прогрессия: дойдут ли новые уроки до р�
     for (const id of lessoned) for (const p of byId[id].prereqs) expect(byId[p].lesson, `${id} ← ${p} без урока`).toBe(true);
   });
 
-  it('(1) все 41 тема вводится за 110 учебных дней (с десятичными, C3; потолок 3 новых темы в неделю)', () => {
+  it('(1) все 44 темы вводятся за 110 учебных дней (с десятичными, C3; потолок 3 новых темы в неделю)', () => {
     const missing = lessoned.filter(id => main.intro[id] === undefined);
     expect(missing, `не дошли до ребёнка: ${missing.join(', ')}`).toEqual([]);
   });
