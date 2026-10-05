@@ -102,6 +102,8 @@ export interface Save {
   notebook?: Record<string, NotebookEntry>;
   // прогрессия «Жаңа жүйе» (docs/systems/DESIGN.md, specs/progression.md); пока только снимок открытого (src/engine/legacy.ts)
   prog?: Prog;
+  // исключения командира диапазоном дат (болезнь, праздник): src/engine/exceptions.ts; слияние по id, удалённое остаётся могилой
+  exceptions?: import('./exceptions').ScheduleException[];
 }
 
 /** Прогрессия. legacy — всё открытое в старой системе (только растёт): костюмы, плащи и следы, миры, купленное. */

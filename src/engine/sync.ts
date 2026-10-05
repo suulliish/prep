@@ -9,6 +9,7 @@
 //    Так телефон с копией недельной давности, поменяв одну настройку, не откатывает дни, темы и монеты ребёнка.
 import type { Attempt, Save, DayRecord, SkillState, RecallState, NotebookEntry } from './types';
 import { mergeUsage } from './usage';
+import { mergeExceptions } from './exceptions';
 
 export const attemptKey = (a: Attempt) => `${a.at}|${a.skill}|${a.source}`;
 
@@ -138,15 +139,17 @@ export const MERGE_RULES = {
   repairShop: 'объединение, починено ИЛИ', shipOwned: 'объединение', worldsCleared: 'объединение', shipChestFixed: 'максимум', lastBackup: 'максимум',
   diagnosticDone: 'ИЛИ', introSeen: 'ИЛИ', coins: 'база + изменения обеих сторон', xp: 'максимум', recall: 'история объединением',
   recallOffer: 'темы объединением, пропуск ИЛИ', notebook: 'написал ИЛИ, проверка новее', aiLog: 'объединение, последние 100',
-  levelStars: 'максимум по ключу', kzReview: 'по ключу, pick3', prog: 'снимок открытого объединением', updatedAt: 'максимум', version: 'максимум',
+  levelStars: 'максимум по ключу', kzReview: 'по ключу, pick3', exceptions: 'по id, удалённое не воскресает (могила)', prog: 'снимок открытого объединением', updatedAt: 'максимум', version: 'максимум',
 } as const;
 
 /** Слить сохранение устройства (local) и облака (remote) по полям. base — копия облака после прошлой синхронизации
  *  (общий предок; null — нет: тогда для меняемых полей берётся сторона с бо́льшим updatedAt). Ответы и поведение
  *  сливаются тут же; пустая сторона (isBlank) не побеждает. */
 export function mergeSave(base: Save | null, local: Save, remote: Save): Save {
-  if (isBlank(local) && !isBlank(remote)) return { ...remote, attempts: mergeAttempts(local.attempts ?? [], remote.attempts ?? []), usage: mergeUsage(remote.usage ?? [], local.usage ?? []) };
-  if (isBlank(remote) && !isBlank(local)) return { ...local, attempts: mergeAttempts(local.attempts ?? [], remote.attempts ?? []), usage: mergeUsage(remote.usage ?? [], local.usage ?? []) };
+  // исключения командира на пустом устройстве (поставил болезнь до первой загрузки облака) тоже не теряются
+  const withExc = (s: Save): Save => (Array.isArray(local.exceptions) || Array.isArray(remote.exceptions) ? { ...s, exceptions: mergeExceptions(local.exceptions, remote.exceptions) } : s);
+  if (isBlank(local) && !isBlank(remote)) return withExc({ ...remote, attempts: mergeAttempts(local.attempts ?? [], remote.attempts ?? []), usage: mergeUsage(remote.usage ?? [], local.usage ?? []) });
+  if (isBlank(remote) && !isBlank(local)) return withExc({ ...local, attempts: mergeAttempts(local.attempts ?? [], remote.attempts ?? []), usage: mergeUsage(remote.usage ?? [], local.usage ?? []) });
   const hasBase = !!base, b = (base ?? {}) as Partial<Save>;
   const tie: 'local' | 'remote' = (remote.updatedAt ?? 0) > (local.updatedAt ?? 0) ? 'remote' : 'local';
   const out: any = {};
@@ -188,6 +191,7 @@ export function mergeSave(base: Save | null, local: Save, remote: Save): Save {
     if (l.skipped || r.skipped) o.skipped = true;
     return o;
   }));
+  if (Array.isArray(local.exceptions) || Array.isArray(remote.exceptions)) out.exceptions = mergeExceptions(local.exceptions, remote.exceptions);   // не массив (испорчено) - как пустой
   put('notebook', mergeMap(b.notebook, local.notebook, remote.notebook, (_b, l, r) => mergeNotebook(l, r)));
   if (local.aiLog || remote.aiLog) out.aiLog = byKey([...(local.aiLog ?? []), ...(remote.aiLog ?? [])], x => `${x.at}|${x.q}`).sort((x, y) => x.at - y.at).slice(-100);
   put('levelStars', mergeMap(undefined, local.levelStars, remote.levelStars, (_b, l, r) => Math.max(l ?? 0, r ?? 0)));

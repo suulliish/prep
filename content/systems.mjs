@@ -82,7 +82,7 @@ export const MECHANICS = [
 
   // ---------------- родитель ----------------
   { id: 'commander', name: 'Экран командира (Султан)', group: 'родитель', kind: 'view', inputs: ['analytics', 'skill-status', 'plan'], outputs: ['streak', 'settings'], shown: 'parent',
-    code: ['src/screens/Commander.svelte', 'src/screens/commander/Kz.svelte'], data: ['kzReview'], notes: 'подарков нет (02.10); если PIN не задан, его может придумать ребёнок (исправляется в K2)' },
+    code: ['src/screens/Commander.svelte', 'src/screens/commander/Kz.svelte', 'src/screens/commander/Exceptions.svelte', 'src/screens/commander/Week.svelte', 'src/engine/exceptions.ts', 'src/engine/weekly.ts'], data: ['kzReview', 'exceptions'], notes: 'подарков нет (02.10); если PIN не задан, его может придумать ребёнок (исправляется в K2); исключения диапазоном дат, вкладка «Неделя» и 5 тревог (K4, K5)' },
   { id: 'settings', name: 'Настройки (имя героя, доп. миссии, голос, фото)', group: 'родитель', kind: 'rule', terminal: true, inputs: ['commander'], outputs: [], shown: 'parent',
     code: ['src/screens/commander/Settings.svelte', 'src/lib/store.svelte.ts'], data: ['settings', 'heroName'], notes: 'settings.planMinutes нигде не читается' },
   { id: 'analytics', name: 'Аналитика поведения', group: 'родитель', kind: 'view', inputs: ['battle', 'lesson', 'teachback', 'notebook', 'recall'], outputs: ['commander'], shown: 'parent',

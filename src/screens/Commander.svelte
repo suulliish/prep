@@ -6,6 +6,9 @@
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
   import type { CloudMod } from './commander/util';
+  import Week from './commander/Week.svelte';
+  import { weekCtx } from './commander/weekCtx';
+  import { alerts } from '../engine/weekly';
   import Today from './commander/Today.svelte';
   import Stats from './commander/Stats.svelte';
   import Answers from './commander/Answers.svelte';
@@ -19,7 +22,9 @@
   let unlocked = $state(false);
   let pin = $state('');
   let pinErr = $state('');
-  let tab = $state<'today' | 'stats' | 'answers' | 'recall' | 'settings' | 'skills' | 'kz' | 'ai' | 'data'>('today');
+  // «Неделя» открывается сама в субботу и воскресенье и при активных тревогах (K5); состояние облака на старте неизвестно, про него тревога не считается
+  const weekFirst = (() => { try { const w = new Date(game.day + 'T12:00:00').getDay(); return w === 0 || w === 6 || alerts(game.save, game.day, weekCtx(null)).length > 0; } catch { return false; } })();
+  let tab = $state<'week' | 'today' | 'stats' | 'answers' | 'recall' | 'settings' | 'skills' | 'kz' | 'ai' | 'data'>(weekFirst ? 'week' : 'today');
   const hasPin = !!game.save.settings.pin;
   // облако грузится лениво (Firebase — отдельный кусок сайта)
   let C = $state<CloudMod | null>(null);
@@ -54,12 +59,13 @@
     </section>
   {:else}
     <nav class="tabs panel">
-      {#each [['today', 'Сегодня'], ['stats', 'Аналитика'], ['answers', 'Ответы'], ['recall', 'Повторы'], ['settings', 'Настройки'], ['skills', 'Темы'], ['kz', 'Казахский текст'], ['ai', 'Вопросы к ИИ'], ['data', 'Данные']] as [id, name]}
+      {#each [['week', 'Неделя'], ['today', 'Сегодня'], ['stats', 'Аналитика'], ['answers', 'Ответы'], ['recall', 'Повторы'], ['settings', 'Настройки'], ['skills', 'Темы'], ['kz', 'Казахский текст'], ['ai', 'Вопросы к ИИ'], ['data', 'Данные']] as [id, name]}
         <button class="tab" class:on={tab === id} onclick={() => (tab = id as any)}>{name}</button>
       {/each}
     </nav>
 
-    {#if tab === 'today'}<Today {cloudOk} />
+    {#if tab === 'week'}<Week {C} />
+    {:else if tab === 'today'}<Today {cloudOk} />
     {:else if tab === 'stats'}<Stats />
     {:else if tab === 'answers'}<Answers />
     {:else if tab === 'recall'}<RecallTab />
