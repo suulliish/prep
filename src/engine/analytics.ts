@@ -183,7 +183,7 @@ export function flags(a: Analytics): string[] {
   }
   if (a.reviews.n >= 5 && a.reviews.withNope / a.reviews.n >= 0.4) out.push(`Разбор ошибки: в ${Math.round((a.reviews.withNope / a.reviews.n) * 100)}% разборов пытается пролистать.`);
   if (a.errors.length) out.push(`Сбои в приложении: ${a.errors.length} (последний: ${a.errors[a.errors.length - 1].v.slice(0, 120)}). Пришлите отчёт разработчику.`);
-  if (a.awayAnswers >= 3) out.push(`Сворачивал приложение посреди задачи (калькулятор, поиск?) в ${a.awayAnswers} ответах — они не засчитаны в минуты.`);
+  if (a.awayAnswers >= 3) out.push(`Сворачивал приложение посреди задачи (калькулятор, поиск?) в ${a.awayAnswers} ответах. Дольше 5 с задача закрывается и считается ошибкой (−¼ минуты), по возвращении идёт близнец.`);
   if (t.awayMin >= 10) out.push(`Сворачивал приложение посреди задания: ${t.awayMin} мин за период.`);
   if (t.exits >= 3) out.push(`Выходил из урока или задач на середине: ${t.exits} раз.`);
   const f = a.fatigue;

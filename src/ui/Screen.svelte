@@ -118,8 +118,8 @@
   @media (min-height: 900px) and (min-width: 700px) and (max-aspect-ratio: 23/20) { .strip .window { height: clamp(260px, 34dvh, 420px); } }   /* планшет в портрете: окно боя побольше */
 
   /* окно сцены меняет высоту плавно: камера следует за ним (frame() на каждый кадр изменения размера) */
-  .window { transition: height .55s cubic-bezier(.2, .9, .25, 1.05); }
-  .sheet { transition: transform .5s cubic-bezier(.2, .9, .25, 1.05); }
+  .window { transition: height .3s cubic-bezier(.2, .9, .25, 1.05); }   /* событие ответа короче секунды (src/engine/pacing.ts): окно разворачивается за 0,3 с */
+  .sheet { transition: transform .28s cubic-bezier(.2, .9, .25, 1.05); }
   /* событие: окно на весь экран, панель уезжает вниз */
   .event .window { height: var(--evh, 60dvh); }
   .event .sheet { flex: none; height: var(--sh, 50dvh); transform: translateY(130%); pointer-events: none; }

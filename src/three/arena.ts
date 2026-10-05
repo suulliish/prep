@@ -193,6 +193,7 @@ export function createArena(d: Deps) {
   const wait = (s: number) => tween(s, () => {});
   const easeBack = (u: number) => 1 + 2.2 * Math.pow(u - 1, 3) + 1.2 * Math.pow(u - 1, 2);
   let shake = 0, slow = 1, slowT = 0, flashT = 0;
+  let pace = 1;   // ускорение всей боевой анимации (твины, клипы, эффекты) на время события ответа: src/engine/pacing.ts
   let guard = false, shieldPulse = 0;
   // след от оружия (награда за звёзды): светящиеся кубики с кончика клинка, пока идёт удар
   // trailOne — цвет приёма на один удар: выбранный ребёнком след (trail) не трогаем
@@ -338,7 +339,7 @@ export function createArena(d: Deps) {
   function update(dt: number, t: number) {
     const k = d.km;
     if (slowT > 0) { slowT -= dt; if (slowT <= 0) slow = 1; }
-    const sdt = dt * slow;
+    const sdt = dt * slow * pace;
     for (let i = tweens.length - 1; i >= 0; i--) { const w = tweens[i]; if (w.stop?.()) { tweens.splice(i, 1); w.res(); continue; } w.t += sdt / w.dur; const u = Math.min(1, w.t); w.step(u); if (u >= 1) { tweens.splice(i, 1); w.res(); } }
     for (let i = fx.length - 1; i >= 0; i--) if (!fx[i].update(sdt)) fx.splice(i, 1);
     vfx.update(sdt);
@@ -709,6 +710,8 @@ export function createArena(d: Deps) {
       h.g.position.x = HERO_X; h.g.position.y = 0; h.g.rotation.y = Math.PI / 2; guard = false; stance();
     },
     /** Событие на весь экран: камера подлетает к бойцам (при «уменьшить движение» не летит); выкл — общий план. */
+    /** Ускорить проигрыш боевой анимации в k раз (1 — обычная скорость). Событие ответа ставит k, потом возвращает 1. */
+    setPace(k: number) { pace = Math.max(1, Math.min(4, k)); },
     eventShot(on: boolean) { if (on && d.km >= 1) shot(EVENT_FOCUS, 0.84, 0.2); else if (!on) shot(null); },
     /** Враг повержен: смерть, крупный план, распад на кубики и монеты. */
     async defeat() {

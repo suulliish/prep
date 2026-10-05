@@ -96,6 +96,7 @@ function mergeDay(b: DayRecord | undefined, l: DayRecord | undefined, r: DayReco
   if (l.honest || r.honest) out.honest = honest;
   if (l.stars || r.stars) out.stars = stars;
   if (l.bossTried || r.bossTried) out.bossTried = true;
+  if (l.awayCard || r.awayCard) out.awayCard = true;
   const eh = maxN(l.extraHonest, r.extraHonest); if (eh !== undefined) out.extraHonest = eh;
   const co = maxN(l.coins, r.coins); if (co !== undefined) out.coins = co;
   const sp = maxN(l.spent, r.spent); if (sp !== undefined) out.spent = sp;

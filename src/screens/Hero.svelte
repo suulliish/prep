@@ -6,6 +6,7 @@
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
   import { streak } from '../engine/streak';
+  import { RULES } from '../engine/screentext';
   import { OUTFITS, crystals, wearOutfit, STAR_REWARDS, totalStars, wearStyle, applyLook, outfitGot, styleGot } from '../lib/look';
   import { sparksAt, centerOf } from '../ui/fx.svelte';
   import Screen from '../ui/Screen.svelte';
@@ -90,6 +91,18 @@
       </div>
     </div>
   {/snippet}
+
+  <!-- «Ойын заңдары»: правила игры для ребёнка, только то, что действует (тексты и числа: src/engine/screentext.ts) -->
+  <section class="block">
+    <details class="rules">
+      <summary><span class="ri" aria-hidden="true">?</span><b>Ойын заңдары</b><small>Ойын қалай жұмыс істейді</small></summary>
+      <ol>
+        {#each RULES as r (r.id)}
+          <li><b>{r.title}</b>{#each r.lines as l}<p>{l}</p>{/each}</li>
+        {/each}
+      </ol>
+    </details>
+  </section>
 
   <section class="block">
     <div class="h"><h2>Қасиеттер</h2><small>Тек оқу арқылы өседі</small></div>
@@ -176,6 +189,21 @@
   .h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   h2 { font-size: 18px; text-shadow: 0 2px 0 var(--outline); }
   .h small { color: var(--dim); font-size: 12px; font-weight: 700; }
+
+  .rules { border-radius: 10px; background: var(--deep); border: 1px solid var(--line); }
+  .rules summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; min-height: 48px; }
+  .rules summary::-webkit-details-marker { display: none; }
+  .rules summary b { font: 900 16px var(--disp); }
+  .rules summary small { margin-left: auto; color: var(--dim); font-size: 11.5px; font-weight: 700; text-align: right; }
+  .rules summary::after { content: ''; flex: none; width: 8px; height: 8px; border-right: 3px solid var(--dim); border-bottom: 3px solid var(--dim); transform: rotate(45deg); transition: transform .15s; }
+  .rules[open] summary::after { transform: rotate(-135deg); }
+  .ri { flex: none; width: 28px; height: 28px; display: grid; place-items: center; font: 900 17px var(--disp); color: var(--outline); background: var(--gold); border: 3px solid var(--outline); border-radius: 50%; }
+  .rules ol { margin: 0; padding: 4px 12px 12px; list-style: none; display: grid; gap: 10px; counter-reset: r; }
+  .rules li { counter-increment: r; display: grid; gap: 3px; padding-left: 30px; position: relative; }
+  .rules li::before { content: counter(r); position: absolute; left: 0; top: 0; width: 22px; height: 22px; display: grid; place-items: center; font: 900 12px var(--disp); color: var(--outline); background: var(--code); border-radius: 50%; }
+  .rules li b { font-size: 14px; }
+  .rules li p { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.4; color: var(--ink); opacity: .92; }
+  @media (prefers-reduced-motion: reduce) { .rules summary::after { transition: none; } }
 
   .stats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
   .st { --c: var(--code); display: grid; gap: 6px; padding: 10px; border-radius: 10px; background: var(--deep); border: 1px solid var(--line); }
