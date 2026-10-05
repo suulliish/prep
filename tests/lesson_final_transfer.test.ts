@@ -19,9 +19,9 @@ const TOPICS = ['div.rules', 'div.primes', 'div.gcd', 'div.gcd_lcm_word', 'div.c
   'frac.part_of_number', 'frac.find_whole', 'logic.page_digits', 'logic.permutations', 'logic.pairs_tournament', 'pat.sequences', 'logic.calendar',
   'vis.count_squares', 'logic.cryptarithm'];
 
-describe('финал как на экзамене: 5 вариантов (все 41 урок)', () => {
-  it('в курсе 41 урок, последний шаг каждого — final', () => {
-    expect(Object.keys(L).length).toBe(41);
+describe('финал как на экзамене: 5 вариантов (все 46 уроков)', () => {
+  it('в курсе 46 уроков (36 + 5 десятичных + 5 аварийных, C5), последний шаг каждого — final', () => {
+    expect(Object.keys(L).length).toBe(46);
     for (const [sk, steps] of Object.entries(L)) expect(steps.at(-1).type, sk).toBe('final');
   });
   it('у финала 5 разных вариантов, answer — целое в диапазоне 0–4', () => {

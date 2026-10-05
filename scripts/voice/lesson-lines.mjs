@@ -59,6 +59,7 @@ export function speakable(t) {
     .replace(/✔|✘|★/g, '').replace(/÷/g, 'бөлу ').replace(/\*/g, ' жұлдызша ').replace(/×/g, ' көбейту ')
     .replace(/\b0\d+\b/g, d => [...d].map(c => kzWords(+c)).join(' '))   // 005 → нөл нөл бес
     .replace(new RegExp(`(\\d+)-(${GRAM})(?![${CYR}\\d])`, 'g'), (m, d, suf) => (suf ? words(+d) + suf : m))   // 1-ге → бірге, 5-терді → бестерді
+    .replace(new RegExp(`(\\d+)-(?:інші|ыншы|нші|ншы|ші|шы)(?![${CYR}\\d])`, 'g'), (_, d) => ordinal(+d))   // 35-ші → отыз бесінші (суффикс уже в порядковом, не удваиваем)
     .replace(/(\d+)-(?=[а-яәіңғүұқөһ])/g, (_, d) => ordinal(+d) + ' ')   // 1-қадам → бірінші қадам
     .replace(/\d+/g, d => words(+d))
     .replace(/[{}]/g, '').replace(/\)\s\/\s\(/g, ') бөлу (').replace(/\s\/\s/g, ' немесе ').replace(/([а-яәіңғүұқөһ])\/([а-яәіңғүұқөһ])/g, '$1 немесе $2')
@@ -66,6 +67,7 @@ export function speakable(t) {
     .replace(/\s\+\s/g, ' қосу ').replace(/\s=\s/g, ' тең ').replace(/\s*=\s*\?/g, ' неше болады?')
     .replace(/\+/g, ' қосу ').replace(/−/g, ' минус ')
     .replace(new RegExp(`(?<![A-Za-z${CYR}])([A-Za-z])(?:-(${GRAM}))?(?![A-Za-z${CYR}])`, 'g'), (m, l, suf) => (LETTER[l.toLowerCase()] ?? l) + (suf || ''))
+    .replace(/°/g, ' градус').replace(/\s\?\s/g, ' белгісіз ')   // 30° → отыз градус; «a ? b» (неизвестное внутри фразы) → «белгісіз»
     .replace(/[«»]/g, '').replace(/\s+/g, ' ').trim();
 }
 

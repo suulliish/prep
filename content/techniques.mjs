@@ -50,6 +50,12 @@ export const TECHNIQUES = [
   { skill: 'logic.cryptarithm', kz: 'Шифр кілті', ru: 'Ключ шифра', color: 0xff4fb8, fx: 'pierce' },
   { skill: 'logic.weighing', kz: 'Таразы тәсілі', ru: 'Приём весов', color: 0xc0c8ff, fx: 'arc' },
   { skill: 'vis.count_squares', kz: 'Шаршы көзі', ru: 'Глаз квадратов', color: 0x7dffd4, fx: 'spin' },
+  // ---- аварийные уроки (C5) ----
+  { skill: 'logic.new_operation', kz: 'Орнына қою тәсілі', ru: 'Приём подстановки', color: 0xffcb2e, fx: 'pierce' },
+  { skill: 'logic.clock_angle', kz: 'Сағат тілі соққысы', ru: 'Удар стрелки', color: 0x7dffd4, fx: 'spin' },
+  { skill: 'logic.deduction', kz: 'Кесте тәсілі', ru: 'Приём таблицы', color: 0xc0c8ff, fx: 'multi' },
+  { skill: 'div.last_digit', kz: 'Период құйыны', ru: 'Вихрь периода', color: 0xff9a3d, fx: 'spin' },
+  { skill: 'pat.bracket', kz: 'Жақша кілті', ru: 'Ключ скобки', color: 0xd6f24a, fx: 'pierce' },
 ];
 
 export const techniqueOf = skill => TECHNIQUES.find(t => t.skill === skill) ?? null;

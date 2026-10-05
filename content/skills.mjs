@@ -24,7 +24,7 @@ s('div.gcd_lcm_word', 'D', 5, 'ЕҮОБ пен ЕКОЕ-ге мәтінді ес
 s('div.count_multiples', 'D', 5, 'Еселіктер санын табу', 'Сколько чисел кратны…', ['div.rules'], { t: ['logic.count_after_removal'] });
 s('div.star_digit', 'D', 5, 'Жұлдызшаның орнына цифр қою', 'Цифра вместо звёздочки', ['div.rules'], { t: ['div.star_digit_9'] });
 s('div.powers_count', 'D', 5, 'Квадраттар мен кубтар саны', 'Сколько квадратов/кубов', ['nat.powers'], { t: ['div.count_powers'] });
-s('div.last_digit', 'D', 'olymp', 'Дәреженің соңғы цифры', 'Последняя цифра степени', ['nat.powers'], { t: ['div.last_digit_power'] });
+s('div.last_digit', 'D', 'olymp', 'Дәреженің соңғы цифры', 'Последняя цифра степени', ['nat.powers'], { t: ['div.last_digit_power', 'div.last_digit_sum'] });
 s('div.trailing_zeros', 'D', 5, 'Көбейтіндінің соңындағы нөлдер', 'Нули в конце произведения', ['div.factorization'], { t: ['div.trailing_zeros_factorial', 'div.trailing_zeros_product'] });
 
 // ---- Обыкновенные дроби ----
@@ -152,16 +152,16 @@ s('word.drying', 'B', 6, 'Кептіру есептері', 'Задачи на �
 
 // ---- Закономерности ----
 s('pat.sequences', 'H', 5, 'Сандар тізбегі', 'Числовые последовательности', ['nat.ops'], { t: ['pat.seq_nth', 'pat.seq_position', 'pat.seq_growing_diff', 'pat.seq_interleaved'] });
-s('pat.bracket', 'H', 5, 'Жақшадағы сан заңдылығы', 'Закономерность с числом в скобках', ['pat.sequences', 'nat.powers'], { t: ['logic.bracket_pattern'] });
+s('pat.bracket', 'H', 5, 'Жақшадағы сан заңдылығы', 'Закономерность с числом в скобках', ['pat.sequences', 'nat.powers'], { t: ['logic.bracket_pattern', 'logic.bracket_middle', 'logic.bracket_square'] });
 s('pat.function_machine', 'H', 5, 'Кесте бойынша формула', 'Формула по таблице', ['expr.variables']);
 s('pat.arith_progression', 'H', 'olymp', 'Тұрақты айырмалы тізбек', 'Постоянная разность', ['pat.sequences']);
 
 // ---- Логика словами ----
-s('logic.new_operation', 'I', 5, 'Жаңа амал', 'Новая операция', ['expr.variables'], { t: ['logic.new_operation'] });
-s('logic.clock_angle', 'I', 6, 'Сағат тілдерінің арасындағы бұрыш', 'Угол между стрелками', ['geo.angles_basic', 'frac.mul'], { t: ['logic.clock_angle'] });
+s('logic.new_operation', 'I', 5, 'Жаңа амал', 'Новая операция', ['nat.order_ops'], { t: ['logic.new_operation', 'logic.new_operation_nested', 'logic.new_operation_unknown'] });
+s('logic.clock_angle', 'I', 6, 'Сағат тілдерінің арасындағы бұрыш', 'Угол между стрелками', ['frac.mul'], { t: ['logic.clock_angle', 'logic.clock_angle_hands'] });
 s('logic.calendar', 'I', 5, 'Күнтізбе есептері', 'Календарь', ['div.rules'], { t: ['logic.every_k_days', 'logic.cal_weekday_shift', 'logic.cal_days_between', 'logic.cal_years_days', 'logic.cal_weekend_count', 'logic.cal_date_weekday'] });
 s('logic.clock_lag', 'I', 'olymp', 'Қалып қоятын сағат', 'Отстающие часы', ['ratio.units']);
-s('logic.deduction', 'I', 5, 'Кім қайда: кесте әдісі', 'Кто где: таблица', [], { t: ['logic.who_in_which_class'] });
+s('logic.deduction', 'I', 5, 'Кім қайда: кесте әдісі', 'Кто где: таблица', [], { t: ['logic.who_in_which_class', 'logic.deduction_table', 'logic.deduction_enough'] });
 s('logic.permutations', 'I', 5, 'Қатарға тұру тәсілдері', 'Перестановки', ['nat.ops', 'logic.weighing'], { t: ['logic.line_up', 'logic.perm_digits', 'logic.perm_menu', 'logic.perm_fixed'] });
 s('logic.pairs_tournament', 'I', 5, 'Жұптар және турнир', 'Пары и турнир', ['logic.permutations'], { t: ['logic.tour_pairs', 'logic.tour_double', 'logic.tour_one_more', 'logic.tour_find_n'] });
 s('logic.probability', 'I', 6, 'Ықтималдық', 'Вероятность', ['frac.concept']);

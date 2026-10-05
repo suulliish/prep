@@ -10,8 +10,8 @@ const len = (s: string) => {
 };
 
 describe('«Биткә түсіндір»: длина карточек не выдаёт верную', () => {
-  it('у каждой из 41 темы есть свой surface', () => {
-    expect(skills).toHaveLength(41);
+  it('у каждой из 46 тем есть свой surface', () => {
+    expect(skills).toHaveLength(46);
     for (const s of skills) expect(TEACHBACK_BANK[s].surface, s).toBeTruthy();
   });
 

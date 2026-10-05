@@ -3,7 +3,7 @@
   // 3/4 и 2 3/4 — одна плитка с этажной дробью; десятичное 0,45 — тоже одна плитка (C3).
   import Frac from '../../ui/Frac.svelte';
   import { parseFrac } from '../../widgets/fracdraw';
-  let { math, broken = false }: { math: string; broken?: boolean } = $props();
+  let { math, broken = false, label = 'ОРЫНДАЛАДЫ' }: { math: string; broken?: boolean; label?: string } = $props();
   type Tok = { t: string; kind: 'num' | 'frac' | 'op' | 'par' | 'sup' | 'txt' | 'sep'; hl: boolean };
   const toks = $derived.by(() => {
     const out: Tok[] = []; let hl = false;
@@ -31,7 +31,7 @@
 <div class="tiles" class:broken>
   {#each toks as g, gi}
     {#if g.hl}
-      <span class="proc" style="animation-delay:{gi * 40}ms"><small>⚙ ОРЫНДАЛАДЫ</small>{#each g.items as tk}{@render tile(tk, false)}{/each}</span>
+      <span class="proc" style="animation-delay:{gi * 40}ms"><small>⚙ {label}</small>{#each g.items as tk}{@render tile(tk, false)}{/each}</span>
     {:else}
       {#each g.items as tk}{@render tile(tk, true, gi)}{/each}
     {/if}
