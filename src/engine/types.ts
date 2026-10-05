@@ -86,7 +86,9 @@ export interface Save {
   shipChestFixed?: number;   // сколько починенных поломок уже «потрачено» на сундук за целый корабль (src/engine/repair.ts: claimShipChest)
   kzReview?: Record<string, 'ok' | 'fix'>;   // проверка казахских текстов носителем
   weekendSpent?: Record<string, number>;      // устарело вместе с таймером игры (30.09)
-  lessonPos?: { skill: string; step: number };  // где остановился в уроке — «Жалғастыру»
+  /** Где остановился в уроке — «Жалғастыру». final — состояние «Соңғы сынақ» (L2, src/lesson/finalTask.ts): та же задача и ответ после выхода и входа,
+   *  чтобы одна попытка не превращалась в сколько угодно. */
+  lessonPos?: { skill: string; step: number; final?: { task: { kz: string; choices: string[]; answer: number; why: string; tags: string[] } | null; res?: 'won' | 'missed' | 'closed'; pick?: number } };
   levelStars?: Record<string, number>;
   style?: { trail?: string; cape?: string };  // выбранные награды за звёзды (STAR_REWARDS)       // лучшие звёзды уровня-темы (id темы → 1..3)
   coins?: number;                             // монеты («тиын»): за ответы и врагов, тратятся в мастерской корабля (src/lib/ship.svelte.ts)

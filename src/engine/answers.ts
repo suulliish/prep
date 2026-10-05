@@ -3,6 +3,7 @@
 import type { Attempt, Save } from './types';
 import { isDone } from './progress';
 import { mistakeName } from './mistakeNames';
+import { isPracticeAttempt } from './rules';
 
 /** «Быстрый» ответ в отчёте командира: быстрее 5 секунд (как в карточке «Сегодня»). */
 export const FAST_MS = 5000;
@@ -26,7 +27,7 @@ function learnedBy(save: Save, a: Attempt) {
 }
 
 export function daySummary(save: Save, day: string): DaySummary {
-  const list = save.attempts.filter(a => a.day === day);
+  const list = save.attempts.filter(a => a.day === day && isPracticeAttempt(a));
   const clean = list.filter(a => a.correct && a.hintLevel === 0).length;
   const fast = list.filter(a => a.timeMs < FAST_MS).length;
   const errs = new Map<string, { tag: string | undefined; n: number }>();
@@ -46,12 +47,12 @@ export function daySummary(save: Save, day: string): DaySummary {
 
 /** Дни, в которые были ответы, от новых к старым. */
 export function attemptDays(attempts: Attempt[]): string[] {
-  return [...new Set(attempts.map(a => a.day))].sort().reverse();
+  return [...new Set(attempts.filter(isPracticeAttempt).map(a => a.day))].sort().reverse();
 }
 
 /** Последние `limit` ответов, сгруппированные по дням: дни от новых к старым, внутри дня от новых к старым. */
 export function recentByDay(attempts: Attempt[], limit = 100): { day: string; list: Attempt[] }[] {
-  const last = attempts.slice(-limit).reverse();
+  const last = attempts.filter(isPracticeAttempt).slice(-limit).reverse();
   const out: { day: string; list: Attempt[] }[] = [];
   for (const a of last) {
     const g = out.find(x => x.day === a.day);
@@ -69,6 +70,6 @@ export function repairCauses(save: Save, top = 5): BreakCause[] {
     c.total++; if (!r.fixed) c.open++;
     m.set(r.skill, c);
   }
-  for (const a of save.attempts) if (!a.correct && m.has(a.skill)) m.get(a.skill)!.wrong++;
+  for (const a of save.attempts) if (isPracticeAttempt(a) && !a.correct && m.has(a.skill)) m.get(a.skill)!.wrong++;
   return [...m.values()].sort((x, y) => y.total - x.total || y.open - x.open || y.wrong - x.wrong).slice(0, top);
 }

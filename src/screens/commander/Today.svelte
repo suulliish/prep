@@ -5,6 +5,7 @@
   import { settleDay, extraCap } from '../../engine/planner';
   import { streak } from '../../engine/streak';
   import { parse, iso } from '../../engine/dates';
+  import { isPracticeAttempt } from '../../engine/rules';
   let { cloudOk }: { cloudOk: boolean } = $props();
 
   const plan = ensurePlan();
@@ -15,7 +16,7 @@
   const weekMin = $derived(week.reduce((s, r) => s + r.minutesToday, 0));
   const weekBank = $derived(week.reduce((s, r) => s + r.minutesWeekend, 0));
   const st = $derived(streak(game.save, game.day));
-  const todays = $derived(game.save.attempts.filter(a => a.day === game.day));
+  const todays = $derived(game.save.attempts.filter(a => a.day === game.day && isPracticeAttempt(a)));
   const guesses = $derived(todays.filter(a => !a.honest && a.hintLevel < 4).length);
   const sureWrong = $derived(todays.filter(a => a.confidence === 'sure' && !a.correct).length);
   const BLOCK: Record<string, string> = { warmup: 'Разминка (повторение)', new: 'Новая тема', mixed: 'Смешанные задачи', summary: 'Итог дня' };

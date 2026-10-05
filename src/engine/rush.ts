@@ -1,6 +1,7 @@
 // Против спешки в бою (research-learning.md, D2 + D3): «жмёт, не читая» и «не заметил, что вопрос сменился».
 // Чистый модуль без Svelte: пороги, лесенка быстрых ответов, подсветка изменений, мини-проверка «что спрашивается».
 // Наказаний нет — ни XP, ни минут: это про внимание. Экран: src/screens/Session.svelte.
+import { isLessonAnswer } from './lessonlog';
 
 // ---------- D2: что считать «слишком быстро» ----------
 /** Порог = 2,0 с + 0,04 с на каждый знак условия, не меньше 2,5 с и не больше 8 с. */
@@ -21,7 +22,7 @@ export const rushLimitMs = (chars: number, adaptiveMs: number | null = null) => 
 // Он ошибается, когда отвечает в 2–3 раза быстрее, чем ему нужно на честный счёт, но всё равно дольше 5 с, поэтому общий порог их не ловит.
 export const ADAPT = { ratio: 0.45, minSamples: 3, floorMs: 5000, ceilMs: 25000, window: 30 } as const;
 
-export interface TimedAttempt { source: string; skill: string; correct: boolean; timeMs: number; hintLevel?: number; kind?: string }
+export interface TimedAttempt { source: string; skill: string; correct: boolean; timeMs: number; hintLevel?: number; kind?: string; mode?: string }
 
 export function median(xs: number[]): number {
   if (!xs.length) return NaN;
@@ -34,7 +35,7 @@ function cleanTimes(hist: TimedAttempt[], pick: (a: TimedAttempt) => boolean): n
   const out: number[] = [];
   for (let i = hist.length - 1; i >= 0 && out.length < ADAPT.window; i--) {
     const a = hist[i];
-    if (a.correct && !a.hintLevel && a.kind !== 'glitch' && a.timeMs > 0 && pick(a)) out.push(a.timeMs);
+    if (a.correct && !a.hintLevel && a.kind !== 'glitch' && !isLessonAnswer(a) && a.timeMs > 0 && pick(a)) out.push(a.timeMs);
   }
   return out;
 }

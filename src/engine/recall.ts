@@ -3,6 +3,7 @@
 // Конкретные дни мои, на детях не проверены.
 import { parse, iso } from './dates';
 import type { RecallEntry, RecallState, Save } from './types';
+import { isPracticeAttempt } from './rules';
 
 /** Сколько тем в день: больше ребёнок не осилит, остальные ждут завтра (самые просроченные идут первыми). */
 export const DAILY_MAX = 3;
@@ -36,7 +37,7 @@ export function backfill(save: Save, day: string): boolean {
   let changed = false;
   for (const [id, s] of Object.entries(save.skills)) {
     if (!s.lessonDone || save.recall?.[id]) continue;
-    const first = save.attempts.find(a => a.skill === id)?.day;
+    const first = save.attempts.find(a => a.skill === id && isPracticeAttempt(a))?.day;
     const learned = [s.learnedAt, first].filter((x): x is string => !!x && x <= day).sort()[0] ?? day;
     enroll(save, id, day, learned);
     changed = true;

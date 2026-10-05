@@ -15,7 +15,7 @@
 </script>
 
 <section class="panel card">
-  {#if !game.save.attempts.length}
+  {#if !ansDays.length}
     <p class="note">Ответов пока нет: они появятся после первого боя.</p>
   {:else}
     <label class="daypick">Сводка за день

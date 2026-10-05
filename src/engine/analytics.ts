@@ -69,9 +69,10 @@ export function analyze(save: Save, o: AnalyticsOpts): Analytics {
   const clock = (ms: number) => { const d = new Date(ms + tz * 60000); return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`; };
   const hourOf = (ms: number) => new Date(ms + tz * 60000).getUTCHours();
 
+  // ответы шагов урока (src/engine/lessonlog.ts) в разбор практики не идут; inline: этот файл запускается в чистом Node без импортов кода
   const all = save.attempts ?? [];
-  const att = all.filter(a => inRange(a.day, from, to) && a.mode !== 'diagnostic');
-  const prev = all.filter(a => inRange(a.day, prevFrom, prevTo) && a.mode !== 'diagnostic');
+  const att = all.filter(a => inRange(a.day, from, to) && a.mode !== 'diagnostic' && !(a.mode === 'lesson' && a.source?.startsWith('lesson:')));
+  const prev = all.filter(a => inRange(a.day, prevFrom, prevTo) && a.mode !== 'diagnostic' && !(a.mode === 'lesson' && a.source?.startsWith('lesson:')));
   const usage = (save.usage ?? []).filter(u => inRange(u.day, from, to));
   const uOf = new Map<string, UsageDay>(usage.map(u => [u.day, u]));
   const steps: StepLog[] = usage.flatMap(u => u.steps);

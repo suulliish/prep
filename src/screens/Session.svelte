@@ -11,7 +11,7 @@
   import MicButton from '../ui/MicButton.svelte';
   import { trackExit, awayClock } from '../lib/track.svelte';
   import { examShare, EXAM_PENALTY, restoreFix, restorableFix } from '../engine/planner';
-  import { RULES_V, isClosed, isRushed, isHonest } from '../engine/rules';
+  import { RULES_V, isClosed, isRushed, isHonest, isPracticeAttempt } from '../engine/rules';
   import GlitchTurn from '../ui/GlitchTurn.svelte';
   import CoinChip from '../ui/CoinChip.svelte';
   import BattleEvent from '../ui/BattleEvent.svelte';
@@ -263,7 +263,7 @@
     glitch = null; glPick = null; glSoft = [];
     // в ремонте ход Глитча не собираем: починку считает только обычный ответ
     if (fresh && (forceGlitch ? !twin && !fresh.real && block !== 'repair' : glitchAllowed({
-      idx, total, at: glAt, attempts: game.save.attempts.filter(a => a.skill === fresh.skill).length, block, lastWave: isLastWave(), mobHp,
+      idx, total, at: glAt, attempts: game.save.attempts.filter(a => a.skill === fresh.skill && isPracticeAttempt(a)).length, block, lastWave: isLastWave(), mobHp,
       revenge: twin, rushTwin: false, check: block === 'repair', real: !!fresh.real,
     }))) {
       glitch = buildGlitch(fresh);

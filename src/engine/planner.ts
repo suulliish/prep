@@ -4,6 +4,7 @@ import type { DayRecord, Save } from './types';
 import { parse } from './dates';
 // @ts-ignore — очередь тем на JS (content/queue.mjs)
 import { QUEUE, NEW_TOPIC_WEEKDAYS, NEW_TOPICS_END } from '../../content/queue.mjs';
+import { isPracticeAttempt } from './rules';
 
 export type BlockId = 'warmup' | 'new' | 'mixed' | 'summary';
 export interface Block { id: BlockId; minutes: number; skills: string[]; items: number; lesson?: boolean }
@@ -29,7 +30,7 @@ export function taught(save: Save, defs: SkillDef[], id: string): boolean {
 // решение командира 01.10 (порог мастерства 85%, вариант A): тема, которая не выучена за STUCK_DAYS дней занятий, не держит путь —
 // открывается следующая, а застрявшая идёт в разминку каждый день, пока не наберёт 85%
 export const STUCK_DAYS = 4;
-const daysOn = (save: Save, id: string) => new Set((save.attempts ?? []).filter(a => a.skill === id).map(a => a.day)).size;
+const daysOn = (save: Save, id: string) => new Set((save.attempts ?? []).filter(a => a.skill === id && isPracticeAttempt(a)).map(a => a.day)).size;
 export const stuckSkills = (save: Save, defs: SkillDef[]) => defs.filter(d => save.skills[d.id]?.status === 'learning' && daysOn(save, d.id) >= STUCK_DAYS).map(d => d.id);
 
 /** allowNew — можно ли сегодня начать новую тему (newTopicDay). Начатую тему продолжаем в любой день. */
@@ -54,7 +55,7 @@ export function nextSkill(save: Save, defs: SkillDef[], allowNew = true): string
 export function practiceTopic(save: Save, defs: SkillDef[]): string | null {
   const ok = (id: string) => taught(save, defs, id) && !!save.skills[id] && (defs.find(d => d.id === id)?.templates.length ?? 0) > 0;
   const lastAt: Record<string, number> = {};
-  for (const a of save.attempts ?? []) if (a.at >= (lastAt[a.skill] ?? -1)) lastAt[a.skill] = a.at;
+  for (const a of save.attempts ?? []) if (isPracticeAttempt(a) && a.at >= (lastAt[a.skill] ?? -1)) lastAt[a.skill] = a.at;
   const cand = Object.keys(lastAt).filter(ok).sort((a, b) => lastAt[b] - lastAt[a]);
   return cand.find(id => !['mastered', 'automatic'].includes(save.skills[id].status)) ?? cand[0] ?? null;
 }

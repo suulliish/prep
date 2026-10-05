@@ -10,6 +10,7 @@
   import { sparksAt, centerOf } from '../ui/fx.svelte';
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
+  import { isPracticeAttempt } from '../engine/rules';
 
   // примерка: костюм на герое в 3D, пока не надет насовсем; уходим с экрана — возвращаем надетый
   let trying = $state<string | null>(null);
@@ -23,7 +24,7 @@
   const mind = $derived(Object.entries(game.save.skills).filter(([id, s]) => ['learned', 'mastered', 'automatic'].includes(s.status) && LOGIC.includes(cat(id))).length);
   const acc = $derived.by(() => {
     const from = Date.parse(game.day) - 14 * 864e5;
-    const a = game.save.attempts.filter(x => x.honest && x.hintLevel === 0 && Date.parse(x.day) >= from);
+    const a = game.save.attempts.filter(x => isPracticeAttempt(x) && x.honest && x.hintLevel === 0 && Date.parse(x.day) >= from);
     return a.length >= 10 ? Math.round((a.filter(x => x.correct).length / a.length) * 100) : null;
   });
   const st = $derived(streak(game.save, game.day));

@@ -43,10 +43,12 @@ export const templatesOf = (skillId: string): string[] => skillById[skillId]?.te
 export const isTemplateId = (id: string) => !!byId[id];
 
 /** Новая задача навыка. `tpl` — взять именно этот шаблон (для «егіз»/реванша: тот же шаблон, новые числа);
- *  `avoidKz` — не выдавать дословно этот текст (до 6 попыток: у шаблонов с малым перебором числа могут совпасть). */
-export function makeItem(skillId: string, opts: { tpl?: string; avoidKz?: string } = {}): Item | null {
-  const ids = templatesOf(skillId);
+ *  `avoidKz` — не выдавать дословно этот текст (до 6 попыток: у шаблонов с малым перебором числа могут совпасть);
+ *  `maxDiff` — только шаблоны не сложнее қиындық; если таких у навыка нет — null (вызывающий берёт запасной вариант). */
+export function makeItem(skillId: string, opts: { tpl?: string; avoidKz?: string; maxDiff?: number } = {}): Item | null {
+  let ids = templatesOf(skillId);
   if (!ids.length) return null;
+  if (opts.maxDiff) { ids = ids.filter(id => (byId[id]?.difficulty ?? 1) <= opts.maxDiff!); if (!ids.length) return null; }
   const tid = opts.tpl && ids.includes(opts.tpl) ? opts.tpl : null;
   let t = byId[tid ?? R.pick(ids)], it = t.gen(R);
   for (let k = 0; k < 6 && opts.avoidKz && it.kz === opts.avoidKz; k++) { if (!tid) t = byId[R.pick(ids)]; it = t.gen(R); }

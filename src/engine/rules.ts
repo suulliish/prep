@@ -3,6 +3,7 @@
 // Чистый модуль — таблицу сочетаний гоняет tests/rules.test.ts.
 import { rushLimitMs } from './rush';
 import type { Attempt } from './types';
+import { isLessonAnswer } from './lessonlog';
 
 /** Версия правил в Attempt.r. Ответы без r записаны до 02.10 — их судит прежний фильтр (honest). */
 export const RULES_V = 2 as const;
@@ -23,6 +24,9 @@ export function isHonest(f: { timeMs: number; hintLevel: number; rushed: boolean
   if (f.closed || f.hintLevel >= 4) return false;
   return f.dunno ? f.timeMs >= DUNNO_MIN_MS : !f.rushed;
 }
+
+/** Ответ практики/боя/проверки. Ответы шагов урока (mode 'lesson') лежат в той же истории, но ни темп, ни точность, ни «дни на теме» не меняют. */
+export const isPracticeAttempt = (a: { mode?: string; source?: string }) => !isLessonAnswer(a);
 
 export type Verdict = 'correct' | 'wrong' | null;
 type ModelAttempt = Pick<Attempt, 'correct' | 'honest' | 'hintLevel' | 'mode'> & Partial<Pick<Attempt, 'r' | 'fast' | 'closed' | 'confidence'>> & { selfCheck?: string };
