@@ -57,11 +57,14 @@ export interface DayRecord {
   honest?: Record<string, number>;
 }
 
+/** PIN командира (src/engine/pin.ts): хэш PBKDF2, соль, число итераций, когда задан (на двух устройствах побеждает больший setAt). */
+export interface PinRec { hash: string; salt: string; iter: number; setAt: number; weak?: true }   // weak — задан без пароля облака (устройство без входа): при слиянии уступает PIN, заданному с паролем
+
 export interface Settings {
   extraMissionCap: number;          // сколько доп. миссий в день
   extraTo: 'today' | 'weekend';
   planMinutes: number;
-  pin?: string;
+  pin?: string | PinRec;           // PIN командира: PBKDF2 с солью; строка — старый SHA-256 (до 05.10), заменяется при первом верном вводе
   voiceInput?: boolean;             // кнопка «Айтып бер» (голосовой ввод); нет поля = включено
   notebookPhoto?: boolean;          // «Дәптер»: Бит проверяет фото карточки; нет поля = включено
 }

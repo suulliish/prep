@@ -9,6 +9,7 @@
 //    Так телефон с копией недельной давности, поменяв одну настройку, не откатывает дни, темы и монеты ребёнка.
 import type { Attempt, Save, DayRecord, SkillState, RecallState, NotebookEntry } from './types';
 import { mergeUsage } from './usage';
+import { newerPin } from './pin';
 
 export const attemptKey = (a: Attempt) => `${a.at}|${a.skill}|${a.source}`;
 
@@ -155,6 +156,8 @@ export function mergeSave(base: Save | null, local: Save, remote: Save): Save {
     const v = pick3((b as any)[k], (local as any)[k], (remote as any)[k], tie, hasBase);
     if (v !== undefined) out[k] = v;
   }
+  // PIN командира: побеждает тот, что задан позже (setAt), а не тот, чьи настройки в целом новее
+  if (out.settings && (local.settings?.pin || remote.settings?.pin)) out.settings = { ...out.settings, pin: newerPin(local.settings?.pin, remote.settings?.pin) };
   out.attempts = mergeAttempts(local.attempts ?? [], remote.attempts ?? []);
   out.usage = mergeUsage(remote.usage ?? [], local.usage ?? []);
   if (!local.usage && !remote.usage) delete out.usage;

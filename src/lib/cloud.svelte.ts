@@ -7,7 +7,7 @@
 // (src/engine/sync.ts mergeSave) и в облако уходит слияние — ничего не перезаписывается вслепую. Документ более новой
 // схемы, чем знает это приложение, только читается («Жаңарту керек»).
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, type User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, type User, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { getFirestore, doc, getDoc, getDocs, collection, runTransaction } from 'firebase/firestore';
 import { APP_VERSION, deviceId, deviceLabel } from './version';
 import { game, afterPersist, replaceSave, persistLocal } from './store.svelte';
@@ -222,6 +222,13 @@ export async function signInPassword(email: string, password: string) {
   }
   try { await createUserWithEmailAndPassword(auth, email, password); }
   catch (e: any) { cloud.status = 'error'; cloud.error = e?.code === 'auth/email-already-in-use' ? 'auth/wrong-password' : e?.code ?? String(e); }
+}
+/** Подтвердить пароль облака для вошедшего аккаунта (PIN командира задаётся и меняется только с ним, K2). Ничего не меняет в аккаунте. */
+export async function reauth(password: string): Promise<{ ok: boolean; error?: string }> {
+  const u = auth.currentUser;
+  if (!u?.email) return { ok: false, error: 'no-user' };
+  try { await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, password)); return { ok: true }; }
+  catch (e: any) { return { ok: false, error: e?.code ?? String(e) }; }
 }
 /** Забыли пароль: письмо со сбросом (лимит бесплатного тарифа — 150 писем в день). */
 export async function resetPassword(email: string) {

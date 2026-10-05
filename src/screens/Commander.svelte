@@ -2,7 +2,9 @@
   // Экран брата («Командир корабля»), на русском, под PIN. Вкладки — src/screens/commander/*.svelte (K0, 02.10);
   // общие стили вкладок — здесь (:global внутри .wrap).
   import { onMount } from 'svelte';
-  import { game, go, persist, hashPin } from '../lib/store.svelte';
+  import { game, go } from '../lib/store.svelte';
+  import { commanderOpen, openCommander, closeCommander } from '../lib/pinstate';
+  import { isStoredPin } from '../engine/pin';
   import { W } from '../lib/world.svelte';
   import { audio } from '../lib/audio';
   import type { CloudMod } from './commander/util';
@@ -15,43 +17,39 @@
   import Kz from './commander/Kz.svelte';
   import Ai from './commander/Ai.svelte';
   import Data from './commander/Data.svelte';
+  import PinGate from './commander/PinGate.svelte';
 
-  let unlocked = $state(false);
-  let pin = $state('');
-  let pinErr = $state('');
+  // открыт 10 минут после верного PIN (возврат из «Звука и музыки» не просит PIN снова); стрелка «назад» закрывает сразу (K2, 05.10)
+  let unlocked = $state(commanderOpen());
+  let changing = $state(false);   // «Сменить PIN» из настроек: снова пароль облака
   let tab = $state<'today' | 'stats' | 'answers' | 'recall' | 'settings' | 'skills' | 'kz' | 'ai' | 'data'>('today');
-  const hasPin = !!game.save.settings.pin;
+  const hasPin = $derived(isStoredPin(game.save.settings.pin));
   // облако грузится лениво (Firebase — отдельный кусок сайта)
   let C = $state<CloudMod | null>(null);
   onMount(() => { import('../lib/cloud.svelte').then(m => (C = m)).catch(() => {}); });
   const cloudOk = $derived(!!C?.cloud.user && C.cloud.status !== 'error');
 
   onMount(() => { W.dim = true; audio.setMood('focus'); });
+  // окно «открыт» продлевается касаниями и закрывается само: оставленный на экране командир через 10 минут простоя просит PIN снова
+  const touch = () => { if (unlocked) openCommander(); };
+  onMount(() => { const t = setInterval(() => { if (unlocked && !commanderOpen()) { unlocked = false; changing = false; } }, 3000); return () => clearInterval(t); });
 
-  async function enter() {
-    if (!/^\d{4}$/.test(pin)) { pinErr = 'PIN — 4 цифры'; return; }
-    const h = await hashPin(pin);
-    if (!hasPin) { game.save.settings.pin = h; persist(); unlocked = true; return; }
-    if (h === game.save.settings.pin) unlocked = true; else { pinErr = 'Неверный PIN'; pin = ''; }
-  }
   // командир открывает вкладку на своём устройстве: если вошёл в облако, подтягиваем свежие ответы (один раз за вход в раздел)
   let ansSynced = false;
   $effect(() => { if ((tab === 'stats' || tab === 'answers') && !ansSynced && C?.cloud.user) { ansSynced = true; void C.syncNow(); } });
 </script>
 
-<div class="wrap">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="wrap" onpointerdown={touch} onkeydown={touch}>
   <div class="top panel">
-    <button class="btn ghost small" onclick={() => go({ name: 'hub' })}>←</button>
+    <button class="btn ghost small" onclick={() => { closeCommander(); go({ name: 'hub' }); }} aria-label="Выйти и закрыть командира">←</button>
     <b class="t">Командир корабля</b>
   </div>
 
   {#if !unlocked}
-    <section class="panel card">
-      <p>{hasPin ? 'Введите PIN командира.' : 'Придумайте PIN из 4 цифр. Он защищает настройки от младшего брата.'}</p>
-      <input id="pin" class="pin" type="password" inputmode="numeric" maxlength="4" bind:value={pin} onkeydown={(e) => e.key === 'Enter' && enter()} aria-label="PIN" />
-      {#if pinErr}<p class="err">{pinErr}</p>{/if}
-      <button class="btn primary" onclick={enter}>{hasPin ? 'Войти' : 'Сохранить PIN'}</button>
-    </section>
+    <PinGate mode={hasPin ? 'enter' : 'set'} {C} onok={() => (unlocked = true)} />
+  {:else if changing}
+    <PinGate mode="set" {C} onok={() => (changing = false)} oncancel={() => (changing = false)} />
   {:else}
     <nav class="tabs panel">
       {#each [['today', 'Сегодня'], ['stats', 'Аналитика'], ['answers', 'Ответы'], ['recall', 'Повторы'], ['settings', 'Настройки'], ['skills', 'Темы'], ['kz', 'Казахский текст'], ['ai', 'Вопросы к ИИ'], ['data', 'Данные']] as [id, name]}
@@ -63,7 +61,7 @@
     {:else if tab === 'stats'}<Stats />
     {:else if tab === 'answers'}<Answers />
     {:else if tab === 'recall'}<RecallTab />
-    {:else if tab === 'settings'}<Settings onlock={() => (unlocked = false)} />
+    {:else if tab === 'settings'}<Settings onlock={() => { closeCommander(); unlocked = false; }} onchangepin={() => (changing = true)} />
     {:else if tab === 'skills'}<Skills />
     {:else if tab === 'kz'}<Kz />
     {:else if tab === 'ai'}<Ai />

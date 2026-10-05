@@ -1,7 +1,7 @@
 <script lang="ts">
   // «Настройки»: имя героя, доп. миссии, голос, фото «Дәптер», PIN.
   import { game, go, persist } from '../../lib/store.svelte';
-  let { onlock }: { onlock: () => void } = $props();
+  let { onlock, onchangepin }: { onlock: () => void; onchangepin: () => void } = $props();
 </script>
 
 <section class="panel card">
@@ -22,5 +22,6 @@
   <label class="check"><input type="checkbox" checked={game.save.settings.notebookPhoto !== false} onchange={(e) => { game.save.settings.notebookPhoto = e.currentTarget.checked; persist(); }} /> Проверка «Дәптер» по фото</label>
   <p class="note">После урока ребёнок пишет карточку темы в бумажной тетради. Если включено, он фотографирует её, и Бит отмечает четыре поля (правило своими словами, свой пример, ловушка Глитча, схема): ✓ верно, ½ частично, ✗ ошибка, — нет — и говорит, что исправить красной ручкой. Фото не хранится; отметки видны во вкладке «Вопросы к ИИ» (📷). Работает при входе в облако.</p>
   <button class="btn ghost" onclick={() => go({ name: 'sound' })}>Звук и музыка: громкость, режим фокуса…</button>
-  <button class="btn ghost" onclick={() => { game.save.settings.pin = undefined; persist(); onlock(); }}>Сменить PIN</button>
+  <button class="btn ghost" onclick={onchangepin}>Сменить PIN (нужен пароль облака)</button>
+  <button class="btn ghost" onclick={onlock}>Закрыть командира</button>
 </section>
