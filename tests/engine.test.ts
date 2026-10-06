@@ -234,10 +234,10 @@ describe('очередь и потолок новых тем (C1, 02.10)', () =>
     const q = QUEUE as string[];
     expect(q.indexOf('div.primes')).toBeLessThan(q.indexOf('frac.concept'));
     expect(new Set(q).size).toBe(q.length);
-    // каждая тема графа есть в очереди; лишние — только 6 тем, которые добавятся в граф вместе с уроками (уравнения, схемы)
+    // каждая тема графа есть в очереди; лишние — только 5 тем, которые добавятся в граф вместе с уроками (уравнения, схемы)
     const { skills } = await import('../content/skills.mjs');
     const ids = new Set((skills as { id: string }[]).map(x => x.id));
     expect([...ids].filter(id => !q.includes(id))).toEqual([]);
-    expect(q.filter(id => !ids.has(id)).sort()).toEqual(['eq.both_sides_nat', 'eq.brackets_nat', 'eq.two_step', 'word.compare', 'word.part_whole', 'word.sum_diff']);
+    expect(q.filter(id => !ids.has(id)).sort()).toEqual(['eq.both_sides_nat', 'eq.brackets_nat', 'word.compare', 'word.part_whole', 'word.sum_diff']);
   });
 });

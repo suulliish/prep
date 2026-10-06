@@ -5,6 +5,7 @@ import { localJson } from '../engine/sync';
 import { refreshAvailability, fixMissingDue, type SkillDef } from '../engine/progress';
 import { today } from '../engine/dates';
 import { ensureLegacy } from '../engine/legacy';
+import { isStoredPin } from '../engine/pin';
 // @ts-ignore — граф навыков на JS
 import { skills as SKILLS } from '../../content/skills.mjs';
 // @ts-ignore
@@ -117,8 +118,10 @@ export function replaceSave(data: Save, keepTime = false) {
     } else { localStorage.removeItem(KEY + '.before-replace.2'); localStorage.removeItem(KEY + '.before-replace.3'); }
     localStorage.setItem(KEY + '.before-replace', cur);
   } catch { /* место кончилось — без резервной копии */ }
-  const t = data.updatedAt;
+  const t = data.updatedAt, keepPin = game.save?.settings?.pin;
   game.save = { ...fresh(), ...data };
+  // импорт копии без PIN (сделана до 05.10, или вручную) не должен стирать PIN этого устройства: иначе следующий открывший командира поставит свой
+  if (!isStoredPin(game.save.settings?.pin) && isStoredPin(keepPin)) game.save.settings = { ...game.save.settings, pin: keepPin };
   if (game.save.heroName === 'Кодер') game.save.heroName = 'Муртаза';
   refreshAvailability(game.save, skillDefs);
   fixMissingDue(game.save, game.day);
@@ -138,12 +141,6 @@ export function importSave(json: string) {
 
 // Уровень героя из XP — src/engine/level.ts (там же его считает симулятор систем)
 export { levelOf } from '../engine/level';
-
-// PIN командира хранится как SHA-256 (не в открытом виде)
-export async function hashPin(pin: string) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('razlom:' + pin));
-  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-}
 
 export function downloadSave() {
   const blob = new Blob([exportSave()], { type: 'application/json' });

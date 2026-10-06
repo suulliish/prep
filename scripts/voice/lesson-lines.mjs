@@ -39,6 +39,7 @@ const suffixOf = (f, n) => f(n).split('-')[1];           // abl(6) → «6-да�
 export function decimalKz(w, f) { return `${words(+w)} бүтін ${fractionKz(+f, 10 ** f.length, { half: false })}`; }
 export function speakable(t) {
   return speakFractions(t)
+    .replace(/(\d+)([a-z])(?![A-Za-z])/g, '$1 $2')              // 5n → 5 n → «бес эн», 3x → «үш икс» (число при букве, без знака)
     .replace(new RegExp(`(\\d+),(\\d+)(?:-(${GRAM}))?(?![${CYR}\\d])`, 'g'), (_, w, f, sf) => decimalKz(w, f) + (sf || ''))
     .replace(/\?\/(\d+)(?:-(ге|ке|ға|қа|нің|тің|дің|ның|дың|тың))?(?![а-яәіңғүұқөһ\d])/g, (_, b, sf) => `${kzWords(+b)}${suffixOf(abl, +b)} белгісіз сан${sf || ''}`)   // ?/24 → жиырма төрттен белгісіз сан
     .replace(new RegExp(`(\\d+)\\s?[–…]\\s?(\\d+|[a-zA-Z])(?:-(${GRAM}))?(?![A-Za-z${CYR}\\d])`, 'g'), (_, a, b, sf) => {   // 1–9 → бірден тоғызға дейін; 1…20-дан → бірден жиырмадан; 1…n → бірден эн-ге дейін
@@ -59,6 +60,7 @@ export function speakable(t) {
     .replace(/✔|✘|★/g, '').replace(/÷/g, 'бөлу ').replace(/\*/g, ' жұлдызша ').replace(/×/g, ' көбейту ')
     .replace(/\b0\d+\b/g, d => [...d].map(c => kzWords(+c)).join(' '))   // 005 → нөл нөл бес
     .replace(new RegExp(`(\\d+)-(${GRAM})(?![${CYR}\\d])`, 'g'), (m, d, suf) => (suf ? words(+d) + suf : m))   // 1-ге → бірге, 5-терді → бестерді
+    .replace(new RegExp(`(\\d+)-(?:інші|ыншы|нші|ншы|ші|шы)(?![${CYR}\\d])`, 'g'), (_, d) => ordinal(+d))   // 35-ші → отыз бесінші (суффикс уже в порядковом, не удваиваем)
     .replace(/(\d+)-(?=[а-яәіңғүұқөһ])/g, (_, d) => ordinal(+d) + ' ')   // 1-қадам → бірінші қадам
     .replace(/\d+/g, d => words(+d))
     .replace(/[{}]/g, '').replace(/\)\s\/\s\(/g, ') бөлу (').replace(/\s\/\s/g, ' немесе ').replace(/([а-яәіңғүұқөһ])\/([а-яәіңғүұқөһ])/g, '$1 немесе $2')
@@ -66,6 +68,7 @@ export function speakable(t) {
     .replace(/\s\+\s/g, ' қосу ').replace(/\s=\s/g, ' тең ').replace(/\s*=\s*\?/g, ' неше болады?')
     .replace(/\+/g, ' қосу ').replace(/−/g, ' минус ')
     .replace(new RegExp(`(?<![A-Za-z${CYR}])([A-Za-z])(?:-(${GRAM}))?(?![A-Za-z${CYR}])`, 'g'), (m, l, suf) => (LETTER[l.toLowerCase()] ?? l) + (suf || ''))
+    .replace(/°/g, ' градус').replace(/\s\?\s/g, ' белгісіз ')   // 30° → отыз градус; «a ? b» (неизвестное внутри фразы) → «белгісіз»
     .replace(/[«»]/g, '').replace(/\s+/g, ' ').trim();
 }
 

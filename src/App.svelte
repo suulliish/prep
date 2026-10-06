@@ -4,6 +4,7 @@
   import { W } from './lib/world.svelte';
   import { game, go, protectStorage, storage, persist } from './lib/store.svelte';
   import { trackEvent } from './lib/track.svelte';
+  import { closeCommander } from './lib/pinstate';
   import { audio } from './lib/audio';
   import { applyLook } from './lib/look';
   import { syncDecor } from './lib/ship.svelte';
@@ -74,7 +75,7 @@
       <div class="crash panel" role="alert">
         <b>Бірдеңе бұзылды</b>
         <p>Қате тіркелді, ағаң көреді. Прогресс сақталды.</p>
-        <button class="btn primary big" onclick={() => { persist(); reset(); go({ name: 'hub' }); }}>Кемеге қайту</button>
+        <button class="btn primary big" onclick={() => { persist(); closeCommander(); reset(); go({ name: 'hub' }); }}>Кемеге қайту</button>
       </div>
     {/snippet}
     </svelte:boundary>

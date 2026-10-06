@@ -4,6 +4,7 @@
   import { replan } from '../../lib/session.svelte';
   import { APP_VERSION, deviceId } from '../../lib/version';
   import { fmtTime, type CloudMod } from './util';
+  import Snapshots from './Snapshots.svelte';
   let { C }: { C: CloudMod | null } = $props();
   let email = $state('');
   let pass = $state('');
@@ -52,6 +53,7 @@
           {/each}
         </ul>
       {/if}
+      <Snapshots {C} />
     {/if}
     {#if C?.cloud.error}<p class="err">{ERR[C.cloud.error] ?? `Ошибка: ${C.cloud.error}`}{#if !ERR[C.cloud.error]}{C.cloud.error.includes('unauthorized-domain') ? ' — добавьте адрес сайта в Firebase → Authentication → Settings → Authorized domains.' : C.cloud.error.includes('permission-denied') ? ' — проверьте правила Firestore (docs/CLOUD.md).' : ''}{/if}</p>{/if}
   </div>

@@ -11,7 +11,7 @@ import { StepQueue, MAX_STEP_TWINS } from '../src/engine/twin';
 import { isEasySkill, selfCheckFor, selfCheckDue, selfNote, answerOp, SELF_GAP, SELF_SAY } from '../src/engine/selfcheck';
 import { isRushed } from '../src/engine/rules';
 import { adaptiveRushMs, rushLimitMs, median, ADAPT, type TimedAttempt } from '../src/engine/rush';
-import { halfCoins, HALF_COINS_OVER, bilScore, bilLine, BIL_NOTE, rightOfLine, repairAsExtra, REPAIR_FIX_COINS, REPAIR_EXTRA_FIXES, EVENT_SAY, EVENT_MS, SHIP_SAY } from '../src/engine/confidence';
+import { halfCoins, HALF_COINS_OVER, bilScore, bilLine, BIL_NOTE, rightOfLine, repairAsExtra, REPAIR_FIX_COINS, REPAIR_EXTRA_FIXES, EVENT_SAY, eventMs, SHIP_SAY } from '../src/engine/confidence';
 import { buildReview } from '../src/engine/review';
 import { settleDay, blankDay, buildPlan, EXTRA_MIN } from '../src/engine/planner';
 import type { Item } from '../src/engine/items';
@@ -178,7 +178,7 @@ describe('самопроверка «Тексер»', () => {
   });
   it('вспышка «Өзің таптың!», монет сверху нет (02.10: нарочная ошибка + «поймал» не выгоднее верного ответа)', () => {
     expect(EVENT_SAY.self.big).toBe('ӨЗІҢ ТАПТЫҢ!');
-    expect(EVENT_MS.self).toBeGreaterThan(1000);
+    expect(eventMs('self', false)).toBe(800);   // «сам нашёл» = верный ответ: событие по размеру праздника (src/engine/pacing.ts), с 19.10 короче секунды
     expect(SELF_SAY.caught).toBe('Өзің таптың!');
     const src = readFileSync('src/screens/Session.svelte', 'utf8');
     expect(src).toContain("const kind = caught && !fast ? 'self'");

@@ -1,0 +1,678 @@
+{
+ "dec.add_align": {
+  "st": "draft",
+  "h": "00af0465"
+ },
+ "dec.add_sub": {
+  "st": "draft",
+  "h": "c04591ec"
+ },
+ "dec.add_word": {
+  "st": "draft",
+  "h": "05cb1dc4"
+ },
+ "dec.between": {
+  "st": "draft",
+  "h": "615d01ae"
+ },
+ "dec.compare_round": {
+  "st": "draft",
+  "h": "b5cdb89d"
+ },
+ "dec.compare_true": {
+  "st": "draft",
+  "h": "b70182da"
+ },
+ "dec.concept": {
+  "st": "draft",
+  "h": "0baef2ff"
+ },
+ "dec.dec_to_frac": {
+  "st": "draft",
+  "h": "78ce4020"
+ },
+ "dec.div_nat": {
+  "st": "draft",
+  "h": "e88515b6"
+ },
+ "dec.expanded": {
+  "st": "draft",
+  "h": "cbe7b2cc"
+ },
+ "dec.frac_convert": {
+  "st": "draft",
+  "h": "fde78dc4"
+ },
+ "dec.frac_to_dec": {
+  "st": "draft",
+  "h": "ea2acbf6"
+ },
+ "dec.from_fraction10": {
+  "st": "draft",
+  "h": "51aaeefc"
+ },
+ "dec.mul_dec": {
+  "st": "draft",
+  "h": "791950e4"
+ },
+ "dec.mul_div": {
+  "st": "draft",
+  "h": "0c9f26d7"
+ },
+ "dec.mul_pow10": {
+  "st": "draft",
+  "h": "5e205beb"
+ },
+ "dec.order_extreme": {
+  "st": "draft",
+  "h": "0457f225"
+ },
+ "dec.place_digit": {
+  "st": "draft",
+  "h": "0d44eb1f"
+ },
+ "dec.round": {
+  "st": "draft",
+  "h": "014fd281"
+ },
+ "dec.sub_from_whole": {
+  "st": "draft",
+  "h": "4948d232"
+ },
+ "dec.units": {
+  "st": "draft",
+  "h": "ddc3404f"
+ },
+ "div.count_multiples": {
+  "st": "draft",
+  "h": "e96498bb"
+ },
+ "div.count_powers": {
+  "st": "draft",
+  "h": "0eba629f"
+ },
+ "div.factorization": {
+  "st": "draft",
+  "h": "9d196b5d"
+ },
+ "div.factorize": {
+  "st": "draft",
+  "h": "8dcc7f17"
+ },
+ "div.gcd": {
+  "st": "draft",
+  "h": "18aecd56"
+ },
+ "div.gcd_lcm_story": {
+  "st": "draft",
+  "h": "345ceaca"
+ },
+ "div.gcd_lcm_word": {
+  "st": "draft",
+  "h": "4a5dc5b6"
+ },
+ "div.gcd_pair": {
+  "st": "draft",
+  "h": "5c1d8d29"
+ },
+ "div.last_digit": {
+  "st": "draft",
+  "h": "30e9e430"
+ },
+ "div.last_digit_power": {
+  "st": "draft",
+  "h": "9ff72e94"
+ },
+ "div.last_digit_sum": {
+  "st": "draft",
+  "h": "91f37b38"
+ },
+ "div.lcm": {
+  "st": "draft",
+  "h": "ca53610b"
+ },
+ "div.lcm_pair": {
+  "st": "draft",
+  "h": "0bafcee2"
+ },
+ "div.powers_count": {
+  "st": "draft",
+  "h": "7d4220a3"
+ },
+ "div.primes": {
+  "st": "draft",
+  "h": "4144adc8"
+ },
+ "div.rules": {
+  "st": "draft",
+  "h": "11724579"
+ },
+ "div.star_digit": {
+  "st": "draft",
+  "h": "7167fe68"
+ },
+ "div.star_digit_9": {
+  "st": "draft",
+  "h": "c603cb5c"
+ },
+ "div.trailing_zeros": {
+  "st": "draft",
+  "h": "043359a8"
+ },
+ "div.trailing_zeros_factorial": {
+  "st": "draft",
+  "h": "d470351d"
+ },
+ "div.trailing_zeros_product": {
+  "st": "draft",
+  "h": "14a8df5f"
+ },
+ "div.which_divisible": {
+  "st": "draft",
+  "h": "d03ae6d6"
+ },
+ "div.which_prime": {
+  "st": "draft",
+  "h": "f9c14ddf"
+ },
+ "eq.add_sub_unknown": {
+  "st": "draft",
+  "h": "67bd9268"
+ },
+ "eq.check_root": {
+  "st": "draft",
+  "h": "b90b3b42"
+ },
+ "eq.linear_basic": {
+  "st": "draft",
+  "h": "e3471618"
+ },
+ "eq.mul_div_unknown": {
+  "st": "draft",
+  "h": "03a8879c"
+ },
+ "eq.reverse_order": {
+  "st": "draft",
+  "h": "86d2b4a5"
+ },
+ "eq.story_one": {
+  "st": "draft",
+  "h": "4a021f95"
+ },
+ "eq.think_number": {
+  "st": "draft",
+  "h": "0129aba7"
+ },
+ "eq.two_step": {
+  "st": "draft",
+  "h": "87f11dcd"
+ },
+ "eq.two_step_div": {
+  "st": "draft",
+  "h": "5c8ecfe7"
+ },
+ "eq.two_step_minus": {
+  "st": "draft",
+  "h": "53209a1d"
+ },
+ "eq.two_step_mul_add": {
+  "st": "draft",
+  "h": "1ff0e8fc"
+ },
+ "eq.two_step_mul_sub": {
+  "st": "draft",
+  "h": "3d1ec2bf"
+ },
+ "eq.two_step_story": {
+  "st": "draft",
+  "h": "3ca8bd89"
+ },
+ "expr.compose_one": {
+  "st": "draft",
+  "h": "60b8d977"
+ },
+ "expr.compose_two": {
+  "st": "draft",
+  "h": "965985e1"
+ },
+ "expr.substitute": {
+  "st": "draft",
+  "h": "31e5354a"
+ },
+ "expr.substitute_two": {
+  "st": "draft",
+  "h": "bb6e0f65"
+ },
+ "expr.variables": {
+  "st": "draft",
+  "h": "90ffee6a"
+ },
+ "frac.add_diff": {
+  "st": "draft",
+  "h": "93ae8015"
+ },
+ "frac.add_same": {
+  "st": "draft",
+  "h": "fe139c8f"
+ },
+ "frac.add_sub": {
+  "st": "draft",
+  "h": "7382acd1"
+ },
+ "frac.basic_property": {
+  "st": "draft",
+  "h": "5fda6254"
+ },
+ "frac.common_denominator": {
+  "st": "draft",
+  "h": "5a0a09cf"
+ },
+ "frac.compare": {
+  "st": "draft",
+  "h": "2bf37498"
+ },
+ "frac.compare_extreme": {
+  "st": "draft",
+  "h": "77286a93"
+ },
+ "frac.compare_order": {
+  "st": "draft",
+  "h": "40b767cc"
+ },
+ "frac.compare_true": {
+  "st": "draft",
+  "h": "c388dfd9"
+ },
+ "frac.concept": {
+  "st": "draft",
+  "h": "a5827832"
+ },
+ "frac.concept_equal": {
+  "st": "draft",
+  "h": "30e41d8a"
+ },
+ "frac.concept_part": {
+  "st": "draft",
+  "h": "5c8f6f73"
+ },
+ "frac.div": {
+  "st": "draft",
+  "h": "743e0e9b"
+ },
+ "frac.div_frac_by_whole": {
+  "st": "draft",
+  "h": "d23fb893"
+ },
+ "frac.div_frac_frac": {
+  "st": "draft",
+  "h": "57654105"
+ },
+ "frac.div_size": {
+  "st": "draft",
+  "h": "5b9bff3e"
+ },
+ "frac.div_whole_by_frac": {
+  "st": "draft",
+  "h": "38867b61"
+ },
+ "frac.equal_missing": {
+  "st": "draft",
+  "h": "5902f288"
+ },
+ "frac.equal_which": {
+  "st": "draft",
+  "h": "2c96a3ed"
+ },
+ "frac.find_whole": {
+  "st": "draft",
+  "h": "dccf290a"
+ },
+ "frac.find_whole_rest": {
+  "st": "draft",
+  "h": "05bc0e02"
+ },
+ "frac.find_whole_story": {
+  "st": "draft",
+  "h": "ff48d738"
+ },
+ "frac.lcd_factor": {
+  "st": "draft",
+  "h": "956f3217"
+ },
+ "frac.lcd_find": {
+  "st": "draft",
+  "h": "74b2dc54"
+ },
+ "frac.lcd_numerators": {
+  "st": "draft",
+  "h": "263afe31"
+ },
+ "frac.magnitude": {
+  "st": "draft",
+  "h": "6b430081"
+ },
+ "frac.magnitude_estimate": {
+  "st": "draft",
+  "h": "f372e036"
+ },
+ "frac.magnitude_half": {
+  "st": "draft",
+  "h": "0ed34f17"
+ },
+ "frac.magnitude_near": {
+  "st": "draft",
+  "h": "97096540"
+ },
+ "frac.mixed": {
+  "st": "draft",
+  "h": "df2b017c"
+ },
+ "frac.mixed_arith": {
+  "st": "draft",
+  "h": "8d0b35c2"
+ },
+ "frac.mixed_convert": {
+  "st": "draft",
+  "h": "f4b69e3f"
+ },
+ "frac.mixed_time": {
+  "st": "draft",
+  "h": "6c7737c2"
+ },
+ "frac.mul": {
+  "st": "draft",
+  "h": "8a2cf4bb"
+ },
+ "frac.mul_frac": {
+  "st": "draft",
+  "h": "65f790be"
+ },
+ "frac.mul_mixed": {
+  "st": "draft",
+  "h": "a29367f2"
+ },
+ "frac.mul_size": {
+  "st": "draft",
+  "h": "697710c3"
+ },
+ "frac.mul_whole": {
+  "st": "draft",
+  "h": "1ecf912b"
+ },
+ "frac.part_of_number": {
+  "st": "draft",
+  "h": "e8522d9b"
+ },
+ "frac.part_of_number_direct": {
+  "st": "draft",
+  "h": "8ba68bba"
+ },
+ "frac.part_of_number_more": {
+  "st": "draft",
+  "h": "d629b8fa"
+ },
+ "frac.reduce": {
+  "st": "draft",
+  "h": "c12db9dd"
+ },
+ "frac.reduce_context": {
+  "st": "draft",
+  "h": "5ad3d3ea"
+ },
+ "frac.reduce_lowest": {
+  "st": "draft",
+  "h": "2876d4cd"
+ },
+ "frac.rest_of_path": {
+  "st": "draft",
+  "h": "61563d70"
+ },
+ "frac.to_whole": {
+  "st": "draft",
+  "h": "d04c9e3b"
+ },
+ "logic.bracket_middle": {
+  "st": "draft",
+  "h": "2f92d059"
+ },
+ "logic.bracket_pattern": {
+  "st": "draft",
+  "h": "c20d4e27"
+ },
+ "logic.bracket_square": {
+  "st": "draft",
+  "h": "0cb58539"
+ },
+ "logic.cal_date_weekday": {
+  "st": "draft",
+  "h": "15ab41d6"
+ },
+ "logic.cal_days_between": {
+  "st": "draft",
+  "h": "ade66d7f"
+ },
+ "logic.cal_weekday_shift": {
+  "st": "draft",
+  "h": "c34b4abf"
+ },
+ "logic.cal_weekend_count": {
+  "st": "draft",
+  "h": "5874bc41"
+ },
+ "logic.cal_years_days": {
+  "st": "draft",
+  "h": "69d59438"
+ },
+ "logic.calendar": {
+  "st": "draft",
+  "h": "c9cc0bef"
+ },
+ "logic.clock_angle": {
+  "st": "draft",
+  "h": "ad327989"
+ },
+ "logic.clock_angle_hands": {
+  "st": "draft",
+  "h": "4b14712b"
+ },
+ "logic.count_after_removal": {
+  "st": "draft",
+  "h": "5a39c112"
+ },
+ "logic.crypt_extreme": {
+  "st": "draft",
+  "h": "6a80d281"
+ },
+ "logic.crypt_lead": {
+  "st": "draft",
+  "h": "9d38912b"
+ },
+ "logic.crypt_three_digit": {
+  "st": "draft",
+  "h": "f9a1747a"
+ },
+ "logic.crypt_two_digit": {
+  "st": "draft",
+  "h": "643cf3d6"
+ },
+ "logic.cryptarithm": {
+  "st": "draft",
+  "h": "8ff0b84e"
+ },
+ "logic.deduction": {
+  "st": "draft",
+  "h": "c0d60c75"
+ },
+ "logic.deduction_enough": {
+  "st": "draft",
+  "h": "2f4a030e"
+ },
+ "logic.deduction_table": {
+  "st": "draft",
+  "h": "e2819a7e"
+ },
+ "logic.every_k_days": {
+  "st": "draft",
+  "h": "0c069657"
+ },
+ "logic.line_up": {
+  "st": "draft",
+  "h": "8857616f"
+ },
+ "logic.new_operation": {
+  "st": "draft",
+  "h": "6e0179dc"
+ },
+ "logic.new_operation_nested": {
+  "st": "draft",
+  "h": "50b1e522"
+ },
+ "logic.new_operation_unknown": {
+  "st": "draft",
+  "h": "d551ef4f"
+ },
+ "logic.page_digits": {
+  "st": "draft",
+  "h": "30060f78"
+ },
+ "logic.pairs_tournament": {
+  "st": "draft",
+  "h": "7b3aab2d"
+ },
+ "logic.perm_digits": {
+  "st": "draft",
+  "h": "7ff7c9e1"
+ },
+ "logic.perm_fixed": {
+  "st": "draft",
+  "h": "60e8b56a"
+ },
+ "logic.perm_menu": {
+  "st": "draft",
+  "h": "ffb7623f"
+ },
+ "logic.permutations": {
+  "st": "draft",
+  "h": "3f8c4542"
+ },
+ "logic.tour_double": {
+  "st": "draft",
+  "h": "b98ba2d4"
+ },
+ "logic.tour_find_n": {
+  "st": "draft",
+  "h": "0288d237"
+ },
+ "logic.tour_one_more": {
+  "st": "draft",
+  "h": "de47528f"
+ },
+ "logic.tour_pairs": {
+  "st": "draft",
+  "h": "46b8dfaf"
+ },
+ "logic.weighing": {
+  "st": "draft",
+  "h": "911262e6"
+ },
+ "logic.weighing_range": {
+  "st": "draft",
+  "h": "508b7295"
+ },
+ "logic.weighing_set": {
+  "st": "draft",
+  "h": "3f4ce27d"
+ },
+ "logic.who_in_which_class": {
+  "st": "draft",
+  "h": "b9451603"
+ },
+ "nat.divide_remainder": {
+  "st": "draft",
+  "h": "a4c24cfa"
+ },
+ "nat.ops": {
+  "st": "draft",
+  "h": "c9d0aca0"
+ },
+ "nat.order_of_ops": {
+  "st": "draft",
+  "h": "66b5f5be"
+ },
+ "nat.order_ops": {
+  "st": "draft",
+  "h": "9c2dcc4f"
+ },
+ "nat.place_value": {
+  "st": "draft",
+  "h": "f5b06af7"
+ },
+ "nat.powers": {
+  "st": "draft",
+  "h": "1ba20bd4"
+ },
+ "nat.powers_value": {
+  "st": "draft",
+  "h": "7d928f6e"
+ },
+ "nat.write_number": {
+  "st": "draft",
+  "h": "63830b39"
+ },
+ "pat.bracket": {
+  "st": "draft",
+  "h": "8c8eb1fd"
+ },
+ "pat.seq_growing_diff": {
+  "st": "draft",
+  "h": "b2a58a15"
+ },
+ "pat.seq_interleaved": {
+  "st": "draft",
+  "h": "cef9c7d4"
+ },
+ "pat.seq_nth": {
+  "st": "draft",
+  "h": "165fa4fa"
+ },
+ "pat.seq_position": {
+  "st": "draft",
+  "h": "7efbe946"
+ },
+ "pat.sequences": {
+  "st": "draft",
+  "h": "33fbc8a6"
+ },
+ "sets.basics": {
+  "st": "draft",
+  "h": "b21dc44f"
+ },
+ "sets.union_intersection": {
+  "st": "draft",
+  "h": "461a93c1"
+ },
+ "sets.venn": {
+  "st": "draft",
+  "h": "ccaed889"
+ },
+ "sets.venn3_none": {
+  "st": "draft",
+  "h": "2919ad9b"
+ },
+ "vis.count_squares": {
+  "st": "draft",
+  "h": "1b000599"
+ },
+ "vis.sq_grid": {
+  "st": "draft",
+  "h": "e7b3cbb0"
+ },
+ "vis.sq_shape": {
+  "st": "draft",
+  "h": "ea1e95aa"
+ },
+ "vis.sq_square_grid": {
+  "st": "draft",
+  "h": "7969235c"
+ }
+}

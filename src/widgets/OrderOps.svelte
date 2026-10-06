@@ -16,7 +16,9 @@
   function tap(i: number) {
     if (!['+', '−', '·', ':'].includes(toks[i])) return;
     const want = correctIndex(toks);
-    if (i !== want) { wrongAt = i; audio.play('wrong'); setTimeout(() => (wrongAt = -1), 500); return; }
+    // два независимых действия высшего приоритета («3 · 6 + 2 · 4»: оба умножения): подходит любое; общий операнд («8 : 2 · 2») или скобки: только первое слева
+    const indep = !toks.includes('(') && i !== want && prec(toks[i]) === prec(toks[want]) && Math.abs(i - want) >= 4;
+    if (i !== want && !indep) { wrongAt = i; audio.play('wrong'); setTimeout(() => (wrongAt = -1), 500); return; }
     const v = calc(+toks[i - 1], toks[i], +toks[i + 1]);
     const next = [...toks.slice(0, i - 1), String(v), ...toks.slice(i + 2)];
     const k = next.findIndex((x, j) => x === '(' && next[j + 2] === ')');

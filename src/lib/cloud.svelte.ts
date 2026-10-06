@@ -6,14 +6,17 @@
 // версии документа (rev): если облако изменилось с тех пор, как его видело устройство, обе копии сливаются по полям
 // (src/engine/sync.ts mergeSave) и в облако уходит слияние — ничего не перезаписывается вслепую. Документ более новой
 // схемы, чем знает это приложение, только читается («Жаңарту керек»).
+// Снимки (S4, 05.10): раз в серверные сутки облако запоминает состояние ДО первой записи дня (users/{uid}/snapshots/{день}, 14 дней),
+// командир может восстановить сохранение из снимка (restoreSnapshot) — перед этим копия «до»; логика — src/engine/snapshots.ts.
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, type User } from 'firebase/auth';
-import { getFirestore, doc, getDoc, getDocs, collection, runTransaction } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, type User, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { getFirestore, doc, getDoc, getDocs, collection, runTransaction, setDoc, serverTimestamp } from 'firebase/firestore';
 import { APP_VERSION, deviceId, deviceLabel } from './version';
 import { game, afterPersist, replaceSave, persistLocal } from './store.svelte';
 import type { Attempt, Save, UsageDay } from '../engine/types';
 import { mergeUsage } from '../engine/usage';
 import { mergeAttempts, mergeSave, sameSave, isBlank } from '../engine/sync';
+import { parseIndex, planDaily, planBefore, checkSnapshotDoc, compareSaves, restoredSave, isSnapId, type SnapIndex, type SnapPlan, type CompareRow } from '../engine/snapshots';
 
 // Конфиг веб-приложения Firebase — не секрет (доступ к данным закрывают правила Firestore, см. docs/CLOUD.md)
 const firebaseConfig = {
@@ -34,6 +37,7 @@ export const cloud = $state({
   // какая версия приложения на каждом устройстве аккаунта и когда оно последний раз писало в облако (S6): видно командиру
   devices: {} as Record<string, { app: string; at: number; label: string }>,
   readOnly: false,   // в облаке схема новее, чем знает это приложение: только читаем, пока страница не обновится
+  snaps: {} as SnapIndex,   // список снимков облака (S4): users/{uid}/meta/snaps, обновляется loadSnaps()
 });
 /** Какую схему сохранения понимает это приложение (Save.version). */
 export const CLIENT_SCHEMA = 1;
@@ -47,6 +51,8 @@ let uid: string | null = null;
 // (экран корабля, PIN командира на новом телефоне), выглядит «новее» и затирает облако (src/engine/sync.ts)
 let pulled = false;
 let timer: number | undefined;
+let snapBusy = false, snapCheckedAt = 0;   // S4: снимок дня — не чаще раза в час за сеанс, одна проверка за раз
+let restoring = false;                      // S4: восстановление идёт — вторую не начинаем
 const pushedCount: Record<string, number> = {}; // сколько ответов месяца уже в облаке
 const pushedUsage: Record<string, string> = {};  // что из поведения месяца уже в облаке (строка JSON)
 
@@ -121,7 +127,7 @@ async function push(all = false) {
       tx.set(mainRef, { save: JSON.stringify({ ...rest, updatedAt: newAt }), updatedAt: newAt, app: 'razlom', v: CLIENT_SCHEMA, rev: rev + 1, appVersion: APP_VERSION, devices: { [deviceId()]: device } }, { merge: true });
       for (const [m, list] of attOut) tx.set(doc(db, 'users', me, 'attempts', m), { list: JSON.stringify(list), n: list.length });
       for (const [m, list] of useOut) tx.set(doc(db, 'users', me, 'usage', m), { list: JSON.stringify(list), n: list.length });
-      return { rest: { ...rest, updatedAt: newAt }, rev: rev + 1, at: newAt, attOut, useOut, device, mergedRemote };
+      return { rest: { ...rest, updatedAt: newAt }, rev: rev + 1, at: newAt, attOut, useOut, device, mergedRemote, before: d ? { save: d.save, v: d.v, app: d.appVersion } : null };
     });
     if (uid !== me) return;   // пока писали, сменился аккаунт
     for (const [m, list] of res.attOut) pushedCount[m] = list.length;
@@ -135,6 +141,7 @@ async function push(all = false) {
       saveBase(res.rest); lastRev = res.rev; lastAt = res.at;
     }
     cloud.status = 'ok'; cloud.lastSync = Date.now(); cloud.error = '';
+    void snapshotStep(me, res.before);   // S4: снимок дня (не ждём, ошибки не мешают синхронизации)
   } catch (e: any) {
     if (e?.code === 'app/outdated') outdated();
     else { cloud.status = 'error'; cloud.error = e?.code ?? String(e); }
@@ -179,6 +186,127 @@ async function pull() {
   } catch (e: any) { cloud.status = 'error'; cloud.error = e?.code ?? String(e); }
 }
 
+// ---------- Снимки облака и восстановление (S4, чистая логика — src/engine/snapshots.ts) ----------
+const snapsRef = (me: string) => doc(db, 'users', me, 'meta', 'snaps');
+
+/** Время сервера Firestore, мс (не часы устройства — они могут врать): отметка пишется в users/{uid}/meta/clock и читается обратно.
+ *  null — связи нет или сервер ещё не проставил время: тогда снимок не делаем. */
+async function serverNow(me: string): Promise<number | null> {
+  const ask = async (): Promise<number | null> => {
+    try {
+      const ref = doc(db, 'users', me, 'meta', 'clock');
+      await setDoc(ref, { t: serverTimestamp() });   // без связи запись встаёт в очередь и не завершается — отсюда ограничение по времени ниже
+      const s = await getDoc(ref);
+      const t: any = s.exists() ? s.data()?.t : null;
+      const ms = typeof t?.toMillis === 'function' ? t.toMillis() : null;
+      return typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? ms : null;
+    } catch { return null; }
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<null>(r => { timer = setTimeout(() => r(null), 10_000); });
+  try { return await Promise.race([ask(), limit]); } finally { clearTimeout(timer); }
+}
+
+/** Одной транзакцией: прочитать список снимков, решить (plan), записать снимок + новый список + удалить просроченные. */
+async function applyPlan(me: string, plan: (index: SnapIndex) => SnapPlan | null): Promise<SnapPlan | null> {
+  return runTransaction(db, async tx => {
+    const snap = await tx.get(snapsRef(me));
+    const p = plan(parseIndex(snap.exists() ? snap.data()?.index : null));
+    if (!p) return null;
+    tx.set(doc(db, 'users', me, 'snapshots', p.id), p.doc);
+    tx.set(snapsRef(me), { index: p.index });
+    for (const id of p.expire) tx.delete(doc(db, 'users', me, 'snapshots', id));
+    return p;
+  });
+}
+
+/** Снимок дня: после успешной записи в облако. before — главный документ облака в том виде, каким он был ПЕРЕД этой записью.
+ *  Только если устройство уже читало облако и схема не новее; день — по времени сервера; не чаще раза в час за сеанс. Ошибки молчат. */
+async function snapshotStep(me: string, before: { save: unknown; v?: unknown; app?: unknown } | null) {
+  if (snapBusy || !before || !uid || uid !== me || !pulled || cloud.readOnly) return;
+  if (Date.now() - snapCheckedAt < 3_600_000) return;
+  snapBusy = true;
+  try {
+    const serverMs = await serverNow(me);
+    if (serverMs === null || uid !== me) return;
+    snapCheckedAt = Date.now();
+    const p = await applyPlan(me, index => planDaily({ pulled, readOnly: cloud.readOnly, serverMs, index, before, clientSchema: CLIENT_SCHEMA }));
+    if (p && uid === me) cloud.snaps = p.index;
+  } catch { /* снимок — не главное: синхронизация идёт без него */ }
+  finally { snapBusy = false; }
+}
+
+export type SnapError = 'no-login' | 'busy' | 'offline' | 'outdated' | 'newer' | 'broken' | 'empty' | 'missing' | 'cancelled' | 'task' | 'before-failed';
+const SNAP_ERR: Record<'newer' | 'broken' | 'empty', SnapError> = { newer: 'newer', broken: 'broken', empty: 'empty' };
+
+/** Обновить список снимков (users/{uid}/meta/snaps). */
+export async function loadSnaps(): Promise<boolean> {
+  if (!uid) return false;
+  const me = uid;
+  try {
+    const s = await getDoc(snapsRef(me));
+    if (uid !== me) return false;
+    cloud.snaps = parseIndex(s.exists() ? s.data()?.index : null);
+    return true;
+  } catch { return false; }
+}
+
+/** Сравнение «сейчас → в снимке» без каких-либо изменений. Снимок не читается или новее приложения — отказ с причиной. */
+export async function inspectSnapshot(id: string): Promise<{ ok: true; rows: CompareRow[]; rollback: boolean } | { ok: false; error: SnapError }> {
+  if (!uid) return { ok: false, error: 'no-login' };
+  if (!isSnapId(id)) return { ok: false, error: 'missing' };
+  const me = uid;
+  try {
+    const s = await getDoc(doc(db, 'users', me, 'snapshots', id));
+    if (uid !== me) return { ok: false, error: 'cancelled' };
+    if (!s.exists()) return { ok: false, error: 'missing' };
+    const chk = checkSnapshotDoc(s.data(), CLIENT_SCHEMA);
+    if (!chk.ok) return { ok: false, error: SNAP_ERR[chk.why] };
+    return { ok: true, ...compareSaves($state.snapshot(game.save) as Save, chk.rest) };
+  } catch { return { ok: false, error: 'offline' }; }
+}
+
+/** Восстановить сохранение из снимка. Порядок: свежая загрузка облака → проверка снимка → копия «до» в облаке (не вышла — стоп,
+ *  ничего не изменено) → replaceSave (прежнее сохранение ещё и в трёх локальных копиях) → обычная синхронизация записывает результат
+ *  транзакцией с rev. Ответы не теряются (restoredSave). alive() — экран ещё открыт: закрыли посреди работы — до замены останавливаемся. */
+export async function restoreSnapshot(id: string, alive: () => boolean = () => true): Promise<{ ok: true; synced: boolean } | { ok: false; error: SnapError }> {
+  if (restoring) return { ok: false, error: 'busy' };
+  if (!uid) return { ok: false, error: 'no-login' };
+  if (!isSnapId(id)) return { ok: false, error: 'missing' };
+  if (cloud.readOnly) return { ok: false, error: 'outdated' };
+  if (!pulled) return { ok: false, error: 'offline' };
+  if (BUSY.includes(game.screen.name)) return { ok: false, error: 'task' };
+  restoring = true;
+  const me = uid;
+  let replaced = false;
+  const stop = (): SnapError | null => (uid !== me || !alive() ? 'cancelled' : cloud.readOnly ? 'outdated' : BUSY.includes(game.screen.name) ? 'task' : null);
+  try {
+    await pull();   // самое свежее из облака — в сохранение устройства (ответы объединяются), потом уже «до» и замена
+    if (cloud.readOnly) return { ok: false, error: 'outdated' };
+    if (cloud.status === 'error') return { ok: false, error: 'offline' };
+    let bad = stop(); if (bad) return { ok: false, error: bad };
+    const s = await getDoc(doc(db, 'users', me, 'snapshots', id));
+    if (!s.exists()) return { ok: false, error: 'missing' };
+    const chk = checkSnapshotDoc(s.data(), CLIENT_SCHEMA);
+    if (!chk.ok) return { ok: false, error: SNAP_ERR[chk.why] };
+    const serverMs = await serverNow(me);
+    if (serverMs === null) return { ok: false, error: 'offline' };
+    bad = stop(); if (bad) return { ok: false, error: bad };
+    const p = await applyPlan(me, index => planBefore({ rest: restOf($state.snapshot(game.save) as Save), serverMs, index, app: APP_VERSION, clientSchema: CLIENT_SCHEMA }));
+    if (!p) return { ok: false, error: 'before-failed' };
+    if (uid === me) cloud.snaps = p.index;
+    bad = stop(); if (bad) return { ok: false, error: bad };   // копия «до» осталась в облаке — вреда нет
+    replaceSave(restoredSave($state.snapshot(game.save) as Save, chk.rest));
+    replaced = true;
+    clearTimeout(timer);
+    await push();
+    return { ok: true, synced: cloud.status === 'ok' };
+  } catch (e: any) {
+    if (replaced) return { ok: true, synced: false };   // сохранение уже заменено; облако обновит обычная синхронизация
+    return { ok: false, error: e?.code === 'app/outdated' ? 'outdated' : 'before-failed' };
+  } finally { restoring = false; }
+}
+
 let lastPull = 0;
 /** Перечитать облако при возврате в приложение (не чаще раза в 30 с). */
 function pullSoon() { if (!uid || Date.now() - lastPull < 30_000) return; lastPull = Date.now(); void pull(); }
@@ -187,7 +315,7 @@ function pullSoon() { if (!uid || Date.now() - lastPull < 30_000) return; lastPu
 export function startCloud() {
   finishEmailLink();
   onAuthStateChanged(auth, (u: User | null) => {
-    if ((u?.uid ?? null) !== uid) { pulled = false; lastRev = -1; lastAt = -1; }   // другой аккаунт или выход: сначала снова загрузка
+    if ((u?.uid ?? null) !== uid) { pulled = false; lastRev = -1; lastAt = -1; snapCheckedAt = 0; cloud.snaps = {}; }   // другой аккаунт или выход: сначала снова загрузка
     uid = u?.uid ?? null;
     cloud.user = u ? { email: u.email, name: u.displayName } : null;
     cloud.status = u ? cloud.status : 'off';
@@ -222,6 +350,13 @@ export async function signInPassword(email: string, password: string) {
   }
   try { await createUserWithEmailAndPassword(auth, email, password); }
   catch (e: any) { cloud.status = 'error'; cloud.error = e?.code === 'auth/email-already-in-use' ? 'auth/wrong-password' : e?.code ?? String(e); }
+}
+/** Подтвердить пароль облака для вошедшего аккаунта (PIN командира задаётся и меняется только с ним, K2). Ничего не меняет в аккаунте. */
+export async function reauth(password: string): Promise<{ ok: boolean; error?: string }> {
+  const u = auth.currentUser;
+  if (!u?.email) return { ok: false, error: 'no-user' };
+  try { await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, password)); return { ok: true }; }
+  catch (e: any) { return { ok: false, error: e?.code ?? String(e) }; }
 }
 /** Забыли пароль: письмо со сбросом (лимит бесплатного тарифа — 150 писем в день). */
 export async function resetPassword(email: string) {

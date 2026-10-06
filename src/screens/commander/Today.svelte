@@ -2,9 +2,12 @@
   // «Сегодня»: минуты, серия, план дня, честность ответов, исключение дня.
   import { game, persist, skillDefs, downloadSave, daysSinceBackup } from '../../lib/store.svelte';
   import { ensurePlan, dayRec } from '../../lib/session.svelte';
-  import { settleDay, extraCap } from '../../engine/planner';
+  import { extraCap } from '../../engine/planner';
   import { streak } from '../../engine/streak';
   import { parse, iso } from '../../engine/dates';
+  import { isPracticeAttempt } from '../../engine/rules';
+  import { exceptionOn, EXC_KIND_RU } from '../../engine/exceptions';
+  import Exceptions from './Exceptions.svelte';
   let { cloudOk }: { cloudOk: boolean } = $props();
 
   const plan = ensurePlan();
@@ -15,13 +18,11 @@
   const weekMin = $derived(week.reduce((s, r) => s + r.minutesToday, 0));
   const weekBank = $derived(week.reduce((s, r) => s + r.minutesWeekend, 0));
   const st = $derived(streak(game.save, game.day));
-  const todays = $derived(game.save.attempts.filter(a => a.day === game.day));
+  const todays = $derived(game.save.attempts.filter(a => a.day === game.day && isPracticeAttempt(a)));
   const guesses = $derived(todays.filter(a => !a.honest && a.hintLevel < 4).length);
   const sureWrong = $derived(todays.filter(a => a.confidence === 'sure' && !a.correct).length);
   const BLOCK: Record<string, string> = { warmup: 'Разминка (повторение)', new: 'Новая тема', mixed: 'Смешанные задачи', summary: 'Итог дня' };
-  function setException(e: 'sick' | 'holiday' | 'vacation' | undefined) {
-    const r = dayRec(); r.exception = e; settleDay(r, plan, game.save.settings.extraTo); persist();
-  }
+  const excToday = $derived(exceptionOn(game.save, game.day));
   const since = daysSinceBackup();
 </script>
 
@@ -32,6 +33,7 @@
   </section>
 {/if}
 <section class="panel card">
+  {#if excToday}<p class="note">Сегодня исключение: <b>{EXC_KIND_RU[excToday].toLowerCase()}</b>. План не обязателен, серия и тревоги этот день не считают пропуском.</p>{/if}
   <div class="grid3">
     <div class="kpi"><span class="label">Игра сегодня</span><b>{rec.minutesToday} мин</b><small>заработано, выдаёте вне игры</small></div>
     <div class="kpi"><span class="label">За неделю</span><b>{weekMin} мин</b><small>копилка выходных: {weekBank} мин</small></div>
@@ -48,10 +50,5 @@
     <ol><li>Не берілген? — Что дано?</li><li>Не табу керек? — Что найти?</li><li>Бірінші қадам қандай? — Какой первый шаг?</li></ol>
     <small>Закрепляйте, а не объясняйте новое: новое даёт урок.</small>
   </div>
-  <div class="row">
-    <span class="label">Исключение на сегодня</span>
-    {#each [['sick', 'Болел'], ['holiday', 'Праздник']] as [e, n]}
-      <button class="btn" class:on={rec.exception === e} onclick={() => setException(rec.exception === e ? undefined : (e as any))}>{n}</button>
-    {/each}
-  </div>
+  <Exceptions />
 </section>

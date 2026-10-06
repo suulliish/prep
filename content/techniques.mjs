@@ -39,6 +39,10 @@ export const TECHNIQUES = [
   { skill: 'dec.mul_div', kz: 'Үтір секірісі', ru: 'Прыжок запятой', color: 0xffcb2e, fx: 'multi' },
   { skill: 'dec.frac_convert', kz: 'Екі жүз соққысы', ru: 'Удар двух лиц', color: 0xa77bff, fx: 'split' },
   { skill: 'frac.find_whole', kz: 'Бүтінді табу тәсілі', ru: 'Приём целого', color: 0x7dffd4, fx: 'arc' },
+  // ---- әріпті өрнектер және теңдеулер (C7) ----
+  { skill: 'expr.variables', kz: 'Әріп қою тәсілі', ru: 'Приём подстановки', color: 0x7dffd4, fx: 'pierce' },
+  { skill: 'eq.linear_basic', kz: 'Кері амал тәсілі', ru: 'Приём обратного действия', color: 0xffcb2e, fx: 'arc' },
+  { skill: 'eq.two_step', kz: 'Екі қадам соққысы', ru: 'Удар двух шагов', color: 0xff9a3d, fx: 'multi' },
   // ---- жиындар, тізбектер, логика ----
   { skill: 'sets.basics', kz: 'Жиын торы', ru: 'Сеть множеств', color: 0x5ea0ff, fx: 'multi' },
   { skill: 'sets.venn', kz: 'Венн шеңбері', ru: 'Круг Венна', color: 0xa77bff, fx: 'spin' },
@@ -50,6 +54,12 @@ export const TECHNIQUES = [
   { skill: 'logic.cryptarithm', kz: 'Шифр кілті', ru: 'Ключ шифра', color: 0xff4fb8, fx: 'pierce' },
   { skill: 'logic.weighing', kz: 'Таразы тәсілі', ru: 'Приём весов', color: 0xc0c8ff, fx: 'arc' },
   { skill: 'vis.count_squares', kz: 'Шаршы көзі', ru: 'Глаз квадратов', color: 0x7dffd4, fx: 'spin' },
+  // ---- аварийные уроки (C5) ----
+  { skill: 'logic.new_operation', kz: 'Орнына қою тәсілі', ru: 'Приём подстановки', color: 0xffcb2e, fx: 'pierce' },
+  { skill: 'logic.clock_angle', kz: 'Сағат тілі соққысы', ru: 'Удар стрелки', color: 0x7dffd4, fx: 'spin' },
+  { skill: 'logic.deduction', kz: 'Кесте тәсілі', ru: 'Приём таблицы', color: 0xc0c8ff, fx: 'multi' },
+  { skill: 'div.last_digit', kz: 'Период құйыны', ru: 'Вихрь периода', color: 0xff9a3d, fx: 'spin' },
+  { skill: 'pat.bracket', kz: 'Жақша кілті', ru: 'Ключ скобки', color: 0xd6f24a, fx: 'pierce' },
 ];
 
 export const techniqueOf = skill => TECHNIQUES.find(t => t.skill === skill) ?? null;
