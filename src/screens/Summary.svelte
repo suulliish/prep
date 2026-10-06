@@ -11,8 +11,9 @@
   import { audio } from '../lib/audio';
   import { sparksAt } from '../ui/fx.svelte';
   import { react } from '../lib/voice';
+  import { isPracticeAttempt } from '../engine/rules';
 
-  const todays = game.save.attempts.filter(a => a.day === game.day);
+  const todays = game.save.attempts.filter(a => a.day === game.day && isPracticeAttempt(a));
   // Счётчики считают одно и то же: todays — все первые попытки за день (вторая попытка и реванш в модель не пишутся).
   // «Есеп» — сколько задач решал, «дұрыс» — сколько из них верно с первого раза; раньше стояло «шешілді» = верно И не торопясь,
   // из-за чего при 7 решённых показывалось 5 (аудит 30.09).

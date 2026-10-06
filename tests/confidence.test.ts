@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { eventOf, breaksCombo, critCoins, CRIT_COINS, nextSureFirst, calibOf, calibLine, kzFrom, eventMs, EVENT_MS, EVENT_MS_REDUCED, rushLine, EVENT_SAY } from '../src/engine/confidence';
+import { eventOf, breaksCombo, critCoins, CRIT_COINS, nextSureFirst, calibOf, calibLine, kzFrom, eventMs, rushLine, EVENT_SAY } from '../src/engine/confidence';
 
 describe('цена уверенности (GAME_LOOP 20)', () => {
   it('верно+уверен — крит, верно+шамамен — обычный удар', () => {
@@ -27,11 +27,11 @@ describe('цена уверенности (GAME_LOOP 20)', () => {
     expect(critCoins(true, 'sure', 1, false)).toBe(0);
     expect(critCoins(true, 'sure', 0, true)).toBe(0);
   });
-  it('у каждого события есть подпись; длительность 1,6–3 с, при «уменьшить движение» короче', () => {
-    for (const k of Object.keys(EVENT_MS) as (keyof typeof EVENT_MS)[]) {
+  it('у каждого события есть подпись; длительность — по размеру праздника (pacing.EVENT), при «уменьшить движение» короче', () => {
+    for (const k of Object.keys(EVENT_SAY) as (keyof typeof EVENT_SAY)[]) {
       expect(EVENT_SAY[k].big.length).toBeGreaterThan(0);
-      expect(eventMs(k, false)).toBeGreaterThanOrEqual(1600); expect(eventMs(k, false)).toBeLessThanOrEqual(3000);
-      expect(eventMs(k, true)).toBe(EVENT_MS_REDUCED); expect(EVENT_MS_REDUCED).toBeLessThan(eventMs(k, false));
+      expect(eventMs(k, false)).toBeLessThanOrEqual(1300);
+      expect(eventMs(k, true)).toBeLessThan(eventMs(k, false));
     }
   });
 });

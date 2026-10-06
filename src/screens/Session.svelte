@@ -8,10 +8,12 @@
   import Bit from '../ui/Bit.svelte';
   import Screen from '../ui/Screen.svelte';
   import Icon from '../ui/Icon.svelte';
+  import Confirm from '../ui/Confirm.svelte';
+  import RuleCard from '../ui/RuleCard.svelte';
   import MicButton from '../ui/MicButton.svelte';
   import { trackExit, awayClock } from '../lib/track.svelte';
   import { examShare, EXAM_PENALTY, restoreFix, restorableFix } from '../engine/planner';
-  import { RULES_V, isClosed, isRushed, isHonest } from '../engine/rules';
+  import { RULES_V, isClosed, isRushed, isHonest, isPracticeAttempt } from '../engine/rules';
   import GlitchTurn from '../ui/GlitchTurn.svelte';
   import CoinChip from '../ui/CoinChip.svelte';
   import BattleEvent from '../ui/BattleEvent.svelte';
@@ -31,7 +33,9 @@
   import { settleDay, taught, sequenceSlots, extraCap, repairNeed } from '../engine/planner';
   import { stemChars, adaptiveRushMs, changedMarkup, varyAnswerPos, type Seg } from '../engine/rush';
   import { GLITCH_SAY, buildGlitch, glitchAllowed, firstGlitchAt, nextGlitchAt, shortMistake, type GlitchTurn as GlitchData } from '../engine/glitchturn';
-  import { eventOf, breaksCombo, critCoins, eventMs, nextSureFirst, calibOf, calibLine, TWIN_TAG, halfCoins, HALF_COINS_OVER, REPAIR_FIX_COINS, REPAIR_EXTRA_FIXES, repairAsExtra, SHIP_SAY, bilLine, BIL_NOTE, rightOfLine, type Conf, type EventKind } from '../engine/confidence';
+  import { eventMs, eventPace, EVENT_PREROLL_MS, BIG, PACE_WAVE } from '../engine/pacing';
+  import { AWAY_CARD, EXIT_ASK } from '../engine/screentext';
+  import { eventOf, breaksCombo, critCoins, nextSureFirst, calibOf, calibLine, TWIN_TAG, halfCoins, HALF_COINS_OVER, REPAIR_FIX_COINS, REPAIR_EXTRA_FIXES, repairAsExtra, SHIP_SAY, bilLine, BIL_NOTE, rightOfLine, type Conf, type EventKind } from '../engine/confidence';
   import { buildReview, type Review, type ReviewMode } from '../engine/review';
   import { makeTwin, StepQueue, MAX_STEP_TWINS } from '../engine/twin';
   import { isEasySkill, selfCheckDue, selfCheckFor, selfNote, type SelfNote } from '../engine/selfcheck';
@@ -87,8 +91,8 @@
   let item = $state<Item | null>(null);
   let picked = $state<number | null>(null);
   // ask — вопрос; self — выбран вариант на лёгкой теме, под ним самопроверка «Тексер»; conf — под выбранным «Сенімдімін / Шамамен»;
-  // event — событие на весь экран; review — разбор ошибки / быстрого ответа
-  let stage = $state<'ask' | 'self' | 'conf' | 'event' | 'review'>('ask');
+  // event — событие на весь экран; review — разбор ошибки / быстрого ответа; away — задача закрыта (свернул > 5 с), на экране карточка правила
+  let stage = $state<'ask' | 'self' | 'conf' | 'event' | 'review' | 'away'>('ask');
   let hintLevel = $state(0);
   let combo = $state(0);
   let honestAll = $state(true);
@@ -175,7 +179,7 @@
   // удар, если слот ещё не бил и у врага есть здоровье; иначе герой радуется (бас жау: «егіз» тоже не бьёт, победа = 7 верных из 10 с первой попытки)
   async function strikeOrCheer(crit: boolean, show: () => void) {
     if (canHit()) return hit(false, crit, show);
-    W.world?.heroEmote('cheer'); show(); await sleep(900);
+    W.world?.heroEmote('cheer'); show(); await sleep(reduce ? 0 : BIG.cheerMs);
   }
   async function hit(sup: boolean, crit = false, onHit?: () => void) {
     busy = true; slotHit = true;
@@ -185,9 +189,10 @@
     // монеты за побеждённого врага волны (один раз); бас жау мира награждается в finishBoss, когда бой выигран
     if (alive && (killed || (last && mobHp <= 0)) && !(block === 'boss' && last)) earn(enemyCoins(false), sceneCenter(0.2), true);
     if (killed && !isLastWave()) {
+      W.world?.setPace(PACE_WAVE);   // смена волны — шаг, не праздник: ~1 с; выход босса ниже играется в полную скорость
       await W.world?.killMob(); audio.play('chest');
       wave++; mobHp = waves[wave];
-      const boss = isLastWave(); if (boss) cine = true;
+      const boss = isLastWave(); if (boss) { cine = true; W.world?.setPace(1); }
       say(boss ? (block === 'boss' ? 'Бас жау!' : 'Күшті жау!') : `${wave + 1}-толқын`);
       await W.world?.spawnMob(mobHp, currentWorld().mob, boss, block === 'boss' && boss);
       cine = false;
@@ -263,7 +268,7 @@
     glitch = null; glPick = null; glSoft = [];
     // в ремонте ход Глитча не собираем: починку считает только обычный ответ
     if (fresh && (forceGlitch ? !twin && !fresh.real && block !== 'repair' : glitchAllowed({
-      idx, total, at: glAt, attempts: game.save.attempts.filter(a => a.skill === fresh.skill).length, block, lastWave: isLastWave(), mobHp,
+      idx, total, at: glAt, attempts: game.save.attempts.filter(a => a.skill === fresh.skill && isPracticeAttempt(a)).length, block, lastWave: isLastWave(), mobHp,
       revenge: twin, rushTwin: false, check: block === 'repair', real: !!fresh.real,
     }))) {
       glitch = buildGlitch(fresh);
@@ -312,7 +317,9 @@
       if (/^[1-5]$/.test(e.key)) pick(+e.key - 1);
     };
     addEventListener('keydown', onKey);
-    return () => { dead = true; removeEventListener('keydown', onKey); W.world?.eventCam(false); W.world?.clearMob(); };
+    const onVis = () => { if (document.visibilityState === 'visible') closeOpenTask('away'); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { dead = true; removeEventListener('keydown', onKey); document.removeEventListener('visibilitychange', onVis); W.world?.setPace(1); W.world?.eventCam(false); W.world?.clearMob(); };
   });
 
   // выбрал вариант (можно передумать: касание другого переносит блок самопроверки или уверенности)
@@ -354,8 +361,11 @@
     const t0 = performance.now(), show = () => { evShow = true; };
     const cap = setTimeout(show, 1800);   // страховка: надпись появится, даже если касание не пришло
     W.world?.eventCam(true);
-    await sleep(reduce ? 60 : 380);   // окно разворачивается, камера подлетает
-    try { await run(show); } finally { clearTimeout(cap); show(); }
+    W.world?.setPace(eventPace(kind, reduce));   // удар и щит проигрываются быстрее: ответ — доли секунды, не сцена (src/engine/pacing.ts)
+    try {
+      await sleep(reduce ? EVENT_PREROLL_MS.reduced : EVENT_PREROLL_MS.normal);   // окно разворачивается, камера подлетает
+      await run(show);
+    } finally { clearTimeout(cap); show(); W.world?.setPace(1); }
     const left = evMs - (performance.now() - t0);
     if (left > 0) await sleep(left);
     W.world?.eventCam(false);
@@ -454,7 +464,7 @@
     await playEvent(kind, show => (correct ? strikeOrCheer(conf === 'sure' || caught, show) : enemyTurn(kind === 'break', show)));
     if (dead) return;
     if (!correct) return enterReview('error', pk, conf === 'sure', fast ? timeMs : 0);
-    if (events.some(e => e === 'learned' || e === 'crystal')) await sleep(reduce ? 500 : 1500);   // успеть увидеть «ҮЙРЕНДІ!»
+    if (events.some(e => e === 'learned' || e === 'crystal')) await sleep(reduce ? BIG.learnedReducedMs : BIG.learnedMs);   // успеть увидеть «ҮЙРЕНДІ!»
     if (dead) return;
     if (!strict && hintLevel >= 4 && !wasTwin) return advance('extra');   // с полным разбором не считается: близнец (в strict он уже стоит в конце очереди)
     if (mini) return enterReview('fast', null, false, timeMs);
@@ -525,6 +535,51 @@
     if (dead) return;
     if (correct) return advance(null);
     enterReview('error', null, false, fast ? timeMs : 0, { kind: 'glitch', turn: g, picked: k });
+  }
+
+  // ---------- свернул > 5 с и «бросил» (решение семьи 02.10, docs/systems/specs/day.md) ----------
+  // Открытая задача закрывается сразу и считается ошибкой: −¼ в минутах, ошибка для модели знаний (rules.forModel), поломка на корабле.
+  // Следом близнец с новыми числами. Правило объясняет карточка — раз в день (DayRecord.awayCard), дальше слова Бита на следующем вопросе.
+  // Свернул на разборе или во время события — без штрафа: открытой задачи уже нет. Если вернуться не дал таймер (iOS усыпил вкладку), confirm() всё равно видит away.
+  let awayCard = $state(false), askExit = $state(false), exitOpen = $state(false), leaving = false;   // exitOpen: на экране открытая задача (в подтверждении выхода предупреждаем)
+  const taskOpen = () => !!item && !result && !busy && !locked && !finished && !awayCard && (stage === 'ask' || stage === 'self' || stage === 'conf');
+  function closeOpenTask(why: 'away' | 'left'): boolean {
+    if (!taskOpen()) return false;
+    const it = item!, away = Math.round(awayClock() - awayAt);
+    if (why === 'away' && !isClosed(away)) return false;
+    const timeMs = performance.now() - startAt, counts = hintLevel < 4;   // с полным разбором задача и так не считается
+    answered++; if (!twin) firstTries++;
+    if (counts) { honestAll = false; guessed++; wrongN++; }
+    tally(0, counts ? 1 : 0);
+    const rec: Attempt & { kind?: 'glitch' } = {
+      at: Date.now(), day: game.day, skill: it.skill, source: it.source, correct: false, hintLevel, honest: false, timeMs: Math.round(timeMs),
+      closed: true, away: why === 'away' ? away : 0, mode: MODE, r: RULES_V, ...(glitch ? { kind: 'glitch' as const } : {}),
+    };
+    const events = recordAttempt(game.save, rec);
+    combo = 0;
+    if (block !== 'repair') game.save.repairShop.push({ source: it.source, skill: it.skill, addedDay: game.day,
+      ...(block === 'warmup' || block === 'new' || block === 'mixed' ? { block } : {}) });
+    stepCount(false, it); hitOk = !strict;
+    applyEvents(events, it.skill);
+    persist();
+    if (why === 'left') return true;
+    audio.play('wrong'); stage = 'away'; busy = true; askExit = false;
+    const r = dayRec(), first = !r.awayCard;
+    r.awayCard = true; persist();
+    if (first) awayCard = true; else { carry = AWAY_CARD.toast; afterAway(); }
+    return true;
+  }
+  // карточку прочитали (или она уже была сегодня): следующий вопрос — близнец
+  function afterAway() {
+    if (dead || stage !== 'away') return;
+    awayCard = false; busy = false;
+    advance(strict ? null : twin ? null : 'redo');
+  }
+  function leaveBattle() {
+    if (leaving) return;
+    leaving = true; askExit = false;
+    // выход из боя с открытой задачей штрафа не даёт: решение семьи по этому случаю не принято (docs/DECISIONS.md), штрафуется только «свернул > 5 с»
+    trackExit('session'); go({ name: 'hub' });
   }
 
   // Шаг «до N верных»: следующий вопрос берёт очередь (StepQueue): исходные задачи, потом близнецы за ошибки; bonus — близнец после быстрого ответа сразу (в счёт не идёт)
@@ -653,7 +708,7 @@
   <button class="btn primary big grow" onclick={() => go({ name: block === 'boss' ? 'map' : 'hub' })}>{block === 'boss' ? 'Картаға' : 'Кемеге'}<Icon name="chevron" fill="var(--outline)" size={20} /></button>
 {/snippet}
 
-<Screen scene="strip" cinema={cine} event={stage === 'event' && !result} thin={stage === 'review' && !result} footer={result ? resultFoot : undefined} back={result ? undefined : () => { trackExit('session'); go({ name: 'hub' }); }}>
+<Screen scene="strip" cinema={cine} event={stage === 'event' && !result} thin={stage === 'review' && !result} footer={result ? resultFoot : undefined} back={result ? undefined : () => { if (!awayCard) { exitOpen = taskOpen(); askExit = true; } }}>
   {#snippet head()}
     <div class="hd">
       <div class="t1"><b>{TITLE[block]}</b>{#if combo >= 2 && !result}<span class="combo num">×{combo}</span>{/if}<CoinChip value={shownCoins} compact />
@@ -793,6 +848,10 @@
   {/if}
 
 </Screen>
+
+<Confirm open={askExit && !result} title={EXIT_ASK.title} text={EXIT_ASK.text(exitOpen, block === 'boss')}
+  yes={EXIT_ASK.yes} no={EXIT_ASK.no} onyes={leaveBattle} onno={() => (askExit = false)} />
+{#if awayCard}<RuleCard title={AWAY_CARD.title} rule={AWAY_CARD.rule} lines={[AWAY_CARD.what, AWAY_CARD.todo]} btn={AWAY_CARD.btn} onok={afterAway} />{/if}
 
 <style>
   /* D3: то, что изменилось в новом вопросе: жёлтая вспышка 0,8 с, потом остаётся мягкое подчёркивание */

@@ -15,7 +15,7 @@
 </script>
 
 <section class="panel card">
-  {#if !game.save.attempts.length}
+  {#if !ansDays.length}
     <p class="note">Ответов пока нет: они появятся после первого боя.</p>
   {:else}
     <label class="daypick">Сводка за день
@@ -56,10 +56,10 @@
         <tbody>
           {#each g.list as a}
             <tr class:bad={!a.correct}>
-              <td class="t" class:fastc={a.timeMs < FAST_MS || !!a.away}>{secs(a.timeMs)} с{#if a.away}<small title="Приложение было свёрнуто во время задачи — ответ не засчитан в минуты"> · свёрнуто {secs(a.away)} с</small>{/if}</td>
+              <td class="t" class:fastc={a.timeMs < FAST_MS || !!a.away}>{secs(a.timeMs)} с{#if a.away}<small title="Приложение было свёрнуто во время задачи. Дольше 5 с задача закрывается и считается ошибкой (−¼ минуты), следом близнец"> · свёрнуто {secs(a.away)} с</small>{/if}</td>
               <td>{skillRu(a.skill)}</td>
               <td class={a.correct ? 'h-ok' : 'h-no'}>{a.correct ? '✔' : '✘'}</td>
-              <td>{a.correct ? '' : mistakeName(a.tag)}{#if !a.honest && a.hintLevel < 4} <b class="zt zl">{a.closed ? 'свернул > 5 с' : 'наугад, слишком быстро'}</b>{/if}</td>
+              <td>{a.correct ? '' : mistakeName(a.tag)}{#if !a.honest && a.hintLevel < 4} <b class="zt zl">{a.closed ? (a.away ? 'свернул > 5 с' : 'бросил задачу (вышел из боя)') : 'наугад, слишком быстро'}</b>{/if}</td>
               <td>{hintLabel(a.hintLevel) || '—'}</td>
               <td>{confLabel(a.confidence)}</td>
             </tr>

@@ -12,7 +12,7 @@
   import { canStartExtra, planComplete, TODAY_MAX, round5, extraCap, extraNeedsRepair, REPAIR_FOR_EXTRA, EXTRA_MIN, repairNeed, restorableFix } from '../engine/planner';
   import { openBreaks, shipIntegrity, integrityColor, coinsHalved, claimShipChest } from '../engine/repair';
   import { isWeekday } from '../engine/dates';
-  import { streak } from '../engine/streak';
+  import { weekendBank, WEEKEND_BANK_MAX } from '../engine/weekbank';
   import { skillTitle } from '../engine/items';
   import { audio } from '../lib/audio';
   import { toast } from '../ui/notify.svelte';
@@ -35,8 +35,8 @@
   const recallOn = $derived(game.save.diagnosticDone && weekday && recallList.length > 0);
   let recallGate = $state<string | null>(null);
   const lv = $derived(levelOf(game.save.xp));
-  const st = $derived(streak(game.save, game.day));
-  const crystals = $derived(Object.values(game.save.skills).filter(s => s.status === 'mastered' || s.status === 'automatic').length);
+  // копилка выходных: готовые minutesWeekend недели, не больше 90 (src/engine/weekbank.ts); кристаллы и серия с главного экрана убраны: три счётчика — минуты, копилка, монеты (specs/day.md)
+  const bank = $derived(weekendBank(game.save.days, game.day));
   // поломки корабля = неисправленные ошибки (docs/GAME_LOOP.md 18): прочность, ремонтная доп. миссия, подпись Бита
   const broken = $derived(openBreaks(game.save));
   const integrity = $derived(shipIntegrity(broken));
@@ -197,9 +197,8 @@
 
   {#snippet overlay()}
   <div class="res" role="group" aria-label="Ресурстар">
-    {#key minBump}<span class="pill" class:bump={minBump > 0}><Icon name="clock" fill="var(--gold)" size={22} /><span class="num">{shownMin}</span><small>мин</small></span>{/key}
-    <span class="pill"><Icon name="crystal" fill="var(--crystal)" size={22} /><span class="num">{crystals}</span><small>кристалл</small></span>
-    <span class="pill"><Icon name="fire" fill="var(--fire)" size={22} /><span class="num">{st.days}</span><small>күн</small></span>
+    {#key minBump}<span class="pill" class:bump={minBump > 0} aria-label="Бүгін ойын минуты: {shownMin} / {TODAY_MAX}"><Icon name="clock" fill="var(--gold)" size={22} /><span class="num">{shownMin}</span><small>/{TODAY_MAX} мин</small></span>{/key}
+    <span class="pill" aria-label="Демалысқа жиналған минут: {bank} / {WEEKEND_BANK_MAX}"><Icon name="flag" fill="var(--code)" size={22} /><span class="num">{bank}</span><small>/{WEEKEND_BANK_MAX} демалыс</small></span>
     <CoinChip value={coins} />
   </div>
   {#if game.save.diagnosticDone}

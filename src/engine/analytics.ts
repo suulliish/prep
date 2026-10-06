@@ -69,9 +69,10 @@ export function analyze(save: Save, o: AnalyticsOpts): Analytics {
   const clock = (ms: number) => { const d = new Date(ms + tz * 60000); return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`; };
   const hourOf = (ms: number) => new Date(ms + tz * 60000).getUTCHours();
 
+  // ответы шагов урока (src/engine/lessonlog.ts) в разбор практики не идут; inline: этот файл запускается в чистом Node без импортов кода
   const all = save.attempts ?? [];
-  const att = all.filter(a => inRange(a.day, from, to) && a.mode !== 'diagnostic');
-  const prev = all.filter(a => inRange(a.day, prevFrom, prevTo) && a.mode !== 'diagnostic');
+  const att = all.filter(a => inRange(a.day, from, to) && a.mode !== 'diagnostic' && !(a.mode === 'lesson' && a.source?.startsWith('lesson:')));
+  const prev = all.filter(a => inRange(a.day, prevFrom, prevTo) && a.mode !== 'diagnostic' && !(a.mode === 'lesson' && a.source?.startsWith('lesson:')));
   const usage = (save.usage ?? []).filter(u => inRange(u.day, from, to));
   const uOf = new Map<string, UsageDay>(usage.map(u => [u.day, u]));
   const steps: StepLog[] = usage.flatMap(u => u.steps);
@@ -183,7 +184,7 @@ export function flags(a: Analytics): string[] {
   }
   if (a.reviews.n >= 5 && a.reviews.withNope / a.reviews.n >= 0.4) out.push(`Разбор ошибки: в ${Math.round((a.reviews.withNope / a.reviews.n) * 100)}% разборов пытается пролистать.`);
   if (a.errors.length) out.push(`Сбои в приложении: ${a.errors.length} (последний: ${a.errors[a.errors.length - 1].v.slice(0, 120)}). Пришлите отчёт разработчику.`);
-  if (a.awayAnswers >= 3) out.push(`Сворачивал приложение посреди задачи (калькулятор, поиск?) в ${a.awayAnswers} ответах — они не засчитаны в минуты.`);
+  if (a.awayAnswers >= 3) out.push(`Сворачивал приложение посреди задачи (калькулятор, поиск?) в ${a.awayAnswers} ответах. Дольше 5 с задача закрывается и считается ошибкой (−¼ минуты), по возвращении идёт близнец.`);
   if (t.awayMin >= 10) out.push(`Сворачивал приложение посреди задания: ${t.awayMin} мин за период.`);
   if (t.exits >= 3) out.push(`Выходил из урока или задач на середине: ${t.exits} раз.`);
   const f = a.fatigue;

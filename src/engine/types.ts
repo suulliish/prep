@@ -43,6 +43,7 @@ export interface DayRecord {
   /** Ответы шага за день, включая брошенные бои (02.10): выйти и начать заново больше не обнуляет плохой результат. */
   tally?: Record<string, { n: number; paid: number; wrong: number }>;
   bossTried?: boolean;       // бой с бас жау сегодня уже был (одна попытка в день, 02.10)
+  awayCard?: boolean;        // карточка правила «свернул > 5 с» сегодня уже показана (раз в день, Session.svelte)
   extraHonest?: number;      // сумма долей честных ответов по доп. миссиям дня (минуты = 15 × сумма), Session.svelte finish()
   bonuses: { reason: string; minutes: number; mastery?: boolean }[];
   hard?: string; // «что было трудно» из итога дня (id темы или 'none') — для командира
@@ -57,11 +58,14 @@ export interface DayRecord {
   honest?: Record<string, number>;
 }
 
+/** PIN командира (src/engine/pin.ts): хэш PBKDF2, соль, число итераций, когда задан (на двух устройствах побеждает больший setAt). */
+export interface PinRec { hash: string; salt: string; iter: number; setAt: number; weak?: true }   // weak — задан без пароля облака (устройство без входа): при слиянии уступает PIN, заданному с паролем
+
 export interface Settings {
   extraMissionCap: number;          // сколько доп. миссий в день
   extraTo: 'today' | 'weekend';
   planMinutes: number;
-  pin?: string;
+  pin?: string | PinRec;           // PIN командира: PBKDF2 с солью; строка — старый SHA-256 (до 05.10), заменяется при первом верном вводе
   voiceInput?: boolean;             // кнопка «Айтып бер» (голосовой ввод); нет поля = включено
   notebookPhoto?: boolean;          // «Дәптер»: Бит проверяет фото карточки; нет поля = включено
 }
@@ -86,7 +90,9 @@ export interface Save {
   shipChestFixed?: number;   // сколько починенных поломок уже «потрачено» на сундук за целый корабль (src/engine/repair.ts: claimShipChest)
   kzReview?: Record<string, 'ok' | 'fix'>;   // проверка казахских текстов носителем
   weekendSpent?: Record<string, number>;      // устарело вместе с таймером игры (30.09)
-  lessonPos?: { skill: string; step: number };  // где остановился в уроке — «Жалғастыру»
+  /** Где остановился в уроке — «Жалғастыру». final — состояние «Соңғы сынақ» (L2, src/lesson/finalTask.ts): та же задача и ответ после выхода и входа,
+   *  чтобы одна попытка не превращалась в сколько угодно. */
+  lessonPos?: { skill: string; step: number; final?: { task: { kz: string; choices: string[]; answer: number; why: string; tags: string[] } | null; res?: 'won' | 'missed' | 'closed'; pick?: number } };
   levelStars?: Record<string, number>;
   style?: { trail?: string; cape?: string };  // выбранные награды за звёзды (STAR_REWARDS)       // лучшие звёзды уровня-темы (id темы → 1..3)
   coins?: number;                             // монеты («тиын»): за ответы и врагов, тратятся в мастерской корабля (src/lib/ship.svelte.ts)
@@ -102,6 +108,8 @@ export interface Save {
   notebook?: Record<string, NotebookEntry>;
   // прогрессия «Жаңа жүйе» (docs/systems/DESIGN.md, specs/progression.md); пока только снимок открытого (src/engine/legacy.ts)
   prog?: Prog;
+  // исключения командира диапазоном дат (болезнь, праздник): src/engine/exceptions.ts; слияние по id, удалённое остаётся могилой
+  exceptions?: import('./exceptions').ScheduleException[];
 }
 
 /** Прогрессия. legacy — всё открытое в старой системе (только растёт): костюмы, плащи и следы, миры, купленное. */

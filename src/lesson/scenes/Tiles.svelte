@@ -3,15 +3,15 @@
   // 3/4 и 2 3/4 — одна плитка с этажной дробью; десятичное 0,45 — тоже одна плитка (C3).
   import Frac from '../../ui/Frac.svelte';
   import { parseFrac } from '../../widgets/fracdraw';
-  let { math, broken = false }: { math: string; broken?: boolean } = $props();
-  type Tok = { t: string; kind: 'num' | 'frac' | 'op' | 'par' | 'sup' | 'txt' | 'sep'; hl: boolean };
+  let { math, broken = false, label = 'ОРЫНДАЛАДЫ' }: { math: string; broken?: boolean; label?: string } = $props();
+  type Tok = { t: string; kind: 'num' | 'frac' | 'op' | 'par' | 'sup' | 'var' | 'txt' | 'sep'; hl: boolean };
   const toks = $derived.by(() => {
     const out: Tok[] = []; let hl = false;
     for (const m of math.matchAll(/ {2,}|\[|\]|(?<![\d/.,])(?:\d+ )?\d+\/\d+(?![\d/])|\d+,\d+(?!\d)|\d{1,3}(?: \d{3})+(?!\d)|\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]+|[+−·:=≠<>]|[()]|✔|[^\s\[\]\d+−·:=()⁰-⁹ⁿ✔]+/g)) {
       const t = m[0];
       if (t === '[') { hl = true; continue; } if (t === ']') { hl = false; continue; }
       if (/^ {2,}$/.test(t)) { out.push({ t: '', kind: 'sep', hl: false }); continue; } // две формулы — две строки
-      const kind = parseFrac(t) ? 'frac' : /^\d/.test(t) ? 'num' : /^[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]/.test(t) ? 'sup' : /^[+−·:=≠<>]$/.test(t) ? 'op' : /^[()]$/.test(t) ? 'par' : 'txt';
+      const kind = parseFrac(t) ? 'frac' : /^\d/.test(t) ? 'num' : /^[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]/.test(t) ? 'sup' : /^[+−·:=≠<>]$/.test(t) ? 'op' : /^[()]$/.test(t) ? 'par' : /^[A-Za-z]$/.test(t) ? 'var' : 'txt';
       out.push({ t, kind, hl });
     }
     // группируем подряд идущие подсвеченные токены
@@ -31,7 +31,7 @@
 <div class="tiles" class:broken>
   {#each toks as g, gi}
     {#if g.hl}
-      <span class="proc" style="animation-delay:{gi * 40}ms"><small>⚙ ОРЫНДАЛАДЫ</small>{#each g.items as tk}{@render tile(tk, false)}{/each}</span>
+      <span class="proc" style="animation-delay:{gi * 40}ms"><small>⚙ {label}</small>{#each g.items as tk}{@render tile(tk, false)}{/each}</span>
     {:else}
       {#each g.items as tk}{@render tile(tk, true, gi)}{/each}
     {/if}
@@ -44,6 +44,7 @@
   .tk.num { min-width: 44px; height: 50px; padding: 0 10px; background: linear-gradient(#1d6d82, #0d3f4d); border: 2px solid var(--code); border-bottom-width: 5px; border-radius: 8px; color: #e9feff; box-shadow: 0 0 12px #3ff0ff33; }
   .tk.frac { min-width: 44px; padding: 2px 10px; background: linear-gradient(#1d6d82, #0d3f4d); border: 2px solid var(--code); border-bottom-width: 5px; border-radius: 8px; color: #e9feff; box-shadow: 0 0 12px #3ff0ff33; }
   .tk.op { width: 38px; height: 38px; border-radius: 50%; background: radial-gradient(circle, #3a2a07 45%, var(--gold-deep)); border: 2px dashed var(--gold); color: var(--gold); }
+  .tk.var { min-width: 44px; height: 50px; padding: 0 10px; background: linear-gradient(#5a2a73, #2f1245); border: 2px solid var(--crystal); border-bottom-width: 5px; border-radius: 8px; color: #f4e6ff; font-style: italic; box-shadow: 0 0 12px #a77bff44; }
   .tk.par { color: var(--crystal); font-size: clamp(28px, 7vw, 40px); }
   .tk.sup { align-self: flex-start; font-size: 22px; color: var(--gold); margin-left: -4px; }
   .tk.sep { flex-basis: 100%; height: 0; }

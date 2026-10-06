@@ -63,6 +63,8 @@ export interface World {
   enemyAttack(o?: { brk?: boolean; quiet?: boolean; onContact?: () => void }): Promise<void>;
   /** Событие на весь экран (экран задачи по фазам): камера подлетает к бойцам; false — общий план. При «уменьшить движение» камера не летит. */
   eventCam(on: boolean): void;
+  /** Ускорить боевую анимацию в k раз (1 — обычно): событие ответа короче (src/engine/pacing.ts). */
+  setPace(k: number): void;
   /** Герой выходит из портала в локацию. */
   arrive(): Promise<void>;
   /** Тема боевой локации: номер мира, цвета острова. */
@@ -337,6 +339,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: { quality?: 'high' 
     spawnMob(hp, kind = 0, boss = false, worldBoss = false) { return arena.spawn(hp, kind, boss && !worldBoss, worldBoss); },
     enemyAttack(o) { return arena.enemyAttack(o); },
     eventCam(on) { arena.eventShot(on); },
+    setPace(k) { arena.setPace(k); },
     arrive() { return arena.arrive(); },
     setArena(k, a, b) { arena.theme(k, a, b); },
     setSpot(seed) { return arena.spot(seed); },

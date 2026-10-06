@@ -14,10 +14,12 @@
   import LessonHelper from '../lesson/LessonHelper.svelte';
   import { toast } from '../ui/notify.svelte';
   import { ReadGate, readMs } from '../lib/readgate.svelte';
-  import { stepStart, stepEnd, stepNeed, trackNope, trackEvent } from '../lib/track.svelte';
+  import { stepStart, stepEnd, stepNeed, trackNope, trackEvent, awayClock } from '../lib/track.svelte';
   import { game, go, persist } from '../lib/store.svelte';
   import { W } from '../lib/world.svelte';
   import { skillTitle } from '../engine/items';
+  import { isClosed } from '../engine/rules';
+  import { finalFor, lessonAttempt, type FinalTask } from '../lesson/finalTask';
   import { blankSkill } from '../engine/progress';
   import { audio } from '../lib/audio';
   import { currentWorld } from '../lib/look';
@@ -105,12 +107,17 @@
   let stepDone = $state(false);   // faded/blitz: шаг завершён (для ИИ-помощника)
   let bugFound = $state(false);
   let won = $state(false);
-  // «Мақсат»: проигрыш на «Соңғы сынақ» закрывает варианты на время — угадывать перебором нельзя
-  const FINAL_LOCK_MS = 3000;
-  let finalLock = $state(false), finalT = 0, finalMisses = 0;
+  // «Соңғы сынақ» (L2, 02.10): НОВАЯ задача того же приёма, одна попытка. Ошибка (или свернул > 5 с) — разбор, урок всё равно пройден.
+  // finalTask — задача из генератора; нет генератора у навыка — остаётся авторский финал урока (тоже с одной попыткой).
+  let missed = $state(false), closedMiss = $state(false);
+  let finalTask = $state.raw<FinalTask | null>(null);
+  let stepT0 = 0, stepAway0 = 0;   // старт шага: время и «свёрнуто» — для истории ответов (mode 'lesson') и правила «свернул > 5 с»
   let nextBtn = $state<HTMLElement>();
   let cardEl = $state<HTMLElement>();
-  const step = $derived(steps[i]);
+  const step = $derived.by(() => {
+    const s = steps[i];
+    return s.type === 'final' && finalTask ? { ...s, kz: finalTask.kz, choices: finalTask.choices, answer: finalTask.answer, why: finalTask.why, scene: undefined, s: undefined, generated: true } : s;
+  });
   // объяснения нельзя пролистать вслепую: «дальше» заряжается на время чтения (GAME_LOOP.md 10)
   const gate = new ReadGate();
   // «дальше» заряжается на время чтения; аналитика командира запоминает, сколько было нужно (src/lib/track.svelte.ts)
@@ -145,8 +152,16 @@
   function enter() {
     const s = steps[i];
     ready = ['say', 'goal', 'rule'].includes(s.type) || (s.type === 'example' && s.frames.length <= 1);
-    frame = 0; pick = null; bugFound = false; stepDone = false; fadedHits = 0; finalLock = false; finalMisses = 0;
-    clearTimeout(finalT); gate.stop();
+    frame = 0; pick = null; bugFound = false; stepDone = false; fadedHits = 0; missed = false; closedMiss = false;
+    // финал: тот же шаг открывали — та же задача и тот же ответ (выход и вход второй попытки и второго XP не дают); в пересмотре из альбома — авторский финал, без записи
+    finalTask = null;
+    if (s.type === 'final' && !replay) {
+      const f = finalFor(game.save.lessonPos, skill, i, [s.kz, goal?.task ?? '', goal?.kz ?? '']);
+      game.save.lessonPos = { skill, step: i, final: f }; persist();
+      finalTask = f.task;
+      if (f.res) { pick = f.pick ?? null; won = f.res === 'won'; missed = f.res !== 'won'; closedMiss = f.res === 'closed'; ready = true; }
+    }
+    stepT0 = performance.now(); stepAway0 = awayClock(); gate.stop();
     if (!replay) stepStart(skill, i, s.type);
     vid?.destroy(); vid = s.type === 'example' ? makeVideo(s) : null;
     // тренировочная площадка: глитч и мишени по шагу, доска пишет название приёма
@@ -176,7 +191,7 @@
     if (tech) W.world?.trainBoard(`Бүгінгі тәсіл: ${tech.kz}`);
     (W.world?.arrive() ?? Promise.resolve()).then(() => W.world?.setTraining(true)).then(() => (cine = false));
     audio.setMood('training'); enter();
-    return () => { stepEnd(false); clearTimeout(finalT); vid?.destroy(); W.world?.holoClear(true); W.world?.clearMob(); mq.removeEventListener('change', onLand); rm.removeEventListener('change', onRm); document.removeEventListener('visibilitychange', onVis); };
+    return () => { stepEnd(false); vid?.destroy(); W.world?.holoClear(true); W.world?.clearMob(); mq.removeEventListener('change', onLand); rm.removeEventListener('change', onRm); document.removeEventListener('visibilitychange', onVis); };
   });
   // видео стоит, пока открыт вопрос о выходе, карточка приёма или вкладка в фоне
   $effect(() => { vid?.hold(askExit || card || hidden); });
@@ -210,23 +225,33 @@
     if (clean) last?.then(() => W.world?.heroEmote('cheer'));
   }
   function widgetDone() { audio.play('correct'); W.world?.heroEmote('cheer'); reward(0); }
+  // ответ на шаг урока — в историю (mode 'lesson'); в пересмотре из альбома ничего не пишем
+  function logChoice(ok: boolean, k: number, awayMs: number) {
+    if (replay) return;
+    game.save.attempts.push(lessonAttempt({ skill, step: i, day: game.day, correct: ok, timeMs: performance.now() - stepT0, awayMs, tag: finalTask && !ok ? finalTask.tags[k] : undefined }));
+    persist();
+  }
   async function choose(k: number) {
-    if (pick !== null && step.type !== 'final') return;
-    if (step.type === 'final' && (won || finalLock)) return;
+    if (pick !== null) return;   // одна попытка: и в финале (решение семьи 02.10), и на остальных шагах
     pick = k;
+    const away = Math.round(awayClock() - stepAway0), closed = isClosed(away);
     const ok = k === step.answer;
     if (step.type === 'predict') {
+      logChoice(ok, k, away);
       audio.play(ok ? 'correct' : 'hint'); if (ok) react('correct');
       // верно — сильный удар, потом радость; неверно — бонк (манекен шлёпает героя), потом герой чешет голову
       if (ok) W.world?.trainStrike('strong', 1, false, strikeN++).then(() => W.world?.heroEmote('cheer')); else bonk();
       reward(ok ? 3 : 0); read(readMs(step.reveal)); showChoices(); return;
     }
     if (step.type === 'final') {
-      if (!ok) {
+      // свернул приложение на финале дольше 5 с — ответ не засчитывается, как на любой задаче (решение семьи 02.10)
+      const win = ok && !closed;
+      const fs = game.save.lessonPos?.final; if (!replay && fs) { fs.res = win ? 'won' : closed ? 'closed' : 'missed'; fs.pick = k; }   // до анимации: выйти и перевыбрать нельзя
+      logChoice(ok, k, away);
+      if (!win) {
         audio.play('wrong'); flash('#ff9a6b'); bonk(); cardEl?.classList.remove('shake'); void cardEl?.offsetWidth; cardEl?.classList.add('shake');
-        trackEvent('finalMiss', { skill }); finalMisses++;
-        finalLock = true; clearTimeout(finalT); finalT = window.setTimeout(() => (finalLock = false), FINAL_LOCK_MS);
-        return;
+        trackEvent('finalMiss', { skill }); missed = true; closedMiss = closed; ready = true;
+        read(readMs(step.why)); showChoices(); return;
       }
       won = true; audio.play('crit'); react('win');
       // разбег, прыжок и удар с разворотом; промис — в момент касания, радость и отдых лёжа герой доигрывает сам
@@ -234,9 +259,10 @@
       W.world?.bitMood('happy');
       audio.play('levelup'); floatText('МЕҢГЕРІЛДІ!', sceneCenter(0.28).x, sceneCenter(0.28).y, techHex, true);
       sparksAt(sceneCenter(0.3).x, sceneCenter(0.3).y, ['#ffc94a', '#3ff0ff', '#b58cff'], 90, 10);
-      // полные 20 XP — только с первой попытки (02.10): перебором вариантов урок проходится, но почти без награды
-      reward(finalMisses ? 3 : 20, !finalMisses); read(readMs(step.why)); return;
+      // единственная попытка — всегда полные 20 XP
+      reward(20, true); read(readMs(step.why)); return;
     }
+    logChoice(ok, k, away);
     audio.play(ok ? 'correct' : 'wrong'); react(ok ? 'correct' : 'wrong'); reward(ok ? 5 : 0);
     // «Неге?»: верно — блок и контратака, неверно — шлепок (бонк) и почесать голову; остальные шаги — обычный удар
     if (ok) (step.type === 'why' ? W.world?.trainBlock() : W.world?.trainStrike('light'))?.then(() => W.world?.heroEmote('cheer')); else bonk();
@@ -277,7 +303,7 @@
     if (!ready) { trackNope(); toast(step.type === 'widget' ? 'Алдымен тапсырманы орында' : 'Алдымен жауап таңда'); audio.play('click'); return; }
     next();
   }
-  function leave() { askExit = false; if (!replay) { game.save.lessonPos = { skill, step: i }; persist(); } go({ name: replay ? 'album' : 'hub' }); }
+  function leave() { askExit = false; if (!replay) { const lp = game.save.lessonPos; if (!(lp && lp.skill === skill && lp.step === i)) game.save.lessonPos = { skill, step: i }; persist(); } go({ name: replay ? 'album' : 'hub' }); }
   const bit = $derived.by((): { text: string; mood: 'idle' | 'happy' | 'wow' | 'think' | 'sad'; compact: boolean; voice?: string } | null => {
     const t = step.type;
     if (t === 'say' || t === 'goal') return { text: step.kz, mood: 'wow', compact: t === 'goal', voice: voiceUrl(i) };
@@ -293,7 +319,8 @@
   const tinyChoices = $derived(['predict', 'why', 'quiz', 'final'].includes(step.type) && (step.choices?.length ?? 0) >= 5 && Math.max(...step.choices.map((c: string) => c.length)) <= 9);
   const longChoices = $derived(['predict', 'why', 'quiz', 'final'].includes(step.type) && Math.max(...(step.choices ?? ['']).map((c: string) => c.length)) > 22);
   // голос Бита на шагах с выбором: до ответа читает вопрос, после — разбор (_reveal у прогноза, _why у «Неге?» и у выигранного финала)
-  const answerVoice = $derived(pick === null ? voiceUrl(i)
+  const answerVoice = $derived(step.generated ? ''   // новая задача финала — озвучки у неё нет (голос записан под авторскую)
+    : pick === null ? voiceUrl(i)
     : step.type === 'predict' ? voiceUrl(`${i}_reveal`)
     : step.type === 'final' ? (won ? voiceUrl(`${i}_why`) : '') : voiceUrl(`${i}_why`));
   // «Есте сақта» и «Глитчтің қатесі» идут без пузыря Бита: голос шага играет сам; у правила с пропуском после решения — полная версия (_full)
@@ -309,12 +336,16 @@
   const bitLine = $derived.by(() => {
     if (step.type === 'predict') return pick === null ? `${game.save.heroName}, алдымен болжап көр — қателесуден қорықпа!` : (pick === step.answer ? 'Дәл таптың! ' : 'Қызық болжам! ') + step.reveal;
     if (step.type === 'why' || step.type === 'quiz') return pick === null ? 'Қалай ойлайсың?' : pick === step.answer ? 'Дұрыс! ' + step.why : 'Жақын, бірақ: ' + step.why;
-    if (step.type === 'final') return !won ? (pick === null ? 'Соңғы сынақ! Үйренгеніңді көрсет: дұрыс жауапты таңда.' : 'Жаттығу әлі аяқталған жоқ! Сабақта не үйрендік? Тағы тексер.') : `Тәсіл меңгерілді, ${game.save.heroName}! ` + step.why;
+    if (step.type === 'final') {
+      if (won) return `Тәсіл меңгерілді, ${game.save.heroName}! ` + step.why;
+      if (missed) return (closedMiss ? 'Қосымшадан шығып кеттің, сондықтан бұл жауап саналмайды. ' : 'Бұл жолы қате болды, ештеңе етпейді: қатеден үйренеміз. ') + 'Мына жерден қарайық: ' + step.why;
+      return `Соңғы сынақ! Жаңа тапсырма: үйренгеніңді көрсет. Жауап бір-ақ рет беріледі, абайлап таңда.`;
+    }
     return '';
   });
   // что видит ИИ-помощник (src/lesson/LessonHelper.svelte): шаг как в контенте, пропуск этого кадра, ответил ли ребёнок
   const answered = $derived(
-    step.type === 'final' ? won : ['predict', 'why', 'quiz'].includes(step.type) ? pick !== null : ['faded', 'blitz'].includes(step.type) ? stepDone : false);
+    ['predict', 'why', 'quiz', 'final'].includes(step.type) ? pick !== null : ['faded', 'blitz'].includes(step.type) ? stepDone : false);
   const lessonCtx = $derived({
     skill, title: skillTitle(skill).kz, step, frame: step.type === 'example' ? frame : undefined, gaps, solved: !!solved[gapKey],
     answered, picked: pick, rule: ruleIdx >= 0 && i > ruleIdx ? (steps[ruleIdx].lines as string[]).join(' ') : undefined,
@@ -375,14 +406,14 @@
         {#if step.type === 'final' && step.scene}<Scene name={step.scene} s={won ? step.s : goal?.s ?? step.s} />{/if}
         {#if !land}{@render bitView()}{/if}
         <div class="paper qbox">
-          {#if step.type === 'final'}<Icon name={won ? 'check' : 'lock'} fill={won ? 'var(--ok)' : 'var(--gold)'} size={24} />{/if}
-          <p class="q"><MathLine text={step.kz} inherit /></p>
+          {#if step.type === 'final'}<Icon name={won ? 'check' : missed ? 'cross' : 'lock'} fill={won ? 'var(--ok)' : 'var(--gold)'} size={24} />{/if}
+          <p class="q" class:gen={step.generated}><MathLine text={step.kz} inherit /></p>
         </div>
         <div class="choices" class:one={longChoices} class:tiny={tinyChoices}>
           {#each step.choices as c, k}
-            <button class="ans" class:right={pick !== null && k === step.answer && (step.type !== 'final' || won)} class:wrong={pick === k && k !== step.answer}
-              disabled={step.type === 'final' ? won || finalLock : pick !== null} onclick={() => choose(k)}>
-              <span class="l">{#if pick !== null && k === step.answer && (step.type !== 'final' || won)}<Icon name="check" fill="#fff" size={16} />{:else if pick === k && k !== step.answer}<Icon name="cross" fill="#fff" size={16} />{:else}{'ABCDE'[k]}{/if}</span><span class="ct"><MathLine text={c} inherit /></span>
+            <button class="ans" class:right={pick !== null && k === step.answer} class:wrong={pick === k && k !== step.answer}
+              disabled={pick !== null} onclick={() => choose(k)}>
+              <span class="l">{#if pick !== null && k === step.answer}<Icon name="check" fill="#fff" size={16} />{:else if pick === k && k !== step.answer}<Icon name="cross" fill="#fff" size={16} />{:else}{'ABCDE'[k]}{/if}</span><span class="ct"><MathLine text={c} inherit /></span>
             </button>
           {/each}
         </div>
@@ -491,4 +522,6 @@
   /* окно «Биткә түсіндір» принимает касания само (экран по умолчанию пропускает их к 3D): поле ответа ставит курсор, пустое место не жмёт «Келесі» урока под окном */
   .teach-veil { position: fixed; inset: 0; z-index: var(--z-modal, 50); pointer-events: auto; background: #05081ecc; display: grid; align-items: end; justify-items: center; padding: 12px; }
   .teach-box { width: min(520px, 100%); max-height: 92dvh; overflow: auto; border-radius: 22px; background: linear-gradient(180deg, var(--panel-hi), var(--panel)); border: 3px solid var(--outline); padding: 14px; box-shadow: 0 10px 0 #0007; }
+  /* условие новой задачи финала: перенос строки из генератора («\n» перед выражением) виден */
+  .q.gen :global(.ml) { white-space: pre-line; }
 </style>

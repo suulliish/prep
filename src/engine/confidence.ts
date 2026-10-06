@@ -26,10 +26,8 @@ export const CRIT_COINS = 1;
 export const critCoins = (correct: boolean, conf: Conf, hintLevel: number, fast: boolean) =>
   correct && conf === 'sure' && hintLevel === 0 && !fast ? CRIT_COINS : 0;
 
-/** Сколько держится событие (мс): ожидаемое время анимации боя; полоска внизу идёт ровно столько. «Уменьшить движение» — короче. */
-export const EVENT_MS: Record<EventKind, number> = { crit: 2100, hit: 1900, hold: 2300, break: 2700, counter: 2100, self: 2100 };
-export const EVENT_MS_REDUCED = 1200;
-export const eventMs = (k: EventKind, reduce: boolean) => (reduce ? EVENT_MS_REDUCED : EVENT_MS[k]);
+/** Сколько держится событие (мс) — в src/engine/pacing.ts (EVENT): верный 0,8 с, неверный 1,3 с, «уменьшить движение» 0,6 с. */
+export { eventMs } from './pacing';
 /** Дольше этого бой не ждёт (страховка от зависшей анимации). */
 export const EVENT_CAP_MS = 9000;
 

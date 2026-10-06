@@ -24,7 +24,7 @@ s('div.gcd_lcm_word', 'D', 5, 'ЕҮОБ пен ЕКОЕ-ге мәтінді ес
 s('div.count_multiples', 'D', 5, 'Еселіктер санын табу', 'Сколько чисел кратны…', ['div.rules'], { t: ['logic.count_after_removal'] });
 s('div.star_digit', 'D', 5, 'Жұлдызшаның орнына цифр қою', 'Цифра вместо звёздочки', ['div.rules'], { t: ['div.star_digit_9'] });
 s('div.powers_count', 'D', 5, 'Квадраттар мен кубтар саны', 'Сколько квадратов/кубов', ['nat.powers'], { t: ['div.count_powers'] });
-s('div.last_digit', 'D', 'olymp', 'Дәреженің соңғы цифры', 'Последняя цифра степени', ['nat.powers'], { t: ['div.last_digit_power'] });
+s('div.last_digit', 'D', 'olymp', 'Дәреженің соңғы цифры', 'Последняя цифра степени', ['nat.powers'], { t: ['div.last_digit_power', 'div.last_digit_sum'] });
 s('div.trailing_zeros', 'D', 5, 'Көбейтіндінің соңындағы нөлдер', 'Нули в конце произведения', ['div.factorization'], { t: ['div.trailing_zeros_factorial', 'div.trailing_zeros_product'] });
 
 // ---- Обыкновенные дроби ----
@@ -112,12 +112,13 @@ s('coord.graph_point', 'K', 6, 'Нүкте графикте жата ма', 'Т�
 s('coord.symmetry', 'K', 6, 'Симметрия', 'Симметрия', ['coord.plane']);
 
 // ---- Выражения, уравнения, неравенства, системы ----
-s('expr.variables', 'A', 5, 'Әріпті өрнектер және олардың мәні', 'Буквенные выражения', ['nat.order_ops']);
+s('expr.variables', 'A', 5, 'Әріпті өрнектер және олардың мәні', 'Буквенные выражения', ['nat.order_ops'], { t: ['expr.substitute', 'expr.compose_one', 'expr.substitute_two', 'expr.compose_two'] });
 s('expr.brackets', 'A', 6, 'Жақшаны ашу', 'Раскрытие скобок', ['expr.variables', 'rat.mul_div']);
 s('expr.like_terms', 'A', 6, 'Ұқсас мүшелерді біріктіру', 'Приведение подобных', ['expr.brackets'], { t: ['eq.collect_like_terms'] });
 s('expr.factor_out', 'A', 6, 'Ортақ көбейткішті жақша сыртына шығару', 'Вынесение общего множителя', ['expr.like_terms'], { t: ['compute.factor_substitute'] });
 s('expr.monomials', 'A', 6, 'Дәрежелері бар бөлшектерді қысқарту', 'Сокращение дробей со степенями', ['nat.powers', 'frac.reduce'], { t: ['compute.monomial_fraction'] });
-s('eq.linear_basic', 'A', 5, 'Қарапайым теңдеулер', 'Простые уравнения', ['nat.ops']);
+s('eq.linear_basic', 'A', 5, 'Қарапайым теңдеулер', 'Простые уравнения', ['nat.ops', 'expr.variables'], { t: ['eq.add_sub_unknown', 'eq.mul_div_unknown', 'eq.reverse_order', 'eq.check_root', 'eq.story_one'] });
+s('eq.two_step', 'A', 5, 'Екі қадамды теңдеулер', 'Уравнения в два шага', ['eq.linear_basic'], { t: ['eq.two_step_mul_add', 'eq.two_step_mul_sub', 'eq.two_step_div', 'eq.think_number', 'eq.two_step_story', 'eq.two_step_minus'] });
 s('eq.linear_negative', 'A', 6, 'Теріс сандары бар теңдеулер', 'Уравнения с отрицательными числами', ['eq.linear_basic', 'rat.add_sub'], { t: ['eq.one_step_negative'] });
 s('eq.linear', 'A', 6, 'Сызықтық теңдеулер', 'Линейные уравнения', ['eq.linear_negative', 'expr.like_terms']);
 s('eq.compose', 'A', 6, 'Теңдеу құру арқылы есептер', 'Задачи на составление уравнений', ['eq.linear'], { t: ['eq.three_shelves'] });
@@ -152,16 +153,16 @@ s('word.drying', 'B', 6, 'Кептіру есептері', 'Задачи на �
 
 // ---- Закономерности ----
 s('pat.sequences', 'H', 5, 'Сандар тізбегі', 'Числовые последовательности', ['nat.ops'], { t: ['pat.seq_nth', 'pat.seq_position', 'pat.seq_growing_diff', 'pat.seq_interleaved'] });
-s('pat.bracket', 'H', 5, 'Жақшадағы сан заңдылығы', 'Закономерность с числом в скобках', ['pat.sequences', 'nat.powers'], { t: ['logic.bracket_pattern'] });
+s('pat.bracket', 'H', 5, 'Жақшадағы сан заңдылығы', 'Закономерность с числом в скобках', ['pat.sequences', 'nat.powers'], { t: ['logic.bracket_pattern', 'logic.bracket_middle', 'logic.bracket_square'] });
 s('pat.function_machine', 'H', 5, 'Кесте бойынша формула', 'Формула по таблице', ['expr.variables']);
 s('pat.arith_progression', 'H', 'olymp', 'Тұрақты айырмалы тізбек', 'Постоянная разность', ['pat.sequences']);
 
 // ---- Логика словами ----
-s('logic.new_operation', 'I', 5, 'Жаңа амал', 'Новая операция', ['expr.variables'], { t: ['logic.new_operation'] });
-s('logic.clock_angle', 'I', 6, 'Сағат тілдерінің арасындағы бұрыш', 'Угол между стрелками', ['geo.angles_basic', 'frac.mul'], { t: ['logic.clock_angle'] });
+s('logic.new_operation', 'I', 5, 'Жаңа амал', 'Новая операция', ['nat.order_ops'], { t: ['logic.new_operation', 'logic.new_operation_nested', 'logic.new_operation_unknown'] });
+s('logic.clock_angle', 'I', 6, 'Сағат тілдерінің арасындағы бұрыш', 'Угол между стрелками', ['frac.mul'], { t: ['logic.clock_angle', 'logic.clock_angle_hands'] });
 s('logic.calendar', 'I', 5, 'Күнтізбе есептері', 'Календарь', ['div.rules'], { t: ['logic.every_k_days', 'logic.cal_weekday_shift', 'logic.cal_days_between', 'logic.cal_years_days', 'logic.cal_weekend_count', 'logic.cal_date_weekday'] });
 s('logic.clock_lag', 'I', 'olymp', 'Қалып қоятын сағат', 'Отстающие часы', ['ratio.units']);
-s('logic.deduction', 'I', 5, 'Кім қайда: кесте әдісі', 'Кто где: таблица', [], { t: ['logic.who_in_which_class'] });
+s('logic.deduction', 'I', 5, 'Кім қайда: кесте әдісі', 'Кто где: таблица', [], { t: ['logic.who_in_which_class', 'logic.deduction_table', 'logic.deduction_enough'] });
 s('logic.permutations', 'I', 5, 'Қатарға тұру тәсілдері', 'Перестановки', ['nat.ops', 'logic.weighing'], { t: ['logic.line_up', 'logic.perm_digits', 'logic.perm_menu', 'logic.perm_fixed'] });
 s('logic.pairs_tournament', 'I', 5, 'Жұптар және турнир', 'Пары и турнир', ['logic.permutations'], { t: ['logic.tour_pairs', 'logic.tour_double', 'logic.tour_one_more', 'logic.tour_find_n'] });
 s('logic.probability', 'I', 6, 'Ықтималдық', 'Вероятность', ['frac.concept']);
