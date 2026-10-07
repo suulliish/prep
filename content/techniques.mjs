@@ -43,6 +43,9 @@ export const TECHNIQUES = [
   { skill: 'expr.variables', kz: 'Әріп қою тәсілі', ru: 'Приём подстановки', color: 0x7dffd4, fx: 'pierce' },
   { skill: 'eq.linear_basic', kz: 'Кері амал тәсілі', ru: 'Приём обратного действия', color: 0xffcb2e, fx: 'arc' },
   { skill: 'eq.two_step', kz: 'Екі қадам соққысы', ru: 'Удар двух шагов', color: 0xff9a3d, fx: 'multi' },
+  // ---- x екі жақта және жақшалы теңдеулер (C9) ----
+  { skill: 'eq.both_sides_nat', kz: 'Таразы теңестіру тәсілі', ru: 'Приём уравновешивания', color: 0xc0c8ff, fx: 'split' },
+  { skill: 'eq.brackets_nat', kz: 'Жақша ашу соққысы', ru: 'Удар раскрытия скобок', color: 0xff4fb8, fx: 'arc' },
   // ---- жиындар, тізбектер, логика ----
   { skill: 'sets.basics', kz: 'Жиын торы', ru: 'Сеть множеств', color: 0x5ea0ff, fx: 'multi' },
   { skill: 'sets.venn', kz: 'Венн шеңбері', ru: 'Круг Венна', color: 0xa77bff, fx: 'spin' },

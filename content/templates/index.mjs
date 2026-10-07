@@ -13,6 +13,7 @@ import logic8 from './logic8.mjs';
 import decimals from './decimals.mjs';
 import logic9 from './logic9.mjs';
 import equations5 from './equations5.mjs';
+import equations6 from './equations6.mjs';
 
-export const templates = [...g5, ...compute, ...equations, ...propPct, ...wordGeo, ...logic, ...fractions5, ...fractions6, ...logic5, ...logic7, ...logic8, ...decimals, ...logic9, ...equations5];
+export const templates = [...g5, ...compute, ...equations, ...propPct, ...wordGeo, ...logic, ...fractions5, ...fractions6, ...logic5, ...logic7, ...logic8, ...decimals, ...logic9, ...equations5, ...equations6];
 export const byId = Object.fromEntries(templates.map(t => [t.id, t]));

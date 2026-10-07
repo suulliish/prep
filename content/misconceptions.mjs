@@ -4,6 +4,7 @@ import { MISCONCEPTIONS5 } from './templates/logic5.mjs';
 import { MISCONCEPTIONS_DEC } from './templates/decimals.mjs';
 import { MISCONCEPTIONS9 } from './templates/logic9.mjs';
 import { MISCONCEPTIONS_EQ } from './templates/equations5.mjs';
+import { MISCONCEPTIONS_EQ6 } from './templates/equations6.mjs';
 
 export const MISCONCEPTIONS = {
   sign: { kz: 'Таңбаға қара: теріс көбейткіштер санын санап шық. Жұп болса — нәтиже оң, тақ болса — теріс.', ru: 'Проверь знак: посчитай отрицательные множители. Чётное число — плюс, нечётное — минус.' },
@@ -152,6 +153,7 @@ export const MISCONCEPTIONS = {
   ...MISCONCEPTIONS_DEC,
   ...MISCONCEPTIONS9,
   ...MISCONCEPTIONS_EQ,
+  ...MISCONCEPTIONS_EQ6,
   // ---------- Логика 7-й недели: тәсілдер саны, турнир, тізбек, күнтізбе, квадраттар ----------
   add_instead_of_multiply: { kz: 'Таңдаулар тізбектеле болса, нұсқаларды қосуға болмайды: бірінші таңдаудың әр нұсқасына келесінің барлық нұсқасы сай келеді. Көбейт.', ru: 'Если выборы идут один за другим, варианты нельзя складывать: к каждому варианту первого подходят все варианты следующего. Умножай.' },
   order_ignored: { kz: 'Мұнда цифрлардың орны маңызды: 123 және 321 — әртүрлі сандар. Тек таңдау санын емес, реттерін де сана.', ru: 'Здесь порядок цифр важен: 123 и 321 — разные числа. Считай не только выбор, но и порядок.' },
