@@ -8,6 +8,7 @@
   import { isPracticeAttempt } from '../../engine/rules';
   import { exceptionOn, EXC_KIND_RU } from '../../engine/exceptions';
   import Exceptions from './Exceptions.svelte';
+  import MinutesShadow from './MinutesShadow.svelte';
   let { cloudOk }: { cloudOk: boolean } = $props();
 
   const plan = ensurePlan();
@@ -39,6 +40,7 @@
     <div class="kpi"><span class="label">За неделю</span><b>{weekMin} мин</b><small>копилка выходных: {weekBank} мин</small></div>
     <div class="kpi"><span class="label">Серия дней</span><b>{st.days}</b><small>заморозок в этом месяце: {st.freezesLeft} из 2</small></div>
   </div>
+  <MinutesShadow />
   <ul class="blocks">
     {#each plan.blocks as b}<li class:done={rec.blocksDone[b.id]}>{rec.blocksDone[b.id] ? '✓' : '○'} {BLOCK[b.id]}</li>{/each}
     <li>Доп. миссий: {rec.extraMissions} из {extraCap(game.save.settings.extraMissionCap)}</li>

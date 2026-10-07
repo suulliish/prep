@@ -30,6 +30,8 @@
   import { makeItem, mistakeText, skillTitle, templatesOf, isTemplateId, type Item } from '../engine/items';
   import { bankFor, bankToItem } from '../engine/bank';
   import { recordAttempt, isDone } from '../engine/progress';
+  import { shadowAnswer } from '../engine/minutesShadow';
+  import { deviceId } from '../lib/version';
   import { settleDay, taught, sequenceSlots, extraCap, repairNeed } from '../engine/planner';
   import { stemChars, adaptiveRushMs, changedMarkup, varyAnswerPos, type Seg } from '../engine/rush';
   import { GLITCH_SAY, buildGlitch, glitchAllowed, firstGlitchAt, nextGlitchAt, shortMistake, type GlitchTurn as GlitchData } from '../engine/glitchturn';
@@ -412,6 +414,7 @@
       hintLevel, honest, timeMs: Math.round(timeMs), ...(fast ? { fast: true } : {}), ...(closed ? { away, closed: true } : {}), ...(tag ? { tag } : {}), mode: MODE, ...(note ? { selfCheck: note } : {}), r: RULES_V,
     };
     const events = recordAttempt(game.save, rec);
+    shadowAnswer(game.save, rec, { block, twin, device: deviceId() });   // «тень» минут D2: только запись, на игру не влияет
     const at = sceneCenter(0.42), wasTwin = twin;
     // мини-шаг вместо тоста «Асықпа!»
     const mini = correct && fast && !wasTwin && hintLevel === 0 && served - lastMini >= 3;
@@ -510,6 +513,7 @@
       ...(fast ? { fast: true } : {}), ...(closed ? { away, closed: true } : {}), tag: correct ? 'correct' : follow ? g.tag : 'glitch_miss', mode: MODE, kind: 'glitch', r: RULES_V,
     };
     const events = recordAttempt(game.save, rec);
+    shadowAnswer(game.save, rec, { block, twin, device: deviceId() });   // «тень» минут D2: только запись, на игру не влияет
     const at = sceneCenter(0.42);
     if (correct) {
       combo++;
@@ -556,6 +560,7 @@
       closed: true, away: why === 'away' ? away : 0, mode: MODE, r: RULES_V, ...(glitch ? { kind: 'glitch' as const } : {}),
     };
     const events = recordAttempt(game.save, rec);
+    shadowAnswer(game.save, rec, { block, twin, device: deviceId() });   // «тень» минут D2: только запись, на игру не влияет
     combo = 0;
     if (block !== 'repair') game.save.repairShop.push({ source: it.source, skill: it.skill, addedDay: game.day,
       ...(block === 'warmup' || block === 'new' || block === 'mixed' ? { block } : {}) });

@@ -37,7 +37,8 @@ export const MECHANICS = [
 
   // ---------------- мотивация ----------------
   { id: 'minutes', name: 'Минуты игры (реальная награда)', group: 'мотивация', kind: 'currency', terminal: true, inputs: ['plan', 'battle', 'extra', 'repair'], outputs: [], shown: 'both',
-    code: ['src/engine/planner.ts'], notes: 'до 60 за план + 15 за доп. миссию; доля «как на экзамене» (+1 / −¼ / 0); подарков командира нет (02.10)' },
+    code: ['src/engine/planner.ts', 'src/engine/minutes.ts', 'src/engine/minutesShadow.ts', 'content/balance.mjs', 'src/screens/commander/MinutesShadow.svelte'], data: ['debts'],
+    notes: 'до 60 за план + 15 за доп. миссию; доля «как на экзамене» (+1 / −¼ / 0); подарков командира нет (02.10). Новое правило «точность стоит, труд возвращает» (minutes.ts) считается в тени параллельно со старым и видно только командиру (D2)' },
   { id: 'extra', name: 'Доп. миссия', group: 'мотивация', kind: 'action', inputs: ['plan', 'repair'], outputs: ['battle', 'minutes'], shown: 'child',
     code: ['src/screens/Session.svelte', 'src/engine/planner.ts'], notes: 'засчитывается при 7 верных с первой попытки из 10; при ≥3 поломках — ремонтная' },
   { id: 'repair', name: 'Поломки корабля и ремонт', group: 'мотивация', kind: 'loop', inputs: ['battle'], outputs: ['ship', 'battle', 'extra', 'minutes', 'coins'], shown: 'child',
