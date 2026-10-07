@@ -1,5 +1,5 @@
 // Уроки-миссии октября (казахский — черновик, нужна проверка носителем).
-// Недели 1–8 — полные уроки по сценарию ARCHITECTURE 4.6 (content/lessons_week1–8.mjs); lessons_week9.mjs — 5 аварийных уроков (C5).
+// Недели 1–8 — полные уроки по сценарию ARCHITECTURE 4.6 (content/lessons_week1–8.mjs); lessons_week9.mjs — 5 аварийных уроков (C5); lessons_week10.mjs — буква и уравнения (C7); lessons_week11.mjs — x с двух сторон и скобки (C9).
 // Остальные пока короткие: say — реплика Бита; widget — манипулятив; example — разбор по кадрам;
 // quiz — вопрос с объяснением. Их перепишем по тому же сценарию во 2-ю неделю.
 import { WEEK1 } from './lessons_week1.mjs';
@@ -12,6 +12,7 @@ import { WEEK7 } from './lessons_week7.mjs';
 import { WEEK8 } from './lessons_week8.mjs';
 import { WEEK9 } from './lessons_week9.mjs';
 import { WEEK10 } from './lessons_week10.mjs';
+import { WEEK11 } from './lessons_week11.mjs';
 import { DECIMALS } from './lessons_decimals.mjs';
 
 const RAW = {
@@ -25,6 +26,7 @@ const RAW = {
   ...WEEK8,
   ...WEEK9,
   ...WEEK10,
+  ...WEEK11,
   ...DECIMALS,
 };
 

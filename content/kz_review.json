@@ -179,6 +179,54 @@
   "st": "draft",
   "h": "67bd9268"
  },
+ "eq.both_check": {
+  "st": "draft",
+  "h": "4cff1f7f"
+ },
+ "eq.both_full": {
+  "st": "draft",
+  "h": "05f1263d"
+ },
+ "eq.both_minus": {
+  "st": "draft",
+  "h": "d474c575"
+ },
+ "eq.both_sides_nat": {
+  "st": "draft",
+  "h": "b1812864"
+ },
+ "eq.both_simple": {
+  "st": "draft",
+  "h": "9ce7e391"
+ },
+ "eq.both_story": {
+  "st": "draft",
+  "h": "9146b7e6"
+ },
+ "eq.brackets_both": {
+  "st": "draft",
+  "h": "3a9bee3c"
+ },
+ "eq.brackets_check": {
+  "st": "draft",
+  "h": "30cb4980"
+ },
+ "eq.brackets_divide": {
+  "st": "draft",
+  "h": "228e273a"
+ },
+ "eq.brackets_expand": {
+  "st": "draft",
+  "h": "88b4a8cd"
+ },
+ "eq.brackets_nat": {
+  "st": "draft",
+  "h": "eca7d458"
+ },
+ "eq.brackets_story": {
+  "st": "draft",
+  "h": "613ba4f0"
+ },
  "eq.check_root": {
   "st": "draft",
   "h": "b90b3b42"
