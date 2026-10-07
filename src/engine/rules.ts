@@ -47,3 +47,16 @@ export function forModel(a: ModelAttempt): Verdict {
 
 /** Ответ «чистый» для окна 85% и «последних трёх»: верный для модели, без подсказки, не «сам поймал». */
 export const isCleanForModel = (a: ModelAttempt) => forModel(a) === 'correct' && a.hintLevel === 0 && a.selfCheck !== 'caught';
+
+/** Чем ответ стал для минут (D2, IMPLEMENTATION §1.1): верный +1; «Білмеймін», верный с подсказкой ≥ 2 и полный разбор — 0 (1 близнец);
+ *  верный наспех — 0 (1 близнец); неверный и свёрнутый −¼ (2 близнеца). Неверный остаётся неверным, даже если торопился: «наспех» только не даёт честного времени.
+ *  «Білмеймін» быстрее DUNNO_MIN_MS — не прочитал условие: как наспех (0, без честного времени). */
+export type MinuteKind = 'right' | 'wrong' | 'dunno' | 'rush' | 'away';
+export function classify(f: { correct: boolean; hintLevel: number; rushed: boolean; closed: boolean; dunno?: boolean; timeMs: number }): MinuteKind {
+  if (f.closed) return 'away';
+  if (f.hintLevel >= 4) return 'dunno';
+  if (f.dunno) return f.timeMs >= DUNNO_MIN_MS ? 'dunno' : 'rush';
+  if (!f.correct) return 'wrong';
+  if (f.hintLevel >= 2) return 'dunno';
+  return f.rushed ? 'rush' : 'right';
+}

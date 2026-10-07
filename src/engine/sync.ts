@@ -11,6 +11,7 @@ import type { Attempt, Save, DayRecord, SkillState, RecallState, NotebookEntry }
 import { mergeUsage } from './usage';
 import { newerPin } from './pin';
 import { mergeExceptions } from './exceptions';
+import { mergeMinDay, mergeDebts, dropOldMinsIn, pruneDebts } from './minutes';
 
 export const attemptKey = (a: Attempt) => `${a.at}|${a.skill}|${a.source}`;
 
@@ -102,6 +103,8 @@ function mergeDay(b: DayRecord | undefined, l: DayRecord | undefined, r: DayReco
   const eh = maxN(l.extraHonest, r.extraHonest); if (eh !== undefined) out.extraHonest = eh;
   const co = maxN(l.coins, r.coins); if (co !== undefined) out.coins = co;
   const sp = maxN(l.spent, r.spent); if (sp !== undefined) out.spent = sp;
+  const mins = mergeMinDay(l.mins, r.mins);                         // минуты по новому правилу (тень D2): слоты по id, честное время по устройствам
+  if (mins) out.mins = mins; else delete out.mins;
   out.plan = r.plan ?? l.plan;                                     // первый план дня (уже в облаке) побеждает
   if (out.plan === undefined) delete out.plan;
   out.hard = pick3(b?.hard, l.hard, r.hard, tie, hasBase); if (out.hard === undefined) delete out.hard;
@@ -141,7 +144,7 @@ export const MERGE_RULES = {
   repairShop: 'объединение, починено ИЛИ', shipOwned: 'объединение', worldsCleared: 'объединение', shipChestFixed: 'максимум', lastBackup: 'максимум',
   diagnosticDone: 'ИЛИ', introSeen: 'ИЛИ', coins: 'база + изменения обеих сторон', xp: 'максимум', recall: 'история объединением',
   recallOffer: 'темы объединением, пропуск ИЛИ', notebook: 'написал ИЛИ, проверка новее', aiLog: 'объединение, последние 100',
-  levelStars: 'максимум по ключу', kzReview: 'по ключу, pick3', exceptions: 'по id, удалённое не воскресает (могила)', prog: 'снимок открытого объединением', updatedAt: 'максимум', version: 'максимум',
+  levelStars: 'максимум по ключу', debts: 'по id, got максимум (D2)', kzReview: 'по ключу, pick3', exceptions: 'по id, удалённое не воскресает (могила)', prog: 'снимок открытого объединением', updatedAt: 'максимум', version: 'максимум',
 } as const;
 
 /** Слить сохранение устройства (local) и облака (remote) по полям. base — копия облака после прошлой синхронизации
@@ -198,6 +201,10 @@ export function mergeSave(base: Save | null, local: Save, remote: Save): Save {
   if (Array.isArray(local.exceptions) || Array.isArray(remote.exceptions)) out.exceptions = mergeExceptions(local.exceptions, remote.exceptions);   // не массив (испорчено) - как пустой
   put('notebook', mergeMap(b.notebook, local.notebook, remote.notebook, (_b, l, r) => mergeNotebook(l, r)));
   if (local.aiLog || remote.aiLog) out.aiLog = byKey([...(local.aiLog ?? []), ...(remote.aiLog ?? [])], x => `${x.at}|${x.q}`).sort((x, y) => x.at - y.at).slice(-100);
+  if (local.debts || remote.debts) put('debts', mergeDebts(local.debts, remote.debts));
+  // тень D2 живёт ограниченное время: старые слоты и долги отбрасываем и при слиянии (за «сегодня» берём самый поздний день записей)
+  { const latest = Object.keys(out.days ?? {}).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort().at(-1);
+    if (latest) { dropOldMinsIn(out.days, latest); if (out.debts) pruneDebts(out.debts, latest); } }
   put('levelStars', mergeMap(undefined, local.levelStars, remote.levelStars, (_b, l, r) => Math.max(l ?? 0, r ?? 0)));
   put('kzReview', mergeMap(b.kzReview, local.kzReview, remote.kzReview, (bb, l, r) => pick3(bb, l, r, tie, hasBase)!));
   if (local.prog || remote.prog) {

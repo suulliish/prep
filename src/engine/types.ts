@@ -56,6 +56,31 @@ export interface DayRecord {
   plan?: import('./planner').Plan;
   /** Доля честных ответов шага (0..1): минуты шага умножаются на неё (research D1, 30.09). Нет записи — 1 (урок, старые сохранения). */
   honest?: Record<string, number>;
+  /** Минуты по новому правилу (D2, src/engine/minutes.ts). Пока «в тени»: считаются параллельно со старыми и видны только командиру. */
+  mins?: MinDay;
+}
+
+// ---------- Минуты по новому правилу «точность стоит, труд возвращает» (src/engine/minutes.ts) ----------
+/** Чем стал ответ для минут: верный (+1), «Білмеймін» (0), верный наспех (0), неверный (−¼), свернул (−¼), вне счёта. */
+export type MinKind = 'right' | 'wrong' | 'dunno' | 'rush' | 'away' | 'void';
+export interface MinSlot { k: MinKind; at: number; src: string; skill: string }
+export interface MinCredit { at: number; min: number; via: 'full' | 'cap' | 'stop' | 'sick'; wk: number }
+export interface MinDay {
+  planN: number;                       // сколько задач в плане дня
+  slots: Record<string, MinSlot>;      // слот на каждый ответ плана, по id (повторная запись ничего не меняет)
+  honestMs: Record<string, number>;    // честное время по устройствам; между устройствами складывается
+  hid?: Record<string, 0 | 1>;         // id ответов, чьё время уже внесено (1 — верный честный): защита от двойного вызова
+  credit?: MinCredit;                  // начисление, один раз и неизменно (пока в тени не пишется)
+  extra?: MinDay;                      // доп. миссия
+}
+/** Долг ремонта: потерянное возвращают верные близнецы (need: ошибка и «свернул» — 2, остальное — 1). */
+export interface MinDebt {
+  id: string; skill: string; src: string; k: 'wrong' | 'away' | 'dunno' | 'rush'; need: 1 | 2; got: number;
+  day: string; at: number;
+  explained?: boolean;                 // у «Білмеймін» сначала объяснение
+  carried?: boolean;
+  by?: string[];                       // id ответов-близнецов, которые закрыли долг (got не больше их числа)
+  tr?: string[];                       // попытки ремонта: `${день}|${id ответа}` (не больше repairTries в день)
 }
 
 /** PIN командира (src/engine/pin.ts): хэш PBKDF2, соль, число итераций, когда задан (на двух устройствах побеждает больший setAt). */
@@ -110,6 +135,8 @@ export interface Save {
   prog?: Prog;
   // исключения командира диапазоном дат (болезнь, праздник): src/engine/exceptions.ts; слияние по id, удалённое остаётся могилой
   exceptions?: import('./exceptions').ScheduleException[];
+  // долги ремонта минут по новому правилу (D2, src/engine/minutes.ts); верхний уровень — переживает смену дня; слияние по id
+  debts?: Record<string, MinDebt>;
 }
 
 /** Прогрессия. legacy — всё открытое в старой системе (только растёт): костюмы, плащи и следы, миры, купленное. */
